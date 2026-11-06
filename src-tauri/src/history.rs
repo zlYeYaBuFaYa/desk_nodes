@@ -60,6 +60,7 @@ pub fn detail(c: &Connection, date: &str) -> rusqlite::Result<Detail> {
             r.get::<_, String>(2)?,
             r.get::<_, bool>(3)?,
             Item {
+                day: date.to_string(),
                 id: r.get(4)?,
                 content: r.get(5)?,
                 done: r.get(6)?,

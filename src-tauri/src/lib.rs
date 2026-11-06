@@ -347,9 +347,12 @@ fn spawn(app: &tauri::AppHandle, n: &Note, fresh: bool) -> Result<()> {
         WebviewUrl::App(format!("index.html?id={}&theme={theme}&new={fresh}", n.id).into()),
     )
     .title(format!("DeskNodes · {}", n.title))
-    .inner_size(n.width as f64, n.height as f64)
+    .inner_size(
+        n.width as f64,
+        if n.collapsed { 58. } else { n.height as f64 },
+    )
     .position(n.x as f64, n.y as f64)
-    .min_inner_size(220., 160.)
+    .min_inner_size(220., if n.collapsed { 58. } else { 160. })
     .max_inner_size(600., 900.)
     .always_on_top(n.pinned)
     .decorations(false)
@@ -377,6 +380,28 @@ fn list_notes(store: tauri::State<Store>) -> Result<Vec<Note>> {
 #[tauri::command]
 fn today_items(store: tauri::State<Store>, id: String) -> Result<Vec<db::Item>> {
     db::today(&*connection(&store)?, &id).map_err(err)
+}
+#[tauri::command]
+fn tomorrow_items(store: tauri::State<Store>, id: String) -> Result<Vec<db::Item>> {
+    let c = connection(&store)?;
+    db::items_on(&c, &id, &day::tomorrow(&c).map_err(err)?).map_err(err)
+}
+#[tauri::command]
+fn open_url(url: String) -> Result<()> {
+    let parsed = tauri::Url::parse(&url).map_err(err)?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err("Invalid web URL".into());
+    }
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("rundll32.exe");
+    #[cfg(target_os = "windows")]
+    command.arg("url.dll,FileProtocolHandler");
+    command.arg(parsed.as_str()).spawn().map_err(err)?;
+    Ok(())
 }
 #[tauri::command]
 fn mutate_item(
@@ -537,6 +562,7 @@ fn update_note(
     title: String,
     color: String,
     pinned: bool,
+    collapsed: bool,
 ) -> Result<()> {
     if !db::COLORS.contains(&color.as_str()) {
         return Err("Unknown color".into());
@@ -556,16 +582,32 @@ fn update_note(
     }
     n.color = color;
     n.pinned = pinned;
+    let resized = n.collapsed != collapsed;
+    n.collapsed = collapsed;
     window.set_always_on_top(pinned).map_err(err)?;
     window
         .set_title(&format!("DeskNodes · {}", n.title))
         .map_err(err)?;
     connection(&store)?
         .execute(
-            "UPDATE notes SET title=?2,color=?3,pinned=?4 WHERE id=?1 AND deleted_at IS NULL",
-            rusqlite::params![n.id, n.title, n.color, n.pinned],
+            "UPDATE notes SET title=?2,color=?3,pinned=?4,collapsed=?5 WHERE id=?1 AND deleted_at IS NULL",
+            rusqlite::params![n.id, n.title, n.color, n.pinned, n.collapsed],
         )
         .map_err(err)?;
+    if resized {
+        window
+            .set_min_size(Some(tauri::LogicalSize::new(
+                220.,
+                if collapsed { 58. } else { 160. },
+            )))
+            .map_err(err)?;
+        window
+            .set_size(tauri::LogicalSize::new(
+                n.width.max(220),
+                if collapsed { 58 } else { n.height.max(160) },
+            ))
+            .map_err(err)?;
+    }
     changed(&app)
 }
 #[tauri::command]
@@ -665,6 +707,8 @@ pub fn run() {
             business_date,
             list_notes,
             today_items,
+            tomorrow_items,
+            open_url,
             mutate_item,
             create_note,
             update_note,
@@ -704,7 +748,7 @@ pub fn run() {
                         n.x = p.x;
                         n.y = p.y;
                         n.width = s.width;
-                        n.height = s.height;
+                        if !n.collapsed { n.height = s.height.max(160); }
                         c.execute("UPDATE notes SET x=?2,y=?3,width=?4,height=?5 WHERE id=?1 AND deleted_at IS NULL",rusqlite::params![n.id,n.x,n.y,n.width,n.height]).map_err(err)?;
                         drop(c);
                         changed(window.app_handle())?;

@@ -47,6 +47,13 @@ pub fn target(c: &Connection, clock: &impl Clock) -> rusqlite::Result<String> {
 pub fn current(c: &Connection) -> rusqlite::Result<String> {
     Ok(setting(c, "current_business_day")?.unwrap_or(target(c, &WallClock)?))
 }
+pub fn tomorrow(c: &Connection) -> rusqlite::Result<String> {
+    NaiveDate::parse_from_str(&current(c)?, "%Y-%m-%d")
+        .ok()
+        .and_then(|d| d.succ_opt())
+        .map(|d| d.to_string())
+        .ok_or(rusqlite::Error::InvalidQuery)
+}
 // V0.1 databases have dated items but no persisted business date yet.
 fn previous(c: &Connection, to: &str) -> rusqlite::Result<Option<String>> {
     if let Some(day) = setting(c, "current_business_day")? {
@@ -190,6 +197,73 @@ mod tests {
         assert!(!due(&empty, &Fixed("2026-01-04T12:00:00")).unwrap());
         assert!(!sync(&mut empty, &Fixed("2026-01-04T12:00:00")).unwrap());
         assert_eq!(current(&empty).unwrap(), "2026-01-04");
+    }
+    #[test]
+    fn tomorrow_add_and_rollover_merge_preserve_identity() {
+        let (mut c, n) = setup();
+        put(&c, "rollover_hour", "6").unwrap();
+        assert!(!sync(&mut c, &Fixed("2026-01-02T05:59:00")).unwrap());
+        assert_eq!(tomorrow(&c).unwrap(), "2026-01-02");
+        let item = crate::db::Item {
+            id: "planned".into(),
+            day: String::new(),
+            content: "明天的小事".into(),
+            done: false,
+            sort_order: 0,
+            carry_days: 0,
+            carried_from: None,
+        };
+        crate::db::item_mutation(&mut c, &n, "add_tomorrow", &item, &[]).unwrap();
+        assert_eq!(crate::db::today(&c, &n).unwrap().len(), 1);
+        let planned = crate::db::items_on(&c, &n, &tomorrow(&c).unwrap())
+            .unwrap()
+            .remove(0);
+        assert_eq!(planned.id, "planned");
+        assert!(sync(&mut c, &Fixed("2026-01-02T06:00:00")).unwrap());
+        let today = crate::db::today(&c, &n).unwrap();
+        assert_eq!(today.len(), 2);
+        let merged = today.iter().find(|i| i.id == "planned").unwrap();
+        assert!(!merged.done);
+        assert_eq!(merged.carry_days, 0);
+        assert!(
+            crate::db::items_on(&c, &n, &tomorrow(&c).unwrap())
+                .unwrap()
+                .is_empty()
+        );
+        assert!(!sync(&mut c, &Fixed("2026-01-02T07:00:00")).unwrap());
+        assert_eq!(crate::db::today(&c, &n).unwrap().len(), 2);
+    }
+    #[test]
+    fn tomorrow_mutations_and_disabled_carry() {
+        let (mut c, n) = setup();
+        let mut item = crate::db::Item {
+            id: "planned".into(),
+            day: String::new(),
+            content: "plan".into(),
+            done: false,
+            sort_order: 0,
+            carry_days: 0,
+            carried_from: None,
+        };
+        crate::db::item_mutation(&mut c, &n, "add_tomorrow", &item, &[]).unwrap();
+        item = crate::db::items_on(&c, &n, &tomorrow(&c).unwrap())
+            .unwrap()
+            .remove(0);
+        item.content = "updated".into();
+        crate::db::item_mutation(&mut c, &n, "edit", &item, &[]).unwrap();
+        crate::db::item_mutation(&mut c, &n, "delete", &item, &[]).unwrap();
+        assert!(
+            crate::db::items_on(&c, &n, &tomorrow(&c).unwrap())
+                .unwrap()
+                .is_empty()
+        );
+        crate::db::item_mutation(&mut c, &n, "restore", &item, &[]).unwrap();
+        put(&c, "auto_carry", "0").unwrap();
+        sync(&mut c, &Fixed("2026-01-02T12:00:00")).unwrap();
+        let today = crate::db::today(&c, &n).unwrap();
+        assert_eq!(today.len(), 1);
+        assert_eq!(today[0].id, "planned");
+        assert_eq!(today[0].content, "updated");
     }
     #[test]
     fn boundaries() {

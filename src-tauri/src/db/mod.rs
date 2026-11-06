@@ -17,10 +17,13 @@ pub struct Note {
     pub height: i32,
     pub visible: bool,
     pub pinned: bool,
+    pub collapsed: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
+    #[serde(default)]
+    pub day: String,
     pub content: String,
     pub done: bool,
     pub sort_order: i64,
@@ -56,8 +59,8 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     Ok(c)
 }
 pub fn active(c: &Connection) -> rusqlite::Result<Vec<Note>> {
-    c.prepare("SELECT id,title,color,coalesce(x,160),coalesce(y,180),coalesce(width,280),coalesce(height,360),visible,pinned FROM notes WHERE deleted_at IS NULL ORDER BY sort_order")?
-        .query_map([], |r| Ok(Note { id:r.get(0)?,title:r.get(1)?,color:r.get(2)?,x:r.get(3)?,y:r.get(4)?,width:r.get(5)?,height:r.get(6)?,visible:r.get(7)?,pinned:r.get(8)? }))?.collect()
+    c.prepare("SELECT id,title,color,coalesce(x,160),coalesce(y,180),coalesce(width,280),coalesce(height,360),visible,pinned,collapsed FROM notes WHERE deleted_at IS NULL ORDER BY sort_order")?
+        .query_map([], |r| Ok(Note { id:r.get(0)?,title:r.get(1)?,color:r.get(2)?,x:r.get(3)?,y:r.get(4)?,width:r.get(5)?,height:r.get(6)?,visible:r.get(7)?,pinned:r.get(8)?,collapsed:r.get(9)? }))?.collect()
 }
 pub fn next_color(notes: &[Note], count: usize) -> &'static str {
     COLORS
@@ -78,12 +81,13 @@ pub fn create(c: &Connection) -> rusqlite::Result<Note> {
         height: 360,
         visible: true,
         pinned: false,
+        collapsed: false,
     };
     c.execute("INSERT INTO notes(id,title,color,x,y,width,height,sort_order,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)", params![n.id,n.title,n.color,n.x,n.y,n.width,n.height,count,chrono::Utc::now().to_rfc3339()])?;
     Ok(n)
 }
 pub fn save(c: &Connection, n: &Note) -> rusqlite::Result<()> {
-    c.execute("UPDATE notes SET title=?2,color=?3,x=?4,y=?5,width=?6,height=?7,visible=?8,pinned=?9 WHERE id=?1 AND deleted_at IS NULL",params![n.id,n.title,n.color,n.x,n.y,n.width,n.height,n.visible,n.pinned])?;
+    c.execute("UPDATE notes SET title=?2,color=?3,x=?4,y=?5,width=?6,height=?7,visible=?8,pinned=?9,collapsed=?10 WHERE id=?1 AND deleted_at IS NULL",params![n.id,n.title,n.color,n.x,n.y,n.width,n.height,n.visible,n.pinned,n.collapsed])?;
     Ok(())
 }
 pub fn delete(c: &Connection, id: &str) -> rusqlite::Result<()> {
@@ -113,13 +117,17 @@ pub fn seed(c: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 pub fn today(c: &Connection, id: &str) -> rusqlite::Result<Vec<Item>> {
-    c.prepare("SELECT id,content,done,sort_order,carry_days,carried_from FROM items WHERE note_id=?1 AND day=?2 ORDER BY sort_order,created_at,id")?
+    items_on(c, id, &crate::day::current(c)?)
+}
+pub fn items_on(c: &Connection, id: &str, day: &str) -> rusqlite::Result<Vec<Item>> {
+    c.prepare("SELECT id,content,done,sort_order,carry_days,carried_from,day FROM items WHERE note_id=?1 AND day=?2 ORDER BY sort_order,created_at,id")?
         .query_map(
-            params![id, crate::day::current(c)?],
+            params![id, day],
             |r| {
                 Ok(Item {
+                    day: r.get(6)?,
                     id: r.get(0)?,
-                    content: r.get(1)?,
+            content: r.get(1)?,
                     done: r.get(2)?,
                     sort_order: r.get(3)?,
                     carry_days: r.get(4)?,
@@ -136,7 +144,13 @@ pub fn item_mutation(
     item: &Item,
     order: &[String],
 ) -> rusqlite::Result<()> {
-    let day = crate::day::current(c)?;
+    let current = crate::day::current(c)?;
+    let tomorrow = crate::day::tomorrow(c)?;
+    let day = if op == "add_tomorrow" || item.day == tomorrow {
+        tomorrow
+    } else {
+        current
+    };
     let tx = c.transaction()?;
     let next: i64 = tx.query_row(
         "SELECT coalesce(max(sort_order),-1)+1 FROM items WHERE note_id=?1 AND day=?2 AND done=0",
@@ -145,8 +159,8 @@ pub fn item_mutation(
     )?;
     let content: String = item.content.trim().chars().take(200).collect();
     match op {
-        "add" | "restore" if !content.is_empty() => {
-            tx.execute("INSERT INTO items(id,note_id,content,day,done,done_at,sort_order,created_at,carry_days,carried_from) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 WHERE EXISTS(SELECT 1 FROM notes WHERE id=?2 AND deleted_at IS NULL)", params![item.id,note,content,day,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),if op=="add" {next}else{item.sort_order},chrono::Utc::now().to_rfc3339(),item.carry_days,item.carried_from])?;
+        "add" | "add_tomorrow" | "restore" if !content.is_empty() => {
+            tx.execute("INSERT INTO items(id,note_id,content,day,done,done_at,sort_order,created_at,carry_days,carried_from) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 WHERE EXISTS(SELECT 1 FROM notes WHERE id=?2 AND deleted_at IS NULL)", params![item.id,note,content,day,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),if op!="restore" {next}else{item.sort_order},chrono::Utc::now().to_rfc3339(),item.carry_days,item.carried_from])?;
         }
         "edit" if !content.is_empty() => {
             tx.execute(
@@ -179,7 +193,7 @@ pub fn item_mutation(
                 tx.execute("UPDATE items SET sort_order=?3 WHERE id=?1 AND note_id=?2 AND day=?4 AND done=0",params![id,note,i as i64,day])?;
             }
         }
-        "edit" | "add" | "restore" => {}
+        "edit" | "add" | "add_tomorrow" | "restore" => {}
         _ => return Err(rusqlite::Error::InvalidQuery),
     }
     tx.commit()
@@ -214,11 +228,13 @@ mod tests {
         n.title = "生活".into();
         n.visible = false;
         n.pinned = true;
+        n.collapsed = true;
         save(&c, &n).unwrap();
         let got = active(&c).unwrap().remove(0);
         assert_eq!(got.title, "生活");
         assert!(!got.visible);
         assert!(got.pinned);
+        assert!(got.collapsed);
         delete(&c, &n.id).unwrap();
         assert!(active(&c).unwrap().is_empty());
         assert_eq!(today(&c, &n.id).unwrap().len(), 3);
@@ -241,6 +257,7 @@ mod item_tests {
         let n = create(&c).unwrap();
         let mut a = Item {
             id: "a".into(),
+            day: String::new(),
             content: "  first  ".into(),
             done: false,
             sort_order: 0,
@@ -249,6 +266,7 @@ mod item_tests {
         };
         let b = Item {
             id: "b".into(),
+            day: String::new(),
             content: "second".into(),
             done: false,
             sort_order: 1,
@@ -284,6 +302,7 @@ mod item_tests {
         let other = create(&c).unwrap();
         let mut a = Item {
             id: "a".into(),
+            day: String::new(),
             content: " ".into(),
             done: false,
             sort_order: 0,
