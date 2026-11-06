@@ -121,3 +121,10 @@ footer {justify-content:flex-end;}
 .tomorrow-count {opacity:.65;font-size:10px;}
 .tomorrow-list {display:grid;gap:6px;margin-top:4px;animation:item-in 160ms ease-out;}
 .tomorrow-dot {width:16px;flex:none;text-align:center;color:var(--text-secondary);}
+
+.item-menu {right:auto;width:200px;max-height:min(190px,calc(100vh - 24px));overflow:auto;}
+.move-targets {border-top:1px solid var(--border);margin-top:4px;padding-top:4px;}
+.move-targets button {justify-content:flex-start;gap:9px;}
+.move-targets button span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);font-size:13px;}
+.move-targets i {width:10px;height:10px;flex:none;border-radius:50%;border:1px solid color-mix(in srgb,var(--text-secondary) 20%,transparent);}
+.move-targets p {margin:8px 10px;font-size:12px;color:var(--text-placeholder);}

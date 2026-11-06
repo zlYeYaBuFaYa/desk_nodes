@@ -198,6 +198,29 @@ pub fn item_mutation(
     }
     tx.commit()
 }
+/// Move atomically without recreating the item or changing its day/completion metadata.
+pub fn move_item(c: &mut Connection, source: &str, target: &str, id: &str) -> rusqlite::Result<()> {
+    if source == target {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let today = crate::day::current(c)?;
+    let tomorrow = crate::day::tomorrow(c)?;
+    let tx = c.transaction()?;
+    let valid: bool = tx.query_row(
+        "SELECT count(*)=2 FROM notes WHERE id IN (?1,?2) AND deleted_at IS NULL",
+        params![source, target],
+        |r| r.get(0),
+    )?;
+    if !valid {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let changed = tx.execute("UPDATE items SET note_id=?3,sort_order=(SELECT coalesce(max(sort_order),-1)+1 FROM items AS destination WHERE destination.note_id=?3 AND destination.day=items.day) WHERE id=?1 AND note_id=?2 AND day IN (?4,?5)", params![id,source,target,today,tomorrow])?;
+    if changed != 1 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    tx.commit()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,5 +346,62 @@ mod item_tests {
                 .unwrap(),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod move_tests {
+    use super::*;
+    #[test]
+    fn move_today_and_tomorrow_preserves_identity_and_metadata() {
+        for (tomorrow, done) in [(false, false), (false, true), (true, false)] {
+            let mut c = open(Path::new(":memory:")).unwrap();
+            let source = create(&c).unwrap();
+            let target = create(&c).unwrap();
+            let day = if tomorrow {
+                crate::day::tomorrow(&c)
+            } else {
+                crate::day::current(&c)
+            }
+            .unwrap();
+            for (id, note, order) in [("moving", &source.id, 2), ("existing", &target.id, 9)] {
+                c.execute("INSERT INTO items(id,note_id,content,day,done,done_at,sort_order,created_at,carry_days,carried_from) VALUES(?1,?2,'keep me',?3,1,'completed',?4,'created',3,'origin')",params![id,note,day,order]).unwrap();
+            }
+            c.execute("UPDATE items SET done=?1 WHERE id='moving'", [done])
+                .unwrap();
+            move_item(&mut c, &source.id, &target.id, "moving").unwrap();
+            assert!(items_on(&c, &source.id, &day).unwrap().is_empty());
+            let items = items_on(&c, &target.id, &day).unwrap();
+            let moved = &items[1];
+            assert_eq!(moved.id, "moving");
+            assert_eq!(moved.day, day);
+            assert_eq!(moved.done, done);
+            assert_eq!(moved.content, "keep me");
+            assert_eq!(moved.sort_order, 10);
+            assert_eq!(moved.carry_days, 3);
+            assert_eq!(moved.carried_from.as_deref(), Some("origin"));
+            let metadata: (String, String) = c
+                .query_row(
+                    "SELECT done_at,created_at FROM items WHERE id='moving'",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(metadata, ("completed".into(), "created".into()));
+        }
+    }
+    #[test]
+    fn rejects_unavailable_targets_and_wrong_source_without_losing_item() {
+        let mut c = open(Path::new(":memory:")).unwrap();
+        seed(&mut c).unwrap();
+        let source = active(&c).unwrap().remove(0);
+        let target = create(&c).unwrap();
+        let item = today(&c, &source.id).unwrap().remove(0);
+        assert!(move_item(&mut c, &source.id, "missing", &item.id).is_err());
+        assert!(move_item(&mut c, &source.id, &source.id, &item.id).is_err());
+        assert!(move_item(&mut c, &target.id, &source.id, &item.id).is_err());
+        delete(&c, &target.id).unwrap();
+        assert!(move_item(&mut c, &source.id, &target.id, &item.id).is_err());
+        assert_eq!(today(&c, &source.id).unwrap().len(), 3);
     }
 }

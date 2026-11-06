@@ -419,6 +419,27 @@ fn mutate_item(
     db::item_mutation(&mut *connection(&store)?, id, &op, &item, &order).map_err(err)?;
     app.emit("items-changed", id).map_err(err)
 }
+#[tauri::command]
+fn move_item(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    store: tauri::State<Store>,
+    item_id: String,
+    target: String,
+    source: Option<String>,
+) -> Result<()> {
+    let home = window
+        .label()
+        .strip_prefix("note-")
+        .ok_or("Invalid window")?;
+    // A source override only allows undo back to this window's own note.
+    let from = source.as_deref().unwrap_or(home);
+    if source.is_some() && target != home {
+        return Err("Invalid move undo".into());
+    }
+    db::move_item(&mut *connection(&store)?, from, &target, &item_id).map_err(err)?;
+    app.emit("items-changed", ()).map_err(err)
+}
 fn open_management(app: &tauri::AppHandle, tab: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Regular)
@@ -710,6 +731,7 @@ pub fn run() {
             tomorrow_items,
             open_url,
             mutate_item,
+            move_item,
             create_note,
             update_note,
             hide_note,
