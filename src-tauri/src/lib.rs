@@ -58,6 +58,11 @@ fn err(e: impl std::fmt::Display) -> String {
 fn connection(store: &Store) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
     store.0.lock().map_err(err)
 }
+#[derive(Default)]
+struct Geometry {
+    busy: std::sync::Mutex<HashSet<String>>,
+}
+
 struct Preferences {
     actions: std::sync::Mutex<()>,
     hidden: std::sync::Mutex<settings::Hidden>,
@@ -272,6 +277,7 @@ fn clamp(r: Rect, area: Rect) -> Rect {
 }
 fn place(app: &tauri::AppHandle, n: &mut Note, fresh: bool) -> Result<()> {
     let monitors = app.available_monitors().map_err(err)?;
+    let primary = app.primary_monitor().map_err(err)?;
     let chosen = if fresh {
         app.cursor_position().ok().and_then(|p| {
             monitors.iter().find(|m| {
@@ -294,6 +300,7 @@ fn place(app: &tauri::AppHandle, n: &mut Note, fresh: bool) -> Result<()> {
                 && n.y < a.position.y + a.size.height
         })
     }
+    .or(primary.as_ref())
     .or(monitors.first());
     if let Some(m) = chosen {
         let a = tauri::LogicalRect {
@@ -326,8 +333,87 @@ fn place(app: &tauri::AppHandle, n: &mut Note, fresh: bool) -> Result<()> {
     }
     Ok(())
 }
+// Tauri 2 exposes window scale events, but no portable display topology event.
+// Include primary identity, scale and work areas (panels/docks), not just resolution.
+fn monitor_fingerprint(app: &tauri::AppHandle) -> Result<String> {
+    let mut entries = app
+        .available_monitors()
+        .map_err(err)?
+        .iter()
+        .map(|m| {
+            format!(
+                "{:?}:{:?}:{:?}:{}",
+                m.name(),
+                m.position(),
+                m.work_area(),
+                m.scale_factor()
+            )
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    Ok(format!(
+        "{:?}:{entries:?}",
+        app.primary_monitor().map_err(err)?
+    ))
+}
+fn reclamp_visible(app: &tauri::AppHandle) -> Result<bool> {
+    let prefs = app.state::<Preferences>();
+    let _serial = prefs.actions.lock().map_err(err)?;
+    let geometry = app.state::<Geometry>();
+    let mut busy = geometry.busy.lock().map_err(err)?;
+    if !busy.is_empty() {
+        return Ok(false);
+    }
+    let notes = db::active(&*connection(&app.state::<Store>())?).map_err(err)?;
+    let labels = notes
+        .iter()
+        .filter(|n| n.visible)
+        .map(|n| format!("note-{}", n.id))
+        .collect::<Vec<_>>();
+    busy.extend(labels.iter().cloned());
+    drop(busy);
+    let result = (|| -> Result<()> {
+        for mut n in notes.into_iter().filter(|n| n.visible) {
+            if let Some(w) = app.get_webview_window(&format!("note-{}", n.id)) {
+                place(app, &mut n, false)?;
+                w.set_position(tauri::LogicalPosition::new(n.x, n.y))
+                    .map_err(err)?;
+                w.set_size(tauri::LogicalSize::new(
+                    n.width,
+                    if n.collapsed { 58 } else { n.height },
+                ))
+                .map_err(err)?;
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                let scale = w.scale_factor().map_err(err)?;
+                let p = w.outer_position().map_err(err)?.to_logical::<i32>(scale);
+                let size = w.inner_size().map_err(err)?.to_logical::<i32>(scale);
+                n.x = p.x;
+                n.y = p.y;
+                n.width = size.width;
+                if !n.collapsed {
+                    n.height = size.height;
+                }
+                db::save(&*connection(&app.state::<Store>())?, &n).map_err(err)?;
+            }
+        }
+        Ok(())
+    })();
+    let mut busy = geometry.busy.lock().map_err(err)?;
+    for label in labels {
+        busy.remove(&label);
+    }
+    drop(busy);
+    result?;
+    changed(app)?;
+    Ok(true)
+}
 fn spawn(app: &tauri::AppHandle, n: &Note, fresh: bool) -> Result<()> {
     if let Some(w) = app.get_webview_window(&format!("note-{}", n.id)) {
+        let mut placed = n.clone();
+        place(app, &mut placed, fresh)?;
+        w.set_position(tauri::LogicalPosition::new(placed.x, placed.y)).map_err(err)?;
+        w.set_size(tauri::LogicalSize::new(placed.width, if placed.collapsed {58} else {placed.height})).map_err(err)?;
+        db::save(&*connection(&app.state::<Store>())?, &placed).map_err(err)?;
         w.show().map_err(err)?;
         return Ok(());
     }
@@ -580,61 +666,83 @@ fn create_note(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> 
     changed(&app)
 }
 #[tauri::command]
-fn update_note(
+async fn update_note(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-    store: tauri::State<Store>,
     title: String,
     color: String,
     pinned: bool,
     collapsed: bool,
+    reduced_motion: bool,
 ) -> Result<()> {
-    if !db::COLORS.contains(&color.as_str()) {
-        return Err("Unknown color".into());
-    }
-    let id = window
-        .label()
-        .strip_prefix("note-")
-        .ok_or("Invalid window")?;
-    let mut n = db::active(&*connection(&store)?)
-        .map_err(err)?
-        .into_iter()
-        .find(|n| n.id == id)
-        .ok_or("Note unavailable")?;
-    n.title = title.trim().chars().take(200).collect();
-    if n.title.is_empty() {
-        n.title = "待办".into();
-    }
-    n.color = color;
-    n.pinned = pinned;
-    let resized = n.collapsed != collapsed;
-    n.collapsed = collapsed;
-    window.set_always_on_top(pinned).map_err(err)?;
-    window
-        .set_title(&format!("DeskNodes · {}", n.title))
-        .map_err(err)?;
-    connection(&store)?
-        .execute(
-            "UPDATE notes SET title=?2,color=?3,pinned=?4,collapsed=?5 WHERE id=?1 AND deleted_at IS NULL",
-            rusqlite::params![n.id, n.title, n.color, n.pinned, n.collapsed],
-        )
-        .map_err(err)?;
-    if resized {
+    tauri::async_runtime::spawn_blocking(move || {
+        let prefs = app.state::<Preferences>();
+        let _serial = prefs.actions.lock().map_err(err)?;
+        let store = app.state::<Store>();
+        if !db::COLORS.contains(&color.as_str()) {
+            return Err("Unknown color".into());
+        }
+        let id = window
+            .label()
+            .strip_prefix("note-")
+            .ok_or("Invalid window")?;
+        let mut n = db::active(&*connection(&store)?)
+            .map_err(err)?
+            .into_iter()
+            .find(|n| n.id == id)
+            .ok_or("Note unavailable")?;
+        n.title = title.trim().chars().take(200).collect();
+        if n.title.is_empty() {
+            n.title = "待办".into();
+        }
+        n.color = color;
+        n.pinned = pinned;
+        let resized = n.collapsed != collapsed;
+        n.collapsed = collapsed;
+        window.set_always_on_top(pinned).map_err(err)?;
         window
-            .set_min_size(Some(tauri::LogicalSize::new(
-                220.,
-                if collapsed { 58. } else { 160. },
-            )))
+            .set_title(&format!("DeskNodes · {}", n.title))
             .map_err(err)?;
-        window
-            .set_size(tauri::LogicalSize::new(
-                n.width.max(220),
-                if collapsed { 58 } else { n.height.max(160) },
-            ))
+        connection(&store)?
+            .execute(
+                "UPDATE notes SET title=?2,color=?3,pinned=?4,collapsed=?5 WHERE id=?1 AND deleted_at IS NULL",
+                rusqlite::params![n.id, n.title, n.color, n.pinned, n.collapsed],
+            )
             .map_err(err)?;
-    }
-    changed(&app)
+        if resized {
+            let geometry = app.state::<Geometry>();
+            geometry.busy.lock().map_err(err)?.insert(window.label().into());
+            let result = (|| -> Result<()> {
+                window.set_min_size(Some(tauri::LogicalSize::new(220., 58.))).map_err(err)?;
+                let start = if collapsed { n.height.max(160) } else { 58 };
+                let end = if collapsed { 58 } else { n.height.max(160) };
+                let steps = if reduced_motion { 1 } else { 12 };
+                for step in 1..=steps {
+                    let t = f64::from(step) / f64::from(steps);
+                    let eased = 1. - (1. - t).powi(3);
+                    let height = (f64::from(start) + f64::from(end - start) * eased).round();
+                    window.set_size(tauri::LogicalSize::new(n.width.max(220) as f64, height)).map_err(err)?;
+                    if !reduced_motion { std::thread::sleep(std::time::Duration::from_millis(16)); }
+                }
+                window.set_min_size(Some(tauri::LogicalSize::new(220., if collapsed {58.} else {160.}))).map_err(err)?;
+                // Drain native configure events before releasing the guard. Only the final
+                // geometry is stored; collapsed notes retain their expanded height.
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                let scale = window.scale_factor().map_err(err)?;
+                let pos = window.outer_position().map_err(err)?.to_logical::<i32>(scale);
+                let size = window.inner_size().map_err(err)?.to_logical::<i32>(scale);
+                n.x = pos.x; n.y = pos.y; n.width = size.width;
+                if !collapsed { n.height = size.height; }
+                db::save(&*connection(&store)?, &n).map_err(err)?;
+                Ok(())
+            })();
+            geometry.busy.lock().map_err(err)?.remove(window.label());
+            result?;
+        }
+        changed(&app)
+    }).await.map_err(err)?
 }
+
 #[tauri::command]
 fn hide_note(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<()> {
     set_visible(&app, window.label(), false)
@@ -754,6 +862,7 @@ pub fn run() {
                     eprintln!("{e}");
                 }
             }
+            if window.state::<Geometry>().busy.lock().map(|busy| busy.contains(window.label())).unwrap_or(true) { return; }
             if matches!(
                 event,
                 tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
@@ -772,6 +881,7 @@ pub fn run() {
                             .map_err(err)?
                             .to_logical::<i32>(scale);
                         let s = window.inner_size().map_err(err)?.to_logical::<i32>(scale);
+                        if n.x == p.x && n.y == p.y && n.width == s.width && (n.collapsed || n.height == s.height.max(160)) { return Ok(()); }
                         n.x = p.x;
                         n.y = p.y;
                         n.width = s.width;
@@ -788,6 +898,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            app.manage(Geometry::default());
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let override_dir = std::env::var_os("DESKNODES_DATA_DIR");
@@ -867,6 +978,21 @@ pub fn run() {
                 path,
                 waiting: std::sync::Mutex::new(None),
                 recovered,
+            });
+            let display_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let mut previous = monitor_fingerprint(&display_handle).ok();
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    let result = (|| -> Result<()> {
+                        let next = monitor_fingerprint(&display_handle)?;
+                        if previous.as_ref() != Some(&next) && reclamp_visible(&display_handle)? {
+                            previous = Some(next);
+                        }
+                        Ok(())
+                    })();
+                    if let Err(e) = result { eprintln!("Display change: {e}"); }
+                }
             });
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -959,6 +1085,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn clamp_work_area_shrink_is_stable() {
+        let area = Rect { x: 0, y: 32, w: 1024, h: 700 };
+        let result = clamp(Rect { x: 1800, y: 950, w: 400, h: 850 }, area);
+        assert_eq!(result, Rect { x: 624, y: 32, w: 400, h: 700 });
+        assert_eq!(clamp(result, area), result);
+        let tiny = Rect { x: -100, y: 40, w: 180, h: 120 };
+        assert_eq!(clamp(result, tiny), tiny);
+    }
     #[test]
     fn clamp_removed_monitor() {
         let a = Rect {

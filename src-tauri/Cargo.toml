@@ -1,7 +1,7 @@
 [package]
 name = "desk-nodes"
-version = "0.1.0"
-description = "DeskNodes desktop sticky notes technical prototype"
+version = "1.0.0"
+description = "DeskNodes desktop sticky notes"
 edition = "2024"
 
 [lib]

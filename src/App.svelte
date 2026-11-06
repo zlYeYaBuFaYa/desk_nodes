@@ -21,6 +21,7 @@
   ];
   const names=['雾蓝','鼠尾草','杏橙','丁香','奶油黄','浅蔷薇','青瓷','暖石'];
   const fills=['#E3EBF3','#E2EBDF','#F7E6D6','#ECE2EE','#F7F0D4','#F6E1E1','#DCEDEA','#ECE9E4'];
+  let tweening=$state(false);
   let destinations=$state<Note[]>([]);
   let context=$state<{item:Item;x:number;y:number}>(), moveExpanded=$state(false), moveUndo=$state<{item:Item;target:string}>();
   let note=$state<Note>(), items=$state<Item[]>([]), editing=$state(false), draft=$state('');
@@ -46,7 +47,7 @@
   async function reorder(event:CustomEvent<{items:Item[]}>){openItems=event.detail.items;await mutate('reorder',blank,openItems.filter(i=>!i.done).map(i=>i.id));}
   let panel=$state(''), error=$state(''), hiding=$state(false), theme=$state(params.get('theme')??'system');
   let titleInput=$state<HTMLInputElement>(), itemInput=$state<HTMLInputElement>();
-  $effect(()=>{if(note?.collapsed){const width=note.width,height=panel==='palette'?160:panel?230:58;run(()=>getCurrentWindow().setSize(new LogicalSize(width,height)));}});
+  $effect(()=>{if(note?.collapsed && !tweening){const width=note.width,height=panel==='palette'?160:panel?230:58;run(()=>getCurrentWindow().setSize(new LogicalSize(width,height)));}});
   $effect(()=>{document.documentElement.dataset.color=note?.color??'mist';});
   async function refresh(){const notes=await invoke<Note[]>('list_notes');destinations=notes.filter(n=>n.id!==id);note=notes.find(n=>n.id===id);items=await invoke<Item[]>('today_items',{id});tomorrow=await invoke<Item[]>('tomorrow_items',{id});}
   async function itemMenu(event:MouseEvent,item:Item){event.preventDefault();event.stopPropagation();panel='';moveExpanded=false;context={item,x:Math.max(12,Math.min(event.clientX,innerWidth-212)),y:Math.max(12,Math.min(event.clientY,innerHeight-210))};await tick();document.querySelector<HTMLButtonElement>('.item-menu > button')?.focus();}
@@ -61,7 +62,16 @@
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',stop,{once:true});
   }
   async function rename(){panel='';draft=note?.title??'';editing=true;await tick();titleInput?.focus();titleInput?.select();}
-  async function save(changes:Partial<Note>={}){if(!note)return;await invoke('update_note',{title:note.title,color:note.color,pinned:note.pinned,collapsed:note.collapsed,...changes});await refresh();}
+  async function save(changes:Partial<Note>={}){
+    if(!note)return;
+    const resize=changes.collapsed!==undefined && changes.collapsed!==note.collapsed;
+    if(resize){tweening=true;panel='';note={...note,...changes};await tick();}
+    try {
+      await invoke('update_note',{title:note.title,color:note.color,pinned:note.pinned,collapsed:note.collapsed,...changes,reducedMotion});
+      await refresh();
+    } catch(e) { await refresh();throw e; }
+    finally { tweening=false; }
+  }
   async function confirmTitle(){if(!editing)return;editing=false;await run(()=>save({title:draft}));itemInput?.focus();}
   async function hide(){hiding=true;await new Promise(r=>setTimeout(r,140));await run(()=>invoke('hide_note'));hiding=false;}
   onMount(()=>{const media=matchMedia('(prefers-reduced-motion: reduce)');const motion=()=>reducedMotion=media.matches;media.addEventListener('change',motion);let disposed=false;let unlisten:(()=>void)|undefined;run(async()=>{await refresh();unlisten=await listen('notes-changed',()=>run(refresh));const offItems=await listen('items-changed',()=>run(refresh));const offPrepare=await listen('rollover-prepare',()=>{if(rolling)return;run(async()=>{rolling=true;try{await mutationQueue;await saveEdit();await add();await addTomorrow();await confirmTitle();undo=undefined;moveUndo=undefined;context=undefined;clearTimeout(undoTimer);await invoke('rollover_ready');}catch(e){rolling=false;throw e;}});});const offDay=await listen('day-changed',()=>run(async()=>{fading=true;await new Promise(r=>setTimeout(r,150));await refresh();tomorrowExpanded=false;editId='';selected='';fading=false;rolling=false;}));const offRecovery=await listen('backup-restored',()=>{notice='已从备份恢复数据';setTimeout(()=>notice='',6000);});await invoke('recovery_notice');const offNotes=unlisten;unlisten=()=>{offNotes?.();offItems();offPrepare();offDay();offRecovery();};if(disposed)unlisten();await tick();if(!items.length)itemInput?.focus();if(params.get('new')==='true')await rename();});const timer=setInterval(()=>run(refresh),60000);return()=>{disposed=true;unlisten?.();clearInterval(timer);clearTimeout(undoTimer);clearTimeout(scrollTimer);media.removeEventListener('change',motion);};});
@@ -73,7 +83,7 @@ function parts(text:string){return text.split(/(https?:\/\/[^\s<>"，。！？�
 {/snippet}
 
 <svelte:window onpointerdown={(e)=>{if(!(e.target instanceof Element)||!e.target.closest('.item-menu'))context=undefined;}} onkeydown={(e)=>{if(e.key==='Escape'){editing=false;editId='';panel='';selected='';context=undefined;}if((e.key==='Delete'||e.key==='Backspace') && selected && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)){e.preventDefault();const item=items.find(i=>i.id===selected);if(item)run(()=>remove(item));}}} />
-<main class="note" class:collapsed={note?.collapsed} class:hiding inert={rolling}>
+<main class="note" class:collapsed={note?.collapsed && !tweening} class:hiding inert={rolling || tweening}>
   <header data-tauri-drag-region>
     {#if editing}<input class="title-input" bind:this={titleInput} bind:value={draft} aria-label="便签标题" onblur={()=>run(confirmTitle)} onkeydown={(e)=>{if(e.key==='Enter') {e.preventDefault();run(confirmTitle);}if(e.key==='Escape'){e.preventDefault();editing=false;}}} />
     {:else}<button class="title" ondblclick={rename} title="双击重命名" onpointerdown={dragTitle}>{note?.title??'待办'}</button>{/if}
@@ -86,7 +96,7 @@ function parts(text:string){return text.split(/(https?:\/\/[^\s<>"，。！？�
   </header>
   {#if panel==='palette'}<div class="popover palette" aria-label="便签颜色">{#each palette as color,i}<button style:background={fills[i]} class:selected={note?.color===color} aria-label={names[i]} title={names[i]} onclick={()=>run(async()=>{await save({color});panel='';})}>{note?.color===color?'✓':''}</button>{/each}</div>{/if}
   {#if panel==='more'}<div class="popover menu"><button onclick={()=>run(async()=>{await save({collapsed:!note?.collapsed});panel='';})}>{note?.collapsed?'展开':'折叠'}</button><button onclick={rename}>重命名 <span>双击标题</span></button><button onclick={()=>{panel='confirm';}}>删除便签…</button></div>{/if}
-  {#if !note?.collapsed}
+  {#if !note?.collapsed || tweening}
   <section class="content" class:scrolling class:fading onscroll={scrolled} aria-label="今天的事项">
     <div class="eyebrow">今天</div>
     <div class="open-list" use:dragHandleZone={{items:openItems,flipDurationMs:reducedMotion?0:150,dragDisabled:pending.length>0}} onconsider={(e)=>openItems=e.detail.items} onfinalize={(e)=>run(()=>reorder(e))}>
@@ -125,7 +135,7 @@ function parts(text:string){return text.split(/(https?:\/\/[^\s<>"，。！？�
   <div class="popover menu item-menu" style:left={`${context.x}px`} style:top={`${context.y}px`} role="menu" aria-label="事项操作">
     <button role="menuitem" aria-haspopup="menu" aria-expanded={moveExpanded} onclick={()=>moveExpanded=!moveExpanded} onkeydown={(e)=>{if(e.key==='ArrowRight'){e.preventDefault();moveExpanded=true;tick().then(()=>document.querySelector<HTMLButtonElement>('.move-targets button')?.focus());}}}>移动到… <span>{moveExpanded?'⌄':'›'}</span></button>
     {#if moveExpanded}<div class="move-targets" role="menu" aria-label="选择目标便签">
-      {#each destinations as target}<button role="menuitem" onclick={()=>run(()=>moveTo(target.id))}><i style:background={fills[palette.indexOf(target.color)]??fills[0]}></i><span>{target.title}</span></button>{:else}<p>没有其他便签</p>{/each}
+      {#each destinations as target}<button role="menuitem" onclick={()=>run(()=>moveTo(target.id))}><i data-color={target.color}></i><span>{target.title}</span></button>{:else}<p>没有其他便签</p>{/each}
     </div>{/if}
   </div>
 {/if}

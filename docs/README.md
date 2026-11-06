@@ -19,3 +19,8 @@
 ## 交给 Claude Code 开发时
 
 把整个文件夹放进项目目录，告诉它：以需求文档为准、视觉参数取自 design-tokens.json、交互细节参考 source/Main.dc.html，从 V0.1 的技术原型与内存实测开始。
+
+## V1.0 release
+
+- [Packaging, signing and acceptance checklist](f10-release.md)
+- [Linux validation and artifacts](f10-validation.md)
