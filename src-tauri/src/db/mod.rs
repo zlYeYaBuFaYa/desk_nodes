@@ -24,6 +24,10 @@ pub struct Item {
     pub content: String,
     pub done: bool,
     pub sort_order: i64,
+    #[serde(default)]
+    pub carry_days: i64,
+    #[serde(default)]
+    pub carried_from: Option<String>,
 }
 pub fn migrate(c: &mut Connection) -> rusqlite::Result<()> {
     let version: i32 = c.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -42,6 +46,13 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     c.pragma_update(None, "synchronous", "NORMAL")?;
     c.busy_timeout(std::time::Duration::from_secs(5))?;
     migrate(&mut c)?;
+    let integrity: String = c.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
+    if integrity != "ok" {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CORRUPT),
+            Some(integrity),
+        ));
+    }
     Ok(c)
 }
 pub fn active(c: &Connection) -> rusqlite::Result<Vec<Note>> {
@@ -95,22 +106,24 @@ pub fn seed(c: &mut Connection) -> rusqlite::Result<()> {
         .iter()
         .enumerate()
         {
-            tx.execute("INSERT INTO items(id,note_id,content,day,sort_order,created_at) VALUES(?1,?2,?3,?4,?5,?6)",params![uuid::Uuid::new_v4().to_string(),n.id,text,chrono::Local::now().format("%Y-%m-%d").to_string(),i as i64,chrono::Utc::now().to_rfc3339()])?;
+            tx.execute("INSERT INTO items(id,note_id,content,day,sort_order,created_at) VALUES(?1,?2,?3,?4,?5,?6)",params![uuid::Uuid::new_v4().to_string(),n.id,text,crate::day::current(&tx)?,i as i64,chrono::Utc::now().to_rfc3339()])?;
         }
         tx.commit()?;
     }
     Ok(())
 }
 pub fn today(c: &Connection, id: &str) -> rusqlite::Result<Vec<Item>> {
-    c.prepare("SELECT id,content,done,sort_order FROM items WHERE note_id=?1 AND day=?2 ORDER BY sort_order,created_at,id")?
+    c.prepare("SELECT id,content,done,sort_order,carry_days,carried_from FROM items WHERE note_id=?1 AND day=?2 ORDER BY sort_order,created_at,id")?
         .query_map(
-            params![id, chrono::Local::now().format("%Y-%m-%d").to_string()],
+            params![id, crate::day::current(c)?],
             |r| {
                 Ok(Item {
                     id: r.get(0)?,
                     content: r.get(1)?,
                     done: r.get(2)?,
                     sort_order: r.get(3)?,
+                    carry_days: r.get(4)?,
+                    carried_from: r.get(5)?,
                 })
             },
         )?
@@ -123,8 +136,8 @@ pub fn item_mutation(
     item: &Item,
     order: &[String],
 ) -> rusqlite::Result<()> {
+    let day = crate::day::current(c)?;
     let tx = c.transaction()?;
-    let day = chrono::Local::now().format("%Y-%m-%d").to_string();
     let next: i64 = tx.query_row(
         "SELECT coalesce(max(sort_order),-1)+1 FROM items WHERE note_id=?1 AND day=?2 AND done=0",
         params![note, day],
@@ -133,7 +146,7 @@ pub fn item_mutation(
     let content: String = item.content.trim().chars().take(200).collect();
     match op {
         "add" | "restore" if !content.is_empty() => {
-            tx.execute("INSERT INTO items(id,note_id,content,day,done,done_at,sort_order,created_at) SELECT ?1,?2,?3,?4,?5,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM notes WHERE id=?2 AND deleted_at IS NULL)", params![item.id,note,content,day,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),if op=="add" {next}else{item.sort_order},chrono::Utc::now().to_rfc3339()])?;
+            tx.execute("INSERT INTO items(id,note_id,content,day,done,done_at,sort_order,created_at,carry_days,carried_from) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 WHERE EXISTS(SELECT 1 FROM notes WHERE id=?2 AND deleted_at IS NULL)", params![item.id,note,content,day,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),if op=="add" {next}else{item.sort_order},chrono::Utc::now().to_rfc3339(),item.carry_days,item.carried_from])?;
         }
         "edit" if !content.is_empty() => {
             tx.execute(
@@ -231,12 +244,16 @@ mod item_tests {
             content: "  first  ".into(),
             done: false,
             sort_order: 0,
+            carry_days: 0,
+            carried_from: None,
         };
         let b = Item {
             id: "b".into(),
             content: "second".into(),
             done: false,
             sort_order: 1,
+            carry_days: 0,
+            carried_from: None,
         };
         item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
         item_mutation(&mut c, &n.id, "add", &b, &[]).unwrap();
@@ -270,6 +287,8 @@ mod item_tests {
             content: " ".into(),
             done: false,
             sort_order: 0,
+            carry_days: 0,
+            carried_from: None,
         };
         item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
         assert!(today(&c, &n.id).unwrap().is_empty());
