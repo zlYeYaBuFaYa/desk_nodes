@@ -1,0 +1,289 @@
+use rusqlite::{Connection, params};
+use serde::{Deserialize, Serialize};
+use std::{path::Path, sync::Mutex};
+
+pub const COLORS: [&str; 8] = [
+    "mist", "sage", "apricot", "lilac", "butter", "blush", "celadon", "stone",
+];
+pub struct Store(pub Mutex<Connection>);
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Note {
+    pub id: String,
+    pub title: String,
+    pub color: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub visible: bool,
+    pub pinned: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Item {
+    pub id: String,
+    pub content: String,
+    pub done: bool,
+    pub sort_order: i64,
+}
+pub fn migrate(c: &mut Connection) -> rusqlite::Result<()> {
+    let version: i32 = c.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version == 0 {
+        let tx = c.transaction()?;
+        tx.execute_batch(include_str!("001.sql"))?;
+        tx.pragma_update(None, "user_version", 1)?;
+        tx.commit()?;
+    }
+    Ok(())
+}
+pub fn open(path: &Path) -> rusqlite::Result<Connection> {
+    let mut c = Connection::open(path)?;
+    c.pragma_update(None, "journal_mode", "WAL")?;
+    c.pragma_update(None, "foreign_keys", "ON")?;
+    c.pragma_update(None, "synchronous", "NORMAL")?;
+    c.busy_timeout(std::time::Duration::from_secs(5))?;
+    migrate(&mut c)?;
+    Ok(c)
+}
+pub fn active(c: &Connection) -> rusqlite::Result<Vec<Note>> {
+    c.prepare("SELECT id,title,color,coalesce(x,160),coalesce(y,180),coalesce(width,280),coalesce(height,360),visible,pinned FROM notes WHERE deleted_at IS NULL ORDER BY sort_order")?
+        .query_map([], |r| Ok(Note { id:r.get(0)?,title:r.get(1)?,color:r.get(2)?,x:r.get(3)?,y:r.get(4)?,width:r.get(5)?,height:r.get(6)?,visible:r.get(7)?,pinned:r.get(8)? }))?.collect()
+}
+pub fn next_color(notes: &[Note], count: usize) -> &'static str {
+    COLORS
+        .iter()
+        .copied()
+        .find(|color| !notes.iter().any(|n| n.color == *color))
+        .unwrap_or(COLORS[count % 8])
+}
+pub fn create(c: &Connection) -> rusqlite::Result<Note> {
+    let count: i64 = c.query_row("SELECT count(*) FROM notes", [], |r| r.get(0))?;
+    let n = Note {
+        id: uuid::Uuid::new_v4().to_string(),
+        title: "待办".into(),
+        color: next_color(&active(c)?, count as usize).into(),
+        x: 160,
+        y: 180,
+        width: 300,
+        height: 360,
+        visible: true,
+        pinned: false,
+    };
+    c.execute("INSERT INTO notes(id,title,color,x,y,width,height,sort_order,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)", params![n.id,n.title,n.color,n.x,n.y,n.width,n.height,count,chrono::Utc::now().to_rfc3339()])?;
+    Ok(n)
+}
+pub fn save(c: &Connection, n: &Note) -> rusqlite::Result<()> {
+    c.execute("UPDATE notes SET title=?2,color=?3,x=?4,y=?5,width=?6,height=?7,visible=?8,pinned=?9 WHERE id=?1 AND deleted_at IS NULL",params![n.id,n.title,n.color,n.x,n.y,n.width,n.height,n.visible,n.pinned])?;
+    Ok(())
+}
+pub fn delete(c: &Connection, id: &str) -> rusqlite::Result<()> {
+    c.execute(
+        "UPDATE notes SET deleted_at=?2,visible=0 WHERE id=?1",
+        params![id, chrono::Utc::now().to_rfc3339()],
+    )?;
+    Ok(())
+}
+pub fn seed(c: &mut Connection) -> rusqlite::Result<()> {
+    let count: i64 = c.query_row("SELECT count(*) FROM notes", [], |r| r.get(0))?;
+    if count == 0 {
+        let tx = c.transaction()?;
+        let n = create(&tx)?;
+        for (i, text) in [
+            "在下方写下今天的第一件事",
+            "轻点圆圈，记下完成的小事",
+            "让不再需要的事项轻轻离开",
+        ]
+        .iter()
+        .enumerate()
+        {
+            tx.execute("INSERT INTO items(id,note_id,content,day,sort_order,created_at) VALUES(?1,?2,?3,?4,?5,?6)",params![uuid::Uuid::new_v4().to_string(),n.id,text,chrono::Local::now().format("%Y-%m-%d").to_string(),i as i64,chrono::Utc::now().to_rfc3339()])?;
+        }
+        tx.commit()?;
+    }
+    Ok(())
+}
+pub fn today(c: &Connection, id: &str) -> rusqlite::Result<Vec<Item>> {
+    c.prepare("SELECT id,content,done,sort_order FROM items WHERE note_id=?1 AND day=?2 ORDER BY sort_order,created_at,id")?
+        .query_map(
+            params![id, chrono::Local::now().format("%Y-%m-%d").to_string()],
+            |r| {
+                Ok(Item {
+                    id: r.get(0)?,
+                    content: r.get(1)?,
+                    done: r.get(2)?,
+                    sort_order: r.get(3)?,
+                })
+            },
+        )?
+        .collect()
+}
+pub fn item_mutation(
+    c: &mut Connection,
+    note: &str,
+    op: &str,
+    item: &Item,
+    order: &[String],
+) -> rusqlite::Result<()> {
+    let tx = c.transaction()?;
+    let day = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let next: i64 = tx.query_row(
+        "SELECT coalesce(max(sort_order),-1)+1 FROM items WHERE note_id=?1 AND day=?2 AND done=0",
+        params![note, day],
+        |r| r.get(0),
+    )?;
+    let content: String = item.content.trim().chars().take(200).collect();
+    match op {
+        "add" | "restore" if !content.is_empty() => {
+            tx.execute("INSERT INTO items(id,note_id,content,day,done,done_at,sort_order,created_at) SELECT ?1,?2,?3,?4,?5,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM notes WHERE id=?2 AND deleted_at IS NULL)", params![item.id,note,content,day,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),if op=="add" {next}else{item.sort_order},chrono::Utc::now().to_rfc3339()])?;
+        }
+        "edit" if !content.is_empty() => {
+            tx.execute(
+                "UPDATE items SET content=?3 WHERE id=?1 AND note_id=?2 AND day=?4",
+                params![item.id, note, content, day],
+            )?;
+        }
+        "toggle" => {
+            tx.execute("UPDATE items SET done=?3,done_at=?4,sort_order=CASE WHEN ?3=0 THEN ?5 ELSE sort_order END WHERE id=?1 AND note_id=?2 AND day=?6",params![item.id,note,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),next,day])?;
+        }
+        "delete" => {
+            tx.execute(
+                "DELETE FROM items WHERE id=?1 AND note_id=?2 AND day=?3",
+                params![item.id, note, day],
+            )?;
+        }
+        "reorder" => {
+            let mut current: Vec<String> = today(&tx, note)?
+                .into_iter()
+                .filter(|i| !i.done)
+                .map(|i| i.id)
+                .collect();
+            let mut requested = order.to_vec();
+            current.sort();
+            requested.sort();
+            if current != requested {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            for (i, id) in order.iter().enumerate() {
+                tx.execute("UPDATE items SET sort_order=?3 WHERE id=?1 AND note_id=?2 AND day=?4 AND done=0",params![id,note,i as i64,day])?;
+            }
+        }
+        "edit" | "add" | "restore" => {}
+        _ => return Err(rusqlite::Error::InvalidQuery),
+    }
+    tx.commit()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn migration_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("test.db");
+        let mut c = open(&p).unwrap();
+        migrate(&mut c).unwrap();
+        assert_eq!(
+            c.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            c.query_row("PRAGMA journal_mode", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "wal"
+        );
+    }
+    #[test]
+    fn crud_and_soft_delete() {
+        let mut c = open(Path::new(":memory:")).unwrap();
+        seed(&mut c).unwrap();
+        seed(&mut c).unwrap();
+        let mut n = active(&c).unwrap().remove(0);
+        assert_eq!(today(&c, &n.id).unwrap().len(), 3);
+        n.title = "生活".into();
+        n.visible = false;
+        n.pinned = true;
+        save(&c, &n).unwrap();
+        let got = active(&c).unwrap().remove(0);
+        assert_eq!(got.title, "生活");
+        assert!(!got.visible);
+        assert!(got.pinned);
+        delete(&c, &n.id).unwrap();
+        assert!(active(&c).unwrap().is_empty());
+        assert_eq!(today(&c, &n.id).unwrap().len(), 3);
+    }
+    #[test]
+    fn colors_cycle() {
+        let c = open(Path::new(":memory:")).unwrap();
+        for i in 0..17 {
+            assert_eq!(create(&c).unwrap().color, COLORS[i % 8]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod item_tests {
+    use super::*;
+    #[test]
+    fn item_lifecycle_and_order() {
+        let mut c = open(Path::new(":memory:")).unwrap();
+        let n = create(&c).unwrap();
+        let mut a = Item {
+            id: "a".into(),
+            content: "  first  ".into(),
+            done: false,
+            sort_order: 0,
+        };
+        let b = Item {
+            id: "b".into(),
+            content: "second".into(),
+            done: false,
+            sort_order: 1,
+        };
+        item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
+        item_mutation(&mut c, &n.id, "add", &b, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].content, "first");
+        a.content = "edited".into();
+        item_mutation(&mut c, &n.id, "edit", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].content, "edited");
+        a.done = true;
+        item_mutation(&mut c, &n.id, "toggle", &a, &[]).unwrap();
+        assert!(today(&c, &n.id).unwrap()[0].done);
+        a.done = false;
+        item_mutation(&mut c, &n.id, "toggle", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[1].id, "a");
+        item_mutation(&mut c, &n.id, "reorder", &a, &["a".into(), "b".into()]).unwrap();
+        let got = today(&c, &n.id).unwrap();
+        assert_eq!(got[0].id, "a");
+        assert_eq!(got[1].sort_order, 1);
+        assert!(item_mutation(&mut c, &n.id, "reorder", &a, &["a".into(), "a".into()]).is_err());
+        item_mutation(&mut c, &n.id, "delete", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap().len(), 1);
+        item_mutation(&mut c, &n.id, "restore", &got[0], &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].id, "a");
+    }
+    #[test]
+    fn validates_content_and_today_scope() {
+        let mut c = open(Path::new(":memory:")).unwrap();
+        let n = create(&c).unwrap();
+        let other = create(&c).unwrap();
+        let mut a = Item {
+            id: "a".into(),
+            content: " ".into(),
+            done: false,
+            sort_order: 0,
+        };
+        item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
+        assert!(today(&c, &n.id).unwrap().is_empty());
+        a.content = "字".repeat(201);
+        item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].content.chars().count(), 200);
+        item_mutation(&mut c, &other.id, "delete", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap().len(), 1);
+        c.execute("UPDATE items SET day='2000-01-01'", []).unwrap();
+        item_mutation(&mut c, &n.id, "delete", &a, &[]).unwrap();
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM items", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+}

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DeskNodes 配色</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.pl-strike{text-decoration:line-through}
+</style>
+</helmet>
+<div style="width: 1280px; height: 960px; box-sizing: border-box; padding: 48px 56px; background: #EEF0F2; font-family: -apple-system, 'SF Pro Text', 'PingFang SC', 'Segoe UI Variable', 'Microsoft YaHei UI', sans-serif; color: #2F3437; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: baseline; gap: 16px">
+<h1 style="margin: 0; font-size: 28px; font-weight: 600">便签配色</h1>
+<span style="font-size: 14px; color: #585E64">8 色 · 低饱和 · 正文对比度 ≥ 4.5:1，强调色配白色对勾 ≥ 3:1</span>
+</div>
+
+<div style="font-size: 13px; font-weight: 600; color: #585E64; margin-top: 4px">浅色模式</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px">
+<sc-for list="{{light}}" as="c" hint-placeholder-count="8">
+<div style="height: 150px; border-radius: 12px; background: {{c.bg}}; border: 1px solid rgba(0,0,0,0.04); box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.10); display: flex; flex-direction: column; overflow: hidden">
+<div style="height: 34px; background: {{c.head}}; display: flex; align-items: center; justify-content: space-between; padding: 0 14px">
+<span style="font-size: 14px; font-weight: 600; color: #2F3437">{{c.name}}</span>
+<span style="width: 10px; height: 10px; border-radius: 50%; background: {{c.acc}}"></span>
+</div>
+<div style="padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid {{c.acc}}; box-sizing: border-box"></span>
+<span style="font-size: 13px; color: #2F3437">待办事项</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 15px; height: 15px; border-radius: 50%; background: {{c.acc}}; display: flex; align-items: center; justify-content: center">
+<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+</span>
+<span class="pl-strike" style="font-size: 13px; color: #A3A8AD">已完成事项</span>
+</div>
+<div style="margin-top: auto; font-size: 11px; color: #585E64; font-family: ui-monospace, 'SF Mono', Consolas, monospace">{{c.bg}} · {{c.head}} · {{c.acc}}</div>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div style="margin-top: 16px; border-radius: 16px; background: #1C1E22; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 13px; font-weight: 600; color: #A6A39F">深色模式</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px">
+<sc-for list="{{dark}}" as="c" hint-placeholder-count="8">
+<div style="height: 150px; border-radius: 12px; background: {{c.bg}}; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 1px 2px rgba(0,0,0,0.30), 0 8px 24px rgba(0,0,0,0.30); display: flex; flex-direction: column; overflow: hidden">
+<div style="height: 34px; background: {{c.head}}; display: flex; align-items: center; justify-content: space-between; padding: 0 14px">
+<span style="font-size: 14px; font-weight: 600; color: #E6E4E1">{{c.name}}</span>
+<span style="width: 10px; height: 10px; border-radius: 50%; background: {{c.acc}}"></span>
+</div>
+<div style="padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid {{c.acc}}; box-sizing: border-box"></span>
+<span style="font-size: 13px; color: #E6E4E1">待办事项</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 15px; height: 15px; border-radius: 50%; background: {{c.acc}}; display: flex; align-items: center; justify-content: center">
+<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+</span>
+<span class="pl-strike" style="font-size: 13px; color: #6E6B68">已完成事项</span>
+</div>
+<div style="margin-top: auto; font-size: 11px; color: #A6A39F; font-family: ui-monospace, 'SF Mono', Consolas, monospace">{{c.bg}} · {{c.acc}}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const list = [
+      ['雾蓝', '#E3EBF3', '#D5E0EC', '#28323D', '#6F8FB3'],
+      ['鼠尾草', '#E2EBDF', '#D3E0CF', '#29332A', '#7A9A72'],
+      ['杏桃', '#F7E6D6', '#F0D7C0', '#3A2F26', '#B97A4E'],
+      ['藕荷', '#ECE2EE', '#E0D2E4', '#332B36', '#9A7CA6'],
+      ['奶油黄', '#F7F0D4', '#EFE4BC', '#36332A', '#A68B3C'],
+      ['樱粉', '#F6E1E1', '#EED0D0', '#382B2D', '#C07B80'],
+      ['青瓷', '#DCEDEA', '#CBE2DE', '#243432', '#5E9A92'],
+      ['暖灰', '#ECE9E4', '#E0DCD5', '#2E2C29', '#8C857B']
+    ];
+    const mix = (hex, a) => {
+      const n = parseInt(hex.slice(1), 16);
+      const f = (v) => Math.round(v + (255 - v) * a);
+      return 'rgb(' + f((n >> 16) & 255) + ',' + f((n >> 8) & 255) + ',' + f(n & 255) + ')';
+    };
+    return {
+      light: list.map((c) => ({ name: c[0], bg: c[1], head: c[2], acc: c[4] })),
+      dark: list.map((c) => ({ name: c[0], bg: c[3], head: mix(c[3], 0.06), acc: c[4] }))
+    };
+  }
+}
+</script>
+</body>
+</html>
