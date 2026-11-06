@@ -1,151 +1,411 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+mod db;
+use db::{Note, Store};
 use tauri::{
-    Manager, WebviewUrl, WebviewWindowBuilder,
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
-
-static NEXT_NOTE: AtomicUsize = AtomicUsize::new(0);
-const COLORS: [&str; 8] = [
-    "mist", "sage", "apricot", "lilac", "butter", "blush", "celadon", "stone",
-];
-
-fn note_url(id: usize) -> String {
-    let theme = match std::env::var("DESKNODES_THEME").as_deref() {
-        Ok("dark") => "dark",
-        Ok("light") => "light",
-        _ => "system",
-    };
-    format!(
-        "index.html?id={id}&color={}&theme={theme}",
-        COLORS[id % COLORS.len()]
-    )
+type Result<T> = std::result::Result<T, String>;
+fn err(e: impl std::fmt::Display) -> String {
+    e.to_string()
 }
-
-fn new_note(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let id = NEXT_NOTE.fetch_add(1, Ordering::Relaxed);
-    let data_dir = app.path().data_dir()?.join("DeskNodes");
-    WebviewWindowBuilder::new(
+fn connection(store: &Store) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
+    store.0.lock().map_err(err)
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Rect {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+fn clamp(r: Rect, area: Rect) -> Rect {
+    let w = r.w.clamp(220, 600).min(area.w);
+    let h = r.h.clamp(160, 900).min(area.h);
+    Rect {
+        x: r.x.clamp(area.x, area.x + area.w - w),
+        y: r.y.clamp(area.y, area.y + area.h - h),
+        w,
+        h,
+    }
+}
+fn place(app: &tauri::AppHandle, n: &mut Note, fresh: bool) -> Result<()> {
+    let monitors = app.available_monitors().map_err(err)?;
+    let chosen = if fresh {
+        app.cursor_position().ok().and_then(|p| {
+            monitors.iter().find(|m| {
+                let a = m.work_area();
+                p.x >= f64::from(a.position.x)
+                    && p.y >= f64::from(a.position.y)
+                    && p.x < f64::from(a.position.x) + f64::from(a.size.width)
+                    && p.y < f64::from(a.position.y) + f64::from(a.size.height)
+            })
+        })
+    } else {
+        monitors.iter().find(|m| {
+            let a = tauri::LogicalRect {
+                position: m.work_area().position.to_logical::<i32>(m.scale_factor()),
+                size: m.work_area().size.to_logical::<i32>(m.scale_factor()),
+            };
+            n.x >= a.position.x
+                && n.y >= a.position.y
+                && n.x < a.position.x + a.size.width
+                && n.y < a.position.y + a.size.height
+        })
+    }
+    .or(monitors.first());
+    if let Some(m) = chosen {
+        let a = tauri::LogicalRect {
+            position: m.work_area().position.to_logical::<i32>(m.scale_factor()),
+            size: m.work_area().size.to_logical::<i32>(m.scale_factor()),
+        };
+        let area = Rect {
+            x: a.position.x,
+            y: a.position.y,
+            w: a.size.width,
+            h: a.size.height,
+        };
+        if fresh {
+            n.x = area.x + area.w * 3 / 5 - n.width / 2;
+            n.y = area.y + (area.h - n.height) / 2;
+        }
+        let r = clamp(
+            Rect {
+                x: n.x,
+                y: n.y,
+                w: n.width,
+                h: n.height,
+            },
+            area,
+        );
+        n.x = r.x;
+        n.y = r.y;
+        n.width = r.w;
+        n.height = r.h;
+    }
+    Ok(())
+}
+fn spawn(app: &tauri::AppHandle, n: &Note, fresh: bool) -> Result<()> {
+    if let Some(w) = app.get_webview_window(&format!("note-{}", n.id)) {
+        w.show().map_err(err)?;
+        return Ok(());
+    }
+    let theme = std::env::var("DESKNODES_THEME").unwrap_or("system".into());
+    let window = WebviewWindowBuilder::new(
         app,
-        format!("note-{id}"),
-        WebviewUrl::App(note_url(id).into()),
+        format!("note-{}", n.id),
+        WebviewUrl::App(format!("index.html?id={}&theme={theme}&new={fresh}", n.id).into()),
     )
-    .data_directory(data_dir)
-    .title(format!("DeskNodes · Note {}", id + 1))
-    .inner_size(280.0, 360.0)
-    .min_inner_size(220.0, 160.0)
-    .max_inner_size(600.0, 900.0)
-    .position(
-        160.0 + (id % 5) as f64 * 300.0,
-        180.0 + (id % 3) as f64 * 100.0,
-    )
+    .title(format!("DeskNodes · {}", n.title))
+    .inner_size(n.width as f64, n.height as f64)
+    .position(n.x as f64, n.y as f64)
+    .min_inner_size(220., 160.)
+    .max_inner_size(600., 900.)
+    .always_on_top(n.pinned)
     .decorations(false)
     .transparent(true)
     .shadow(false)
     .skip_taskbar(true)
     .visible_on_all_workspaces(true)
-    .build()?;
+    .build()
+    .map_err(err)?;
+    // Apply once mapped: some X11 window managers offset the initial builder
+    // position by their decoration metrics even for undecorated windows.
+    window
+        .set_position(tauri::LogicalPosition::new(n.x, n.y))
+        .map_err(err)?;
     Ok(())
 }
-
-fn action(app: &tauri::AppHandle, id: &str) -> tauri::Result<()> {
-    eprintln!("DeskNodes action: {id}");
-    match id {
-        "new" => new_note(app)?,
-        "show" | "hide" => {
-            for (label, window) in app.webview_windows() {
-                if label.starts_with("note-") {
-                    if id == "show" {
-                        window.show()?;
-                    } else {
-                        window.hide()?;
-                    }
-                }
-            }
-        }
-        "quit" => app.exit(0),
-        _ => (),
+fn changed(app: &tauri::AppHandle) -> Result<()> {
+    app.emit("notes-changed", ()).map_err(err)
+}
+#[tauri::command]
+fn list_notes(store: tauri::State<Store>) -> Result<Vec<Note>> {
+    db::active(&*connection(&store)?).map_err(err)
+}
+#[tauri::command]
+fn today_items(store: tauri::State<Store>, id: String) -> Result<Vec<db::Item>> {
+    db::today(&*connection(&store)?, &id).map_err(err)
+}
+// Entry point reserved for the global shortcut integration.
+#[tauri::command]
+fn create_note(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
+    let mut n = db::create(&*connection(&store)?).map_err(err)?;
+    place(&app, &mut n, true)?;
+    db::save(&*connection(&store)?, &n).map_err(err)?;
+    spawn(&app, &n, true)?;
+    changed(&app)
+}
+#[tauri::command]
+fn update_note(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    store: tauri::State<Store>,
+    title: String,
+    color: String,
+    pinned: bool,
+) -> Result<()> {
+    if !db::COLORS.contains(&color.as_str()) {
+        return Err("Unknown color".into());
     }
-    Ok(())
+    let id = window
+        .label()
+        .strip_prefix("note-")
+        .ok_or("Invalid window")?;
+    let mut n = db::active(&*connection(&store)?)
+        .map_err(err)?
+        .into_iter()
+        .find(|n| n.id == id)
+        .ok_or("Note unavailable")?;
+    n.title = title.trim().chars().take(200).collect();
+    if n.title.is_empty() {
+        n.title = "待办".into();
+    }
+    n.color = color;
+    n.pinned = pinned;
+    window.set_always_on_top(pinned).map_err(err)?;
+    window
+        .set_title(&format!("DeskNodes · {}", n.title))
+        .map_err(err)?;
+    db::save(&*connection(&store)?, &n).map_err(err)?;
+    changed(&app)
 }
-
+#[tauri::command]
+fn hide_note(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<()> {
+    set_visible(&app, window.label(), false)
+}
+#[tauri::command]
+fn delete_note(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    store: tauri::State<Store>,
+) -> Result<()> {
+    let id = window
+        .label()
+        .strip_prefix("note-")
+        .ok_or("Invalid window")?;
+    db::delete(&*connection(&store)?, id).map_err(err)?;
+    window.destroy().map_err(err)?;
+    changed(&app)
+}
+fn set_visible(app: &tauri::AppHandle, label: &str, visible: bool) -> Result<()> {
+    let store = app.state::<Store>();
+    let notes = db::active(&*connection(&store)?).map_err(err)?;
+    if let Some(mut n) = notes
+        .into_iter()
+        .find(|n| format!("note-{}", n.id) == label)
+    {
+        n.visible = visible;
+        db::save(&*connection(&store)?, &n).map_err(err)?;
+        if visible {
+            spawn(app, &n, false)?;
+        } else if let Some(w) = app.get_webview_window(label) {
+            w.hide().map_err(err)?;
+        }
+    }
+    changed(app)
+}
+fn action(app: &tauri::AppHandle, id: &str) -> Result<()> {
+    match id {
+        "new" => create_note(app.clone(), app.state()),
+        "show" | "hide" => {
+            let notes = db::active(&*connection(&app.state::<Store>())?).map_err(err)?;
+            for n in notes {
+                set_visible(app, &format!("note-{}", n.id), id == "show")?;
+            }
+            Ok(())
+        }
+        "quit" => {
+            app.exit(0);
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            list_notes,
+            today_items,
+            create_note,
+            update_note,
+            hide_note,
+            delete_note
+        ])
         .on_window_event(|window, event| {
+            if !window.label().starts_with("note-") {
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if window.label().starts_with("note-")
-                    && let Err(error) = window.hide()
-                {
-                    eprintln!("Hide note: {error}");
+                if let Err(e) = set_visible(window.app_handle(), window.label(), false) {
+                    eprintln!("{e}");
+                }
+            }
+            if matches!(
+                event,
+                tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+            ) {
+                let store = window.state::<Store>();
+                let result = (|| -> Result<()> {
+                    let c = connection(&store)?;
+                    if let Some(mut n) = db::active(&c)
+                        .map_err(err)?
+                        .into_iter()
+                        .find(|n| format!("note-{}", n.id) == window.label())
+                    {
+                        let scale = window.scale_factor().map_err(err)?;
+                        let p = window
+                            .outer_position()
+                            .map_err(err)?
+                            .to_logical::<i32>(scale);
+                        let s = window.inner_size().map_err(err)?.to_logical::<i32>(scale);
+                        n.x = p.x;
+                        n.y = p.y;
+                        n.width = s.width;
+                        n.height = s.height;
+                        db::save(&c, &n).map_err(err)?;
+                        drop(c);
+                        changed(window.app_handle())?;
+                    }
+                    Ok(())
+                })();
+                if let Err(e) = result {
+                    eprintln!("Save geometry: {e}");
                 }
             }
         })
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-
-            // Native, non-WebView utility window survives hiding every note, even
-            // if the tray host accepts an icon but never displays it.
+            let dir = std::env::var_os("DESKNODES_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or(app.path().app_data_dir()?);
+            std::fs::create_dir_all(&dir)?;
+            eprintln!(
+                "DeskNodes database: {}",
+                dir.join("desknodes.sqlite3").display()
+            );
+            let mut c = db::open(&dir.join("desknodes.sqlite3"))?;
+            db::seed(&mut c)?;
+            app.manage(Store(std::sync::Mutex::new(c)));
             let control = tauri::WindowBuilder::new(app, "controls")
                 .title("DeskNodes controls")
-                .inner_size(360.0, 50.0)
-                .position(160.0, 80.0)
+                .inner_size(360., 50.)
+                .position(160., 80.)
                 .resizable(false)
                 .build()?;
             let items = [
-                MenuItem::with_id(app, "new", "New note", true, None::<&str>)?,
-                MenuItem::with_id(app, "show", "Show all", true, None::<&str>)?,
-                MenuItem::with_id(app, "hide", "Hide all", true, None::<&str>)?,
-                MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?,
+                MenuItem::with_id(app, "new", "新建便签 / New note", true, None::<&str>)?,
+                MenuItem::with_id(app, "show", "显示全部 / Show all", true, None::<&str>)?,
+                MenuItem::with_id(app, "hide", "隐藏全部 / Hide all", true, None::<&str>)?,
+                MenuItem::with_id(app, "quit", "退出 / Quit", true, None::<&str>)?,
             ];
-            let menu = Menu::with_items(app, &[&items[0], &items[1], &items[2], &items[3]])?;
-            let submenu = tauri::menu::Submenu::with_items(
-                app,
-                "DeskNodes",
-                true,
-                &[&items[0], &items[1], &items[2], &items[3]],
-            )?;
+            let refs: Vec<&dyn tauri::menu::IsMenuItem<_>> = items
+                .iter()
+                .map(|i| i as &dyn tauri::menu::IsMenuItem<_>)
+                .collect();
+            let menu = Menu::with_items(app, &refs)?;
+            let submenu = tauri::menu::Submenu::with_items(app, "DeskNodes", true, &refs)?;
             control.set_menu(Menu::with_items(app, &[&submenu])?)?;
             let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
-            match TrayIconBuilder::with_id("desknodes")
+            if let Err(e) = TrayIconBuilder::with_id("desknodes")
                 .tooltip("DeskNodes")
                 .icon(icon)
                 .menu(&menu)
                 .build(app)
             {
-                Ok(_) => eprintln!(
-                    "DeskNodes: tray registered; native controls remain available as fallback"
-                ),
-                Err(error) => {
-                    eprintln!("DeskNodes: tray unavailable ({error}); use native controls")
-                }
+                eprintln!("Tray unavailable: {e}; use native controls");
             }
-            for _ in 0..5 {
-                new_note(app.handle())?;
+            let store = app.state::<Store>();
+            let notes = db::active(&*connection(&store).map_err(std::io::Error::other)?)?;
+            for mut n in notes.into_iter().filter(|n| n.visible) {
+                place(app.handle(), &mut n, false).map_err(std::io::Error::other)?;
+                db::save(&*connection(&store).map_err(std::io::Error::other)?, &n)?;
+                spawn(app.handle(), &n, false).map_err(std::io::Error::other)?;
             }
-            eprintln!("DeskNodes: five note windows ready (in-memory prototype)");
+            eprintln!("DeskNodes: persistent notes ready");
             Ok(())
         })
         .on_menu_event(|app, event| {
-            if let Err(error) = action(app, event.id().as_ref()) {
-                eprintln!("DeskNodes action failed: {error}");
+            if let Err(e) = action(app, event.id().as_ref()) {
+                eprintln!("Action failed: {e}");
             }
         })
         .run(tauri::generate_context!())
         .expect("DeskNodes runtime failed");
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn note_routes_are_distinct_and_cycle_all_eight_colors() {
-        let urls: std::collections::HashSet<_> = (0..5).map(note_url).collect();
-        assert_eq!(urls.len(), 5);
-        for id in 0..16 {
-            assert!(note_url(id).contains(&format!("id={id}&color={}", COLORS[id % 8])));
-        }
+    fn clamp_removed_monitor() {
+        let a = Rect {
+            x: 0,
+            y: 0,
+            w: 1920,
+            h: 1080,
+        };
+        assert_eq!(
+            clamp(
+                Rect {
+                    x: 3000,
+                    y: -500,
+                    w: 280,
+                    h: 360
+                },
+                a
+            ),
+            Rect {
+                x: 1640,
+                y: 0,
+                w: 280,
+                h: 360
+            }
+        );
+    }
+    #[test]
+    fn clamp_negative_monitor_and_sizes() {
+        let a = Rect {
+            x: -1200,
+            y: 0,
+            w: 1200,
+            h: 800,
+        };
+        assert_eq!(
+            clamp(
+                Rect {
+                    x: -1500,
+                    y: 900,
+                    w: 700,
+                    h: 1000
+                },
+                a
+            ),
+            Rect {
+                x: -1200,
+                y: 0,
+                w: 600,
+                h: 800
+            }
+        );
+        assert_eq!(
+            clamp(
+                Rect {
+                    x: -800,
+                    y: 20,
+                    w: 1,
+                    h: 1
+                },
+                a
+            ),
+            Rect {
+                x: -800,
+                y: 20,
+                w: 220,
+                h: 160
+            }
+        );
     }
 }

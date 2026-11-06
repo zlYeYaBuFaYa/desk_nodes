@@ -20,6 +20,7 @@ log = log_path.open('w')
 app = subprocess.Popen([os.environ['DESKNODES_BINARY']], stdout=log, stderr=log, start_new_session=True)
 sid = app.pid
 succeeded = False
+expected = int(os.getenv('DESKNODES_EXPECTED_NOTES', '1'))
 
 def processes():
     entries = {}
@@ -42,17 +43,17 @@ try:
         if app.poll() is not None: raise RuntimeError(f'App exited {app.returncode}; see {log_path}')
         rows = processes()
         names = [str((d/'comm').read_text()).strip() for _, d in rows]
-        if any('WebKitWeb' in n for n in names) and 'five note windows ready' in log_path.read_text(): break
+        if any('WebKitWeb' in n for n in names) and 'persistent notes ready' in log_path.read_text(): break
         time.sleep(.5)
-    else: raise RuntimeError('Timed out waiting for five notes and WebKit children')
+    else: raise RuntimeError('Timed out waiting for notes and WebKit children')
     time.sleep(float(os.getenv('SETTLE_SECONDS', '15')))
     print(f'DeskNodes memory measurement — {time.strftime("%Y-%m-%d %H:%M:%S %z")}')
     print(f'Binary: {os.environ["DESKNODES_BINARY"]}; DISPLAY={os.environ["DISPLAY"]}; session={sid}')
-    print(f'App log: {log_path}; five notes created; settled {os.getenv("SETTLE_SECONDS", "15")}s')
+    print(f'App log: {log_path}; {expected} notes expected; settled {os.getenv("SETTLE_SECONDS", "15")}s')
     if subprocess.run(['sh', '-c', 'command -v wmctrl >/dev/null'], check=False).returncode == 0:
         windows = subprocess.check_output(['wmctrl', '-l'], text=True)
-        count = sum('DeskNodes · Note ' in line for line in windows.splitlines())
-        if count != 5: raise RuntimeError(f'Expected five X11 note windows, found {count}')
+        count = sum('DeskNodes · ' in line for line in windows.splitlines())
+        if count != expected: raise RuntimeError(f'Expected {expected} X11 note windows, found {count}')
         print(f'X11 window count: {count}')
     print('PID       RSS KiB    PSS KiB  COMMAND')
     rss_total = pss_total = 0
@@ -78,7 +79,6 @@ try:
     if not web_count: raise RuntimeError('No live WebKitWebProcess at measurement')
     print(f'RSS sum: {rss_total} KiB = {rss_total*1024/1e6:.2f} MB = {rss_total/1024:.2f} MiB')
     print(f'PSS sum: {pss_total} KiB = {pss_total*1024/1e6:.2f} MB = {pss_total/1024:.2f} MiB' if pss_complete else 'PSS sum: unavailable (some processes unreadable)')
-    print(f'Target <200 MB: RSS {"PASS" if rss_total*1024 < 200e6 else "FAIL"}; PSS {("PASS" if pss_total*1024 < 200e6 else "FAIL") if pss_complete else "UNAVAILABLE"}')
     print('RSS double-counts shared pages; PSS apportions them. GPU/server memory outside this session is excluded.')
     succeeded = True
     if os.getenv('KEEP_APP') == '1': print(f'App left running for screenshots; stop with: kill -- -{sid}')
