@@ -41,7 +41,7 @@
   async function reorder(event:CustomEvent<{items:Item[]}>){openItems=event.detail.items;await mutate('reorder',blank,openItems.filter(i=>!i.done).map(i=>i.id));}
   let panel=$state(''), error=$state(''), hiding=$state(false), theme=$state(params.get('theme')??'system');
   let titleInput=$state<HTMLInputElement>(), itemInput=$state<HTMLInputElement>();
-  $effect(()=>{document.documentElement.dataset.color=note?.color??'mist';document.documentElement.dataset.theme=theme;});
+  $effect(()=>{document.documentElement.dataset.color=note?.color??'mist';});
   async function refresh(){const notes=await invoke<Note[]>('list_notes');note=notes.find(n=>n.id===id);items=await invoke<Item[]>('today_items',{id});}
   async function run(task:()=>Promise<unknown>){try{await task();error='';}catch(e){error=String(e);}}
   function dragTitle(event:PointerEvent){
@@ -93,7 +93,7 @@
   </section>
   {#if undo}<div class="undo-toast" role="status"><span>事项已删除</span><button onclick={()=>run(restore)}>撤销</button></div>{/if}
   {#if notice}<div class="undo-toast" role="status">{notice}</div>{/if}
-  <footer><button class="theme" onclick={()=>theme=theme==='dark'?'light':'dark'} title="切换浅色 / 深色" aria-label="切换浅色 / 深色">{theme==='dark'?'☼':'☾'}</button></footer>
+  <footer><button class="theme" onclick={()=>run(()=>invoke('update_setting',{key:'appearance',value:document.documentElement.dataset.theme==='dark'?'light':'dark'}))} title="切换浅色 / 深色" aria-label="切换浅色 / 深色">{theme==='dark'?'☼':'☾'}</button></footer>
   {#if panel==='confirm'}<div class="scrim"><div class="confirmation" role="alertdialog" aria-modal="true" aria-label="删除便签"><strong>删除「{note?.title}」？</strong><p>便签将从桌面移除，事项仍保存在本地。</p><div><button onclick={()=>panel=''}>取消</button><button class="danger" onclick={()=>run(()=>invoke('delete_note'))}>删除</button></div></div></div>{/if}
 </main>
 

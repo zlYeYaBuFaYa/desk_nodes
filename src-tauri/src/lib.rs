@@ -1,3 +1,7 @@
+mod autostart;
+mod settings;
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 mod data_dir;
 mod day;
 mod db;
@@ -53,6 +57,201 @@ fn err(e: impl std::fmt::Display) -> String {
 }
 fn connection(store: &Store) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
     store.0.lock().map_err(err)
+}
+struct Preferences {
+    actions: std::sync::Mutex<()>,
+    hidden: std::sync::Mutex<settings::Hidden>,
+    status: std::sync::Mutex<std::collections::BTreeMap<String, String>>,
+}
+#[tauri::command]
+fn get_settings(app: tauri::AppHandle) -> Result<std::collections::BTreeMap<String, String>> {
+    let mut values = settings::load(&*connection(&app.state::<Store>())?)?;
+    values.extend(
+        app.state::<Preferences>()
+            .status
+            .lock()
+            .map_err(err)?
+            .clone(),
+    );
+    Ok(values)
+}
+fn dispatch_action(app: &tauri::AppHandle, id: String) {
+    let app = app.clone();
+    // Serialize native actions without blocking the UI or hotkey callback.
+    tauri::async_runtime::spawn_blocking(move || {
+        let prefs = app.state::<Preferences>();
+        let result = (|| -> Result<()> {
+            let _serial = prefs.actions.lock().map_err(err)?;
+            action(&app, &id)
+        })();
+        if let Err(e) = result {
+            eprintln!("Action: {e}");
+        }
+    });
+}
+fn register_binding(app: &tauri::AppHandle, key: &str, value: &str) -> Result<()> {
+    let action_id = match key {
+        "shortcut_toggle_all" => "toggle",
+        "shortcut_new_note" => "new",
+        _ => "management",
+    }
+    .to_owned();
+    let shortcut = value
+        .parse::<tauri_plugin_global_shortcut::Shortcut>()
+        .map_err(err)?;
+    let down = std::sync::atomic::AtomicBool::new(false);
+    app.global_shortcut()
+        .on_shortcut(shortcut, move |app, _, event| {
+            let pressed = event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed;
+            if !down.swap(pressed, std::sync::atomic::Ordering::SeqCst) && pressed {
+                dispatch_action(app, action_id.clone());
+            }
+        })
+        .map_err(|e| format!("快捷键不可用或已被占用：{e}"))
+}
+#[tauri::command]
+fn update_setting(app: tauri::AppHandle, key: String, value: String) -> Result<()> {
+    settings::validate(&key, &value)?;
+    let store = app.state::<Store>();
+    let old = settings::load(&*connection(&store)?)?[&key].clone();
+    if key.starts_with("shortcut_") {
+        let candidate = value
+            .parse::<tauri_plugin_global_shortcut::Shortcut>()
+            .map_err(err)?;
+        let previous = old
+            .parse::<tauri_plugin_global_shortcut::Shortcut>()
+            .map_err(err)?;
+        if candidate != previous {
+            if app.global_shortcut().is_registered(candidate) {
+                return Err("此快捷键已用于其他操作".into());
+            }
+            register_binding(&app, &key, &value)?;
+            if let Err(e) = app.global_shortcut().unregister(previous) {
+                let _ = app.global_shortcut().unregister(candidate);
+                return Err(err(e));
+            }
+        } else if !app.global_shortcut().is_registered(previous) {
+            register_binding(&app, &key, &value)?;
+        }
+    }
+    if key == "autostart" {
+        autostart::set(&app, value == "1")?;
+    }
+    settings::save(&*connection(&store)?, &key, &value)?;
+    app.state::<Preferences>()
+        .status
+        .lock()
+        .map_err(err)?
+        .remove(&format!("{key}_status"));
+    if key == "autostart" {
+        app.state::<Preferences>()
+            .status
+            .lock()
+            .map_err(err)?
+            .insert(
+                "autostart_status".into(),
+                if value == "1" {
+                    "已启用"
+                } else {
+                    "未启用"
+                }
+                .into(),
+            );
+    }
+    app.emit("settings-changed", get_settings(app.clone())?)
+        .map_err(err)
+}
+#[tauri::command]
+async fn backup_data(app: tauri::AppHandle, import: bool) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+        let dialog = app.dialog().file().add_filter("DeskNodes JSON", &["json"]);
+        let path = if import {
+            dialog.blocking_pick_file()
+        } else {
+            dialog
+                .set_file_name("DeskNodes-backup.json")
+                .blocking_save_file()
+        };
+        let Some(path) = path else { return Ok(()) };
+        let path = path.into_path().map_err(err)?;
+        if import {
+            let json = std::fs::read_to_string(path).map_err(err)?;
+            // Validate in an isolated database before offering replacement.
+            let mut check = db::open(std::path::Path::new(":memory:")).map_err(err)?;
+            settings::import(&mut check, &json)?;
+            if !app
+                .dialog()
+                .message("将替换全部便签、历史与设置。建议先导出当前数据。继续吗？")
+                .title("导入备份")
+                .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel)
+                .blocking_show()
+            {
+                return Ok(());
+            }
+            settings::import(&mut *connection(&app.state::<Store>())?, &json)?;
+            app.restart();
+        } else {
+            std::fs::write(
+                path,
+                settings::export(&*connection(&app.state::<Store>())?)?,
+            )
+            .map_err(err)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+fn open_data_dir(app: tauri::AppHandle) -> Result<()> {
+    let path = app
+        .state::<Rollover>()
+        .path
+        .parent()
+        .ok_or("Missing directory")?
+        .to_path_buf();
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    command.arg(path).spawn().map_err(err)?;
+    Ok(())
+}
+fn all_visibility(app: &tauri::AppHandle, hide: bool) -> Result<()> {
+    let notes = db::active(&*connection(&app.state::<Store>())?).map_err(err)?;
+    let prefs = app.state::<Preferences>();
+    let mut hidden = prefs.hidden.lock().map_err(err)?;
+    let ids = if hide {
+        hidden.hide(&notes);
+        notes
+            .iter()
+            .filter(|n| n.visible)
+            .map(|n| n.id.clone())
+            .collect::<HashSet<_>>()
+    } else {
+        hidden.restore()
+    };
+    drop(hidden);
+    for id in ids {
+        set_visible(app, &format!("note-{id}"), !hide)?;
+    }
+    if hide && settings::load(&*connection(&app.state::<Store>())?)?["hide_all_hint_shown"] == "0" {
+        settings::save(
+            &*connection(&app.state::<Store>())?,
+            "hide_all_hint_shown",
+            "1",
+        )?;
+        open_management(app, "notes")?;
+        // Send after the panel has mounted; the persisted flag prevents repetition.
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            let _ = handle.emit("hide-all-hint", ());
+        });
+    }
+    Ok(())
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Rect {
@@ -241,7 +440,12 @@ fn panel_note(
         if let Some(w) = app.get_webview_window(&format!("note-{id}")) {
             w.set_always_on_top(pinned).map_err(err)?;
         }
-        db::save(&*connection(&store)?, &n).map_err(err)?;
+        connection(&store)?
+            .execute(
+                "UPDATE notes SET pinned=?2 WHERE id=?1 AND deleted_at IS NULL",
+                rusqlite::params![n.id, pinned],
+            )
+            .map_err(err)?;
         changed(&app)?;
     }
     Ok(())
@@ -275,7 +479,9 @@ fn rebuild_menu(app: &tauri::AppHandle) -> Result<()> {
         &MenuItem::with_id(app, "new", "新建便签 / New note", true, None::<&str>).map_err(err)?,
     )
     .map_err(err)?;
-    for n in db::active(&*connection(&app.state::<Store>())?).map_err(err)? {
+    // Release the database before native menu calls, which dispatch to the UI thread.
+    let notes = db::active(&*connection(&app.state::<Store>())?).map_err(err)?;
+    for n in notes {
         menu.append(
             &CheckMenuItem::with_id(
                 app,
@@ -354,7 +560,12 @@ fn update_note(
     window
         .set_title(&format!("DeskNodes · {}", n.title))
         .map_err(err)?;
-    db::save(&*connection(&store)?, &n).map_err(err)?;
+    connection(&store)?
+        .execute(
+            "UPDATE notes SET title=?2,color=?3,pinned=?4 WHERE id=?1 AND deleted_at IS NULL",
+            rusqlite::params![n.id, n.title, n.color, n.pinned],
+        )
+        .map_err(err)?;
     changed(&app)
 }
 #[tauri::command]
@@ -383,7 +594,12 @@ fn set_visible(app: &tauri::AppHandle, label: &str, visible: bool) -> Result<()>
         .find(|n| format!("note-{}", n.id) == label)
     {
         n.visible = visible;
-        db::save(&*connection(&store)?, &n).map_err(err)?;
+        connection(&store)?
+            .execute(
+                "UPDATE notes SET visible=?2 WHERE id=?1 AND deleted_at IS NULL",
+                rusqlite::params![n.id, visible],
+            )
+            .map_err(err)?;
         if visible {
             spawn(app, &n, false)?;
         } else if let Some(w) = app.get_webview_window(label) {
@@ -397,12 +613,16 @@ fn action(app: &tauri::AppHandle, id: &str) -> Result<()> {
         "history" | "settings" => open_management(app, id),
         "management" => open_management(app, "notes"),
         "new" => create_note(app.clone(), app.state()),
-        "show" | "hide" => {
-            let notes = db::active(&*connection(&app.state::<Store>())?).map_err(err)?;
-            for n in notes {
-                set_visible(app, &format!("note-{}", n.id), id == "show")?;
-            }
-            Ok(())
+        "show" | "hide" => all_visibility(app, id == "hide"),
+        "toggle" => {
+            let hidden = app
+                .state::<Preferences>()
+                .hidden
+                .lock()
+                .map_err(err)?
+                .0
+                .is_some();
+            all_visibility(app, !hidden)
         }
         "quit" => {
             app.exit(0);
@@ -421,12 +641,23 @@ fn action(app: &tauri::AppHandle, id: &str) -> Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name("DeskNodes")
+                .build(),
+        )
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Err(e) = open_management(app, "notes") {
                 eprintln!("Management: {e}");
             }
         }))
         .invoke_handler(tauri::generate_handler![
+            get_settings,
+            update_setting,
+            backup_data,
+            open_data_dir,
             panel_note,
             history_month,
             history_detail,
@@ -474,7 +705,7 @@ pub fn run() {
                         n.y = p.y;
                         n.width = s.width;
                         n.height = s.height;
-                        db::save(&c, &n).map_err(err)?;
+                        c.execute("UPDATE notes SET x=?2,y=?3,width=?4,height=?5 WHERE id=?1 AND deleted_at IS NULL",rusqlite::params![n.id,n.x,n.y,n.width,n.height]).map_err(err)?;
                         drop(c);
                         changed(window.app_handle())?;
                     }
@@ -520,7 +751,47 @@ pub fn run() {
             }
             day::sync(&mut c, &day::WallClock)?;
             db::seed(&mut c)?;
+            settings::initialize(&c).map_err(std::io::Error::other)?;
             app.manage(Store(std::sync::Mutex::new(c)));
+            app.manage(Preferences {
+                actions: Default::default(),
+                hidden: Default::default(),
+                status: Default::default(),
+            });
+            let values =
+                settings::load(&*connection(&app.state::<Store>()).map_err(std::io::Error::other)?)
+                    .map_err(std::io::Error::other)?;
+            for (key, value) in &values {
+                let result = if key.starts_with("shortcut_") {
+                    register_binding(app.handle(), key, value)
+                } else if key == "autostart" && std::env::var_os("DESKNODES_DATA_DIR").is_none() {
+                    autostart::set(app.handle(), value == "1")
+                } else {
+                    Ok(())
+                };
+                if let Err(e) = result {
+                    app.state::<Preferences>()
+                        .status
+                        .lock()
+                        .unwrap()
+                        .insert(format!("{key}_status"), e);
+                }
+            }
+            let status = if std::env::var_os("DESKNODES_DATA_DIR").is_some() {
+                "隔离数据模式：未修改系统自启".into()
+            } else {
+                match autostart::enabled(app.handle()) {
+                    Ok(true) => "已启用".into(),
+                    Ok(false) => "未启用".into(),
+                    Err(e) => err(e),
+                }
+            };
+            app.state::<Preferences>()
+                .status
+                .lock()
+                .unwrap()
+                .entry("autostart_status".into())
+                .or_insert(status);
             app.manage(Rollover {
                 path,
                 waiting: std::sync::Mutex::new(None),
@@ -609,9 +880,7 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(|app, event| {
-            if let Err(e) = action(app, event.id().as_ref()) {
-                eprintln!("Action failed: {e}");
-            }
+            dispatch_action(app, event.id().as_ref().to_owned());
         })
         .run(tauri::generate_context!())
         .expect("DeskNodes runtime failed");

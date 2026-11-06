@@ -107,3 +107,7 @@ footer {justify-content:flex-end;}
 .content.fading {opacity:0;pointer-events:none;}
 
 .carry-badge {display:inline-block;margin:2px 0 2px 6px;padding:2px 7px;border-radius:20px;font-size:12px;line-height:1.5;color:var(--text-secondary);background:color-mix(in srgb,var(--accent) 5%,var(--bg));white-space:nowrap;vertical-align:baseline;}
+.note{opacity:var(--note-opacity,1)}
+.item-text,.input-row input{font-size:var(--body-size)}
+@keyframes show-note{from{opacity:0;transform:scale(.96)}to{opacity:var(--note-opacity,1);transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){@keyframes show-note{from{opacity:0}to{opacity:var(--note-opacity,1)}}}
