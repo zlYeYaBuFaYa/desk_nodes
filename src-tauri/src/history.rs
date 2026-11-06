@@ -1,6 +1,6 @@
 //! History queries and edits share the persisted business date with rollover.
 use crate::{day, db::Item};
-use chrono::NaiveDate;
+use chrono::{Datelike, Duration, NaiveDate};
 use rusqlite::{Connection, params};
 use serde::Serialize;
 #[derive(Debug, Serialize)]
@@ -47,7 +47,97 @@ pub fn editable(date: &str, current: &str) -> bool {
 pub fn month(c: &Connection, month: &str) -> rusqlite::Result<Vec<Rate>> {
     NaiveDate::parse_from_str(&format!("{month}-01"), "%Y-%m-%d")
         .map_err(|_| rusqlite::Error::InvalidQuery)?;
-    c.prepare("SELECT day,sum(done),count(*) FROM items WHERE substr(day,1,7)=?1 GROUP BY day ORDER BY day")?.query_map([month], |r| { let done = r.get::<_, i64>(1)? as usize; let total = r.get::<_, i64>(2)? as usize; Ok(Rate {day:r.get(0)?,done,total,bucket:bucket(done,total)}) })?.collect()
+    c.prepare("SELECT day,sum(done),count(*) FROM items WHERE substr(day,1,7)=?1 AND day<=?2 GROUP BY day ORDER BY day")?.query_map(params![month, day::current(c)?], |r| { let done = r.get::<_, i64>(1)? as usize; let total = r.get::<_, i64>(2)? as usize; Ok(Rate {day:r.get(0)?,done,total,bucket:bucket(done,total)}) })?.collect()
+}
+/// Rates are fractions in 0..=1. Month follows the calendar selection;
+/// week and streak always follow the persisted current business date.
+#[derive(Debug, Serialize)]
+pub struct Stats {
+    pub week_done: usize,
+    pub week_total: usize,
+    pub week_rate: f64,
+    pub month_done: usize,
+    pub month_total: usize,
+    pub month_rate: f64,
+    pub streak: usize,
+}
+fn fraction(done: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        done as f64 / total as f64
+    }
+}
+/// Pure calculation over daily aggregates. Today extends a streak only when
+/// achieved; otherwise yesterday is the anchor, allowing today to stay in progress.
+/// Every empty or incomplete day encountered from that anchor breaks the streak.
+pub fn calculate_stats(rates: &[Rate], current: NaiveDate, month: NaiveDate) -> Stats {
+    let monday = current - Duration::days(current.weekday().num_days_from_monday().into());
+    let mut days = std::collections::BTreeMap::<NaiveDate, (usize, usize)>::new();
+    let (mut wd, mut wt, mut md, mut mt) = (0, 0, 0, 0);
+    for rate in rates {
+        let Ok(date) = NaiveDate::parse_from_str(&rate.day, "%Y-%m-%d") else {
+            continue;
+        };
+        if date > current {
+            continue;
+        }
+        let entry = days.entry(date).or_default();
+        entry.0 += rate.done;
+        entry.1 += rate.total;
+        if date >= monday {
+            wd += rate.done;
+            wt += rate.total;
+        }
+        if date.year() == month.year() && date.month() == month.month() {
+            md += rate.done;
+            mt += rate.total;
+        }
+    }
+    let achieved = |date: &NaiveDate| days.get(date).is_some_and(|&(d, t)| t > 0 && d == t);
+    let mut cursor = if achieved(&current) {
+        Some(current)
+    } else {
+        current.pred_opt()
+    };
+    let mut streak = 0;
+    while let Some(date) = cursor {
+        if !achieved(&date) {
+            break;
+        }
+        streak += 1;
+        cursor = date.pred_opt();
+    }
+    Stats {
+        week_done: wd,
+        week_total: wt,
+        week_rate: fraction(wd, wt),
+        month_done: md,
+        month_total: mt,
+        month_rate: fraction(md, mt),
+        streak,
+    }
+}
+pub fn stats(c: &Connection, selected_month: Option<&str>) -> rusqlite::Result<Stats> {
+    let current = NaiveDate::parse_from_str(&day::current(c)?, "%Y-%m-%d")
+        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+    let month = match selected_month {
+        Some(m) => NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d")
+            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+        None => current,
+    };
+    let rates = c
+        .prepare("SELECT day,sum(done),count(*) FROM items WHERE day<=?1 GROUP BY day")?
+        .query_map([current.to_string()], |r| {
+            Ok(Rate {
+                day: r.get(0)?,
+                done: r.get::<_, i64>(1)? as usize,
+                total: r.get::<_, i64>(2)? as usize,
+                bucket: None,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(calculate_stats(&rates, current, month))
 }
 pub fn detail(c: &Connection, date: &str) -> rusqlite::Result<Detail> {
     NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| rusqlite::Error::InvalidQuery)?;
@@ -228,5 +318,123 @@ mod more_tests {
         toggle(&mut c, "2025-12-31", "a", true).unwrap();
         assert_eq!(crate::db::today(&c, &n.id).unwrap()[0].id, "c");
         assert!(toggle(&mut c, "2026-01-01", "c", true).is_err());
+    }
+}
+
+#[cfg(test)]
+mod stats_tests {
+    use super::*;
+    fn date(s: &str) -> NaiveDate {
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    }
+    fn rates(rows: &[(&str, usize, usize)]) -> Vec<Rate> {
+        rows.iter()
+            .map(|&(day, done, total)| Rate {
+                day: day.into(),
+                done,
+                total,
+                bucket: bucket(done, total),
+            })
+            .collect()
+    }
+    #[test]
+    fn weighted_week_crosses_year_and_excludes_future() {
+        let rows = rates(&[
+            ("2025-12-28", 1, 1),
+            ("2025-12-29", 1, 3),
+            ("2025-12-31", 2, 2),
+            ("2026-01-01", 1, 1),
+            ("2026-01-02", 9, 9),
+        ]);
+        let s = calculate_stats(&rows, date("2026-01-01"), date("2025-12-01"));
+        assert_eq!(
+            (
+                s.week_done,
+                s.week_total,
+                s.month_done,
+                s.month_total,
+                s.streak
+            ),
+            (4, 6, 4, 6, 2)
+        );
+        assert_eq!(s.week_rate, 4.0 / 6.0);
+        assert_eq!(s.month_rate, 4.0 / 6.0);
+    }
+    #[test]
+    fn streak_today_in_progress_and_blank_days() {
+        let mut rows = rates(&[
+            ("2024-02-28", 1, 1),
+            ("2024-02-29", 2, 2),
+            ("2024-03-01", 1, 2),
+        ]);
+        assert_eq!(
+            calculate_stats(&rows, date("2024-03-01"), date("2024-03-01")).streak,
+            2
+        );
+        rows[2].done = 2;
+        assert_eq!(
+            calculate_stats(&rows, date("2024-03-01"), date("2024-03-01")).streak,
+            3
+        );
+        assert_eq!(
+            calculate_stats(&rows, date("2024-03-02"), date("2024-03-01")).streak,
+            3
+        );
+        assert_eq!(
+            calculate_stats(&rows, date("2024-03-03"), date("2024-03-01")).streak,
+            0
+        );
+        rows.remove(1);
+        assert_eq!(
+            calculate_stats(&rows, date("2024-03-01"), date("2024-03-01")).streak,
+            1
+        );
+    }
+    #[test]
+    fn empty_and_sunday_monday_boundaries() {
+        let rows = rates(&[("2026-11-01", 1, 1), ("2026-11-02", 0, 1)]);
+        let sunday = calculate_stats(&rows, date("2026-11-01"), date("2026-12-01"));
+        assert_eq!(
+            (sunday.week_rate, sunday.month_rate, sunday.streak),
+            (1.0, 0.0, 1)
+        );
+        let monday = calculate_stats(&rows, date("2026-11-02"), date("2026-11-01"));
+        assert_eq!(
+            (monday.week_done, monday.week_total, monday.streak),
+            (0, 1, 1)
+        );
+        let empty = calculate_stats(&[], date("2026-11-02"), date("2026-11-01"));
+        assert_eq!(
+            (empty.week_rate, empty.month_rate, empty.streak),
+            (0.0, 0.0, 0)
+        );
+    }
+    #[test]
+    fn command_query_defaults_deleted_notes_and_validation() {
+        let c = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        day::put(&c, "current_business_day", "2026-11-06").unwrap();
+        let n = crate::db::create(&c).unwrap();
+        for (id, date, done) in [
+            ("past", "2026-11-05", 1),
+            ("today", "2026-11-06", 0),
+            ("tomorrow", "2026-11-07", 1),
+        ] {
+            c.execute("INSERT INTO items(id,note_id,content,day,done,sort_order,created_at) VALUES(?1,?2,'x',?3,?4,0,'now')",params![id,n.id,date,done]).unwrap();
+        }
+        crate::db::delete(&c, &n.id).unwrap();
+        let s = stats(&c, None).unwrap();
+        assert_eq!(
+            (
+                s.week_done,
+                s.week_total,
+                s.month_done,
+                s.month_total,
+                s.streak
+            ),
+            (1, 2, 1, 2, 1)
+        );
+        assert_eq!(s.month_rate, 0.5);
+        assert_eq!(stats(&c, Some("2026-12")).unwrap().month_total, 0);
+        assert!(stats(&c, Some("invalid")).is_err());
     }
 }

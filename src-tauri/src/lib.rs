@@ -501,6 +501,10 @@ fn history_month(store: tauri::State<Store>, month: String) -> Result<Vec<histor
     history::month(&*connection(&store)?, &month).map_err(err)
 }
 #[tauri::command]
+fn history_stats(store: tauri::State<Store>, month: Option<String>) -> Result<history::Stats> {
+    history::stats(&*connection(&store)?, month.as_deref()).map_err(err)
+}
+#[tauri::command]
 fn history_detail(store: tauri::State<Store>, date: String) -> Result<history::Detail> {
     history::detail(&*connection(&store)?, &date).map_err(err)
 }
@@ -723,6 +727,7 @@ pub fn run() {
             open_data_dir,
             panel_note,
             history_month,
+            history_stats,
             history_detail,
             history_toggle,
             business_date,
