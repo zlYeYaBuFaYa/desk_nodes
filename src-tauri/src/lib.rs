@@ -1,6 +1,7 @@
 mod data_dir;
 mod day;
 mod db;
+mod history;
 use std::collections::HashSet;
 struct Rollover {
     path: std::path::PathBuf,
@@ -194,6 +195,80 @@ fn mutate_item(
     db::item_mutation(&mut *connection(&store)?, id, &op, &item, &order).map_err(err)?;
     app.emit("items-changed", id).map_err(err)
 }
+fn open_management(app: &tauri::AppHandle, tab: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Regular)
+        .map_err(err)?;
+    if let Some(w) = app.get_webview_window("management") {
+        w.unminimize().map_err(err)?;
+        w.show().map_err(err)?;
+        w.set_focus().map_err(err)?;
+        w.emit("panel-tab", tab).map_err(err)?;
+    } else {
+        let theme = std::env::var("DESKNODES_THEME").unwrap_or("system".into());
+        WebviewWindowBuilder::new(
+            app,
+            "management",
+            WebviewUrl::App(format!("index.html?panel=1&tab={tab}&theme={theme}").into()),
+        )
+        .title("DeskNodes")
+        .inner_size(1040., 680.)
+        .min_inner_size(900., 560.)
+        .center()
+        .build()
+        .map_err(err)?;
+    }
+    Ok(())
+}
+#[tauri::command]
+fn panel_note(
+    app: tauri::AppHandle,
+    id: String,
+    visible: Option<bool>,
+    pinned: Option<bool>,
+) -> Result<()> {
+    if let Some(visible) = visible {
+        set_visible(&app, &format!("note-{id}"), visible)?;
+    }
+    if let Some(pinned) = pinned {
+        let store = app.state::<Store>();
+        let mut n = db::active(&*connection(&store)?)
+            .map_err(err)?
+            .into_iter()
+            .find(|n| n.id == id)
+            .ok_or("Note unavailable")?;
+        n.pinned = pinned;
+        if let Some(w) = app.get_webview_window(&format!("note-{id}")) {
+            w.set_always_on_top(pinned).map_err(err)?;
+        }
+        db::save(&*connection(&store)?, &n).map_err(err)?;
+        changed(&app)?;
+    }
+    Ok(())
+}
+#[tauri::command]
+fn history_month(store: tauri::State<Store>, month: String) -> Result<Vec<history::Rate>> {
+    history::month(&*connection(&store)?, &month).map_err(err)
+}
+#[tauri::command]
+fn history_detail(store: tauri::State<Store>, date: String) -> Result<history::Detail> {
+    history::detail(&*connection(&store)?, &date).map_err(err)
+}
+#[tauri::command]
+fn business_date(store: tauri::State<Store>) -> Result<String> {
+    day::current(&*connection(&store)?).map_err(err)
+}
+#[tauri::command]
+fn history_toggle(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    date: String,
+    id: String,
+    done: bool,
+) -> Result<()> {
+    history::toggle(&mut *connection(&store)?, &date, &id, done).map_err(err)?;
+    app.emit("items-changed", ()).map_err(err)
+}
 fn rebuild_menu(app: &tauri::AppHandle) -> Result<()> {
     let menu = Menu::new(app).map_err(err)?;
     menu.append(
@@ -215,10 +290,11 @@ fn rebuild_menu(app: &tauri::AppHandle) -> Result<()> {
         .map_err(err)?;
     }
     for (id, label, enabled) in [
+        ("management", "管理面板…", true),
         ("show", "显示全部 / Show all", true),
         ("hide", "隐藏全部 / Hide all", true),
-        ("history", "历史… / History…", false),
-        ("settings", "设置… / Settings…", false),
+        ("history", "历史… / History…", true),
+        ("settings", "设置… / Settings…", true),
         ("quit", "退出 / Quit", true),
     ] {
         menu.append(&MenuItem::with_id(app, id, label, enabled, None::<&str>).map_err(err)?)
@@ -318,6 +394,8 @@ fn set_visible(app: &tauri::AppHandle, label: &str, visible: bool) -> Result<()>
 }
 fn action(app: &tauri::AppHandle, id: &str) -> Result<()> {
     match id {
+        "history" | "settings" => open_management(app, id),
+        "management" => open_management(app, "notes"),
         "new" => create_note(app.clone(), app.state()),
         "show" | "hide" => {
             let notes = db::active(&*connection(&app.state::<Store>())?).map_err(err)?;
@@ -343,7 +421,17 @@ fn action(app: &tauri::AppHandle, id: &str) -> Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Err(e) = open_management(app, "notes") {
+                eprintln!("Management: {e}");
+            }
+        }))
         .invoke_handler(tauri::generate_handler![
+            panel_note,
+            history_month,
+            history_detail,
+            history_toggle,
+            business_date,
             list_notes,
             today_items,
             mutate_item,

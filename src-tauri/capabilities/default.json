@@ -3,7 +3,8 @@
   "identifier": "notes",
   "description": "Local note windows: drag and resize native window edges",
   "windows": [
-    "note-*"
+    "note-*",
+    "management"
   ],
   "permissions": [
     "core:default",
