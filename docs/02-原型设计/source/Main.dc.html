@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DeskNodes 桌面便签</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+.dn-btn{border:0;background:transparent;padding:0;margin:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;font:inherit;color:inherit}
+.dn-btn:hover{background:rgba(127,127,127,0.16)}
+.dn-mi{border:0;background:transparent;margin:0;cursor:pointer;display:flex;align-items:center;gap:8px;width:100%;height:30px;padding:0 10px;border-radius:6px;font:inherit;color:inherit;text-align:left;box-sizing:border-box}
+.dn-mi:hover{background:rgba(127,127,127,0.14)}
+.dn-note{animation:dnPop .18s ease-out}
+.dn-note .dn-tools{opacity:0;transition:opacity .15s ease-out}
+.dn-note:hover .dn-tools,.dn-keep .dn-tools{opacity:1}
+.dn-item{animation:dnIn .15s ease-out}
+.dn-item .dn-del,.dn-item .dn-grip{opacity:0;transition:opacity .12s ease-out}
+.dn-item:hover .dn-del,.dn-item:hover .dn-grip{opacity:1}
+.dn-text{background-image:linear-gradient(currentColor,currentColor);background-repeat:no-repeat;background-position:0 58%;background-size:0% 1px;transition:background-size .25s ease-out,color .25s ease-out}
+.dn-done .dn-text{background-size:100% 1px}
+.dn-check svg{transition:opacity .2s ease-out}
+.dn-check{transition:background-color .2s ease-out}
+.dn-input{border:0;outline:0;background:transparent;font:inherit;width:100%;padding:0}
+.dn-chev{transition:transform .18s ease-out}
+@keyframes dnIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes dnPop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.dn-note,.dn-item{animation:none}}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; position: relative; overflow: hidden; background: {{desk}}; font-family: -apple-system, 'SF Pro Text', 'PingFang SC', 'Segoe UI Variable', 'Microsoft YaHei UI', sans-serif; color: {{text}}">
+
+<div style="position: absolute; left: 0; top: 0; right: 0; height: 28px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 18px; background: {{bar}}; font-size: 13px; color: {{text}}; z-index: 90">
+<button class="dn-btn" aria-label="DeskNodes 托盘菜单" onClick="{{toggleTray}}" style="width: 30px; height: 22px; background: {{trayIconBg}}; color: {{text}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"></path><path d="M15 3v6h6"></path></svg>
+</button>
+<span>11月5日 周四 14:30</span>
+</div>
+
+<sc-if value="{{trayOpen}}" hint-placeholder-val="{{true}}">
+<div style="position: absolute; top: 32px; right: 128px; width: 252px; background: {{panel}}; border: 1px solid {{line}}; border-radius: 10px; box-shadow: {{shadow}}; padding: 6px; z-index: 100; font-size: 13px; color: {{text}}; box-sizing: border-box">
+<button class="dn-mi" onClick="{{newNote}}"><span style="flex: 1">新建便签</span><span style="color: {{sec}}; font-size: 12px">⌘⇧N</span></button>
+<div style="height: 1px; background: {{line}}; margin: 5px 4px"></div>
+<div style="padding: 4px 10px 2px; font-size: 11px; color: {{sec}}">便签</div>
+<sc-for list="{{trayNotes}}" as="tn" hint-placeholder-count="3">
+<button class="dn-mi" onClick="{{tn.toggle}}" aria-label="显示或隐藏 {{tn.title}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity: {{tn.checkOp}}; flex: none"><path d="M20 6 9 17l-5-5"></path></svg>
+<span style="width: 10px; height: 10px; border-radius: 50%; background: {{tn.dot}}; border: 1.5px solid {{tn.ring}}; flex: none"></span>
+<span style="flex: 1">{{tn.title}}</span>
+</button>
+</sc-for>
+<div style="height: 1px; background: {{line}}; margin: 5px 4px"></div>
+<button class="dn-mi" onClick="{{showHide}}"><span style="flex: 1">{{showHideLabel}}</span><span style="color: {{sec}}; font-size: 12px">⌘⇧Space</span></button>
+<a class="dn-mi" href="History.dc.html"><span style="flex: 1">历史…</span><span style="color: {{sec}}; font-size: 12px">⌘⇧D</span></a>
+<button class="dn-mi"><span style="flex: 1">设置…</span></button>
+<div style="height: 1px; background: {{line}}; margin: 5px 4px"></div>
+<button class="dn-mi"><span style="flex: 1">退出 DeskNodes</span><span style="color: {{sec}}; font-size: 12px">⌘Q</span></button>
+</div>
+</sc-if>
+
+<sc-for list="{{notes}}" as="n" hint-placeholder-count="3">
+<sc-if value="{{n.visible}}" hint-placeholder-val="{{true}}">
+<div class="dn-note {{n.keepCls}}" style="position: absolute; left: {{n.x}}px; top: {{n.y}}px; width: {{n.w}}px; min-height: 168px; background: {{n.bg}}; border-radius: 12px; border: 1px solid {{n.edge}}; box-shadow: {{n.shadow}}; z-index: {{n.z}}; box-sizing: border-box; display: flex; flex-direction: column">
+
+<div style="height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 14px; background: {{n.head}}; border-radius: 12px 12px 0 0; position: relative">
+<span style="flex: 1; font-size: 15px; font-weight: 600; color: {{n.text}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.title}}</span>
+<sc-if value="{{n.hasCount}}" hint-placeholder-val="{{true}}"><span style="font-size: 12px; color: {{n.sec}}">{{n.count}}</span></sc-if>
+<div class="dn-tools" style="display: flex; align-items: center; gap: 2px">
+<button class="dn-btn" aria-label="{{n.pinLabel}}" onClick="{{n.togglePin}}" style="width: 24px; height: 24px; color: {{n.pinColor}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="{{n.pinFill}}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></svg>
+</button>
+<button class="dn-btn" aria-label="更换颜色" onClick="{{n.togglePicker}}" style="width: 24px; height: 24px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: {{n.acc}}"></span>
+</button>
+<button class="dn-btn" aria-label="隐藏便签" onClick="{{n.hide}}" style="width: 24px; height: 24px; color: {{n.sec}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg>
+</button>
+<button class="dn-btn" aria-label="更多" style="width: 24px; height: 24px; color: {{n.sec}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
+</button>
+</div>
+
+<sc-if value="{{n.picker}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; top: 40px; right: 8px; z-index: 5; background: {{n.panel}}; border: 1px solid {{n.line}}; border-radius: 10px; box-shadow: {{n.shadow}}; padding: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{n.swatches}}" as="sw" hint-placeholder-count="8">
+<button class="dn-btn" aria-label="{{sw.label}}" title="{{sw.label}}" onClick="{{sw.pick}}" style="width: 26px; height: 26px; border-radius: 50%; background: {{sw.fill}}; box-shadow: 0 0 0 {{sw.ringW}} {{sw.ring}}"></button>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="padding: 10px 14px 12px 14px; display: flex; flex-direction: column; gap: 2px; flex: 1">
+<sc-if value="{{n.empty}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 14px; color: {{n.ph}}; padding: 4px 0 6px">写下今天要做的事…</div>
+</sc-if>
+
+<sc-for list="{{n.open}}" as="it" hint-placeholder-count="3">
+<div class="{{it.cls}}" style="display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; position: relative">
+<span class="dn-grip" aria-hidden="true" style="position: absolute; left: -11px; top: 7px; color: {{it.sec}}">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+</span>
+<button class="dn-btn dn-check" aria-label="完成 {{it.text}}" onClick="{{it.toggle}}" style="width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; border: 1.5px solid {{it.acc}}; background: {{it.checkBg}}; flex: none; box-sizing: border-box">
+<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity: {{it.checkOp}}"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+<span class="dn-text" style="flex: 1; font-size: 14px; line-height: 1.5; color: {{it.color}}; word-break: break-word">{{it.text}}</span>
+<sc-if value="{{it.hasCarry}}" hint-placeholder-val="{{false}}">
+<span style="flex: none; margin-top: 2px; font-size: 11px; line-height: 17px; padding: 0 6px; border-radius: 9px; color: {{it.sec}}; background: {{it.pill}}">顺延 {{it.carry}} 天</span>
+</sc-if>
+<button class="dn-btn dn-del" aria-label="删除 {{it.text}}" onClick="{{it.remove}}" style="width: 20px; height: 20px; flex: none; color: {{it.sec}}">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+</button>
+</div>
+</sc-for>
+
+<label style="display: flex; align-items: center; gap: 8px; padding: 5px 0 3px; color: {{n.ph}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex: none"><path d="M12 5v14M5 12h14"></path></svg>
+<input class="dn-input" aria-label="添加事项" placeholder="添加事项，回车确认" value="{{n.draft}}" onChange="{{n.onDraft}}" onKeyDown="{{n.onKey}}" style="font-size: 14px; line-height: 1.5; color: {{n.text}}; caret-color: {{n.acc}}">
+</label>
+
+<sc-if value="{{n.hasDone}}" hint-placeholder-val="{{true}}">
+<div style="margin-top: 6px; border-top: 1px solid {{n.line}}; padding-top: 6px">
+<button class="dn-btn" onClick="{{n.toggleDone}}" style="gap: 4px; padding: 2px 4px 2px 0; font-size: 12px; color: {{n.sec}}">
+<svg class="dn-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: {{n.doneChev}}"><path d="m9 18 6-6-6-6"></path></svg>
+已完成 {{n.doneCount}}
+</button>
+<sc-if value="{{n.showDone}}" hint-placeholder-val="{{false}}">
+<sc-for list="{{n.done}}" as="it" hint-placeholder-count="2">
+<div class="{{it.cls}}" style="display: flex; align-items: flex-start; gap: 8px; padding: 3px 0">
+<button class="dn-btn dn-check" aria-label="取消完成 {{it.text}}" onClick="{{it.toggle}}" style="width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; border: 1.5px solid {{it.acc}}; background: {{it.checkBg}}; flex: none; box-sizing: border-box">
+<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+<span class="dn-text" style="flex: 1; font-size: 14px; line-height: 1.5; color: {{it.color}}">{{it.text}}</span>
+<button class="dn-btn dn-del" aria-label="删除 {{it.text}}" onClick="{{it.remove}}" style="width: 20px; height: 20px; flex: none; color: {{it.sec}}">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+</button>
+</div>
+</sc-for>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{n.hasTom}}" hint-placeholder-val="{{false}}">
+<div style="margin-top: 6px; border-top: 1px solid {{n.line}}; padding-top: 6px">
+<button class="dn-btn" onClick="{{n.toggleTom}}" style="gap: 4px; padding: 2px 4px 2px 0; font-size: 12px; color: {{n.sec}}">
+<svg class="dn-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: {{n.tomChev}}"><path d="m9 18 6-6-6-6"></path></svg>
+明天 {{n.tomCount}}
+</button>
+<sc-if value="{{n.showTom}}" hint-placeholder-val="{{false}}">
+<sc-for list="{{n.tomorrow}}" as="tm" hint-placeholder-count="1">
+<div style="display: flex; align-items: flex-start; gap: 8px; padding: 3px 0">
+<span style="width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; border: 1.5px dashed {{tm.acc}}; flex: none; box-sizing: border-box"></span>
+<span style="flex: 1; font-size: 14px; line-height: 1.5; color: {{tm.sec}}">{{tm.text}}</span>
+</div>
+</sc-for>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</sc-for>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 16px; border-radius: 10px; background: {{toastBg}}; color: {{toastText}}; font-size: 13px; box-shadow: {{shadow}}; z-index: 120">
+<span>已删除“{{toastItem}}”</span>
+<button class="dn-btn" onClick="{{undo}}" style="height: 28px; padding: 0 10px; font-weight: 600; color: {{toastText}}">撤销</button>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  palette() {
+    return {
+      mist:    { name: '雾蓝',   bg: '#E3EBF3', head: '#D5E0EC', dbg: '#28323D', acc: '#6F8FB3' },
+      sage:    { name: '鼠尾草', bg: '#E2EBDF', head: '#D3E0CF', dbg: '#29332A', acc: '#7A9A72' },
+      apricot: { name: '杏桃',   bg: '#F7E6D6', head: '#F0D7C0', dbg: '#3A2F26', acc: '#B97A4E' },
+      lilac:   { name: '藕荷',   bg: '#ECE2EE', head: '#E0D2E4', dbg: '#332B36', acc: '#9A7CA6' },
+      butter:  { name: '奶油黄', bg: '#F7F0D4', head: '#EFE4BC', dbg: '#36332A', acc: '#A68B3C' },
+      blush:   { name: '樱粉',   bg: '#F6E1E1', head: '#EED0D0', dbg: '#382B2D', acc: '#C07B80' },
+      celadon: { name: '青瓷',   bg: '#DCEDEA', head: '#CBE2DE', dbg: '#243432', acc: '#5E9A92' },
+      stone:   { name: '暖灰',   bg: '#ECE9E4', head: '#E0DCD5', dbg: '#2E2C29', acc: '#8C857B' }
+    };
+  }
+  order() { return ['mist', 'sage', 'apricot', 'lilac', 'butter', 'blush', 'celadon', 'stone']; }
+  mix(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (v) => Math.round(v + (255 - v) * a);
+    return 'rgb(' + f((n >> 16) & 255) + ',' + f((n >> 8) & 255) + ',' + f(n & 255) + ')';
+  }
+  seed() {
+    if (!this._seed) {
+      this._seed = [
+        { id: 'n1', title: '工作', color: 'mist', x: 72, y: 76, w: 292, pinned: false, visible: true, draft: '', showDone: false, showTom: false, picker: false,
+          items: [
+            { id: 'a1', text: '整理周会纪要并发给团队' },
+            { id: 'a2', text: '回复客户关于报价的邮件', carry: 1 },
+            { id: 'a3', text: '评审 DeskNodes 需求文档' },
+            { id: 'a4', text: '提交本周报销单', done: true },
+            { id: 'a5', text: '确认下周出差的机票', done: true }
+          ],
+          tomorrow: [ { id: 'a6', text: '准备季度汇报提纲' } ] },
+        { id: 'n2', title: '生活', color: 'apricot', x: 412, y: 168, w: 264, pinned: false, visible: true, draft: '', showDone: false, showTom: false, picker: false,
+          items: [
+            { id: 'b1', text: '去超市买牛奶和鸡蛋' },
+            { id: 'b2', text: '给妈妈打个电话' },
+            { id: 'b3', text: '晚饭后散步 30 分钟', done: true }
+          ],
+          tomorrow: [] },
+        { id: 'n3', title: '学习', color: 'sage', x: 724, y: 96, w: 264, pinned: true, visible: true, draft: '', showDone: false, showTom: false, picker: false,
+          items: [
+            { id: 'c1', text: '读完《设计心理学》第 3 章', carry: 2 },
+            { id: 'c2', text: '英语听力练习 20 分钟', done: true }
+          ],
+          tomorrow: [ { id: 'c3', text: '复习 Rust 所有权一章' } ] }
+      ];
+    }
+    return this._seed;
+  }
+  notes() { return (this.state && this.state.notes) || this.seed(); }
+  uid() { this._u = (this._u || 100) + 1; return 'x' + this._u; }
+  patch(id, fn) {
+    const notes = this.notes().map((n) => (n.id === id ? fn(Object.assign({}, n)) : n));
+    this.setState({ notes: notes });
+  }
+  toggleItem(nid, iid) {
+    const note = this.notes().find((x) => x.id === nid);
+    const it = note && note.items.find((x) => x.id === iid);
+    if (!it || it.pending) return;
+    if (it.done) {
+      this.patch(nid, (m) => {
+        const rest = m.items.filter((x) => x.id !== iid);
+        const back = Object.assign({}, it, { done: false, pending: false });
+        m.items = rest.filter((x) => !x.done).concat([back], rest.filter((x) => x.done));
+        return m;
+      });
+      return;
+    }
+    this.patch(nid, (m) => { m.items = m.items.map((x) => (x.id === iid ? Object.assign({}, x, { pending: true }) : x)); return m; });
+    setTimeout(() => {
+      this.patch(nid, (m) => { m.items = m.items.map((x) => (x.id === iid ? Object.assign({}, x, { pending: false, done: true }) : x)); return m; });
+    }, 550);
+  }
+  removeItem(nid, iid) {
+    const note = this.notes().find((x) => x.id === nid);
+    const idx = note.items.findIndex((x) => x.id === iid);
+    const item = note.items[idx];
+    this.patch(nid, (m) => { m.items = m.items.filter((x) => x.id !== iid); return m; });
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => this.setState({ toast: null }), 5000);
+    this.setState({ toast: { nid: nid, idx: idx, item: item } });
+  }
+  undo() {
+    const t = this.state && this.state.toast;
+    if (!t) return;
+    clearTimeout(this._tt);
+    this.patch(t.nid, (m) => { const a = m.items.slice(); a.splice(t.idx, 0, t.item); m.items = a; return m; });
+    this.setState({ toast: null });
+  }
+  add(nid) {
+    const note = this.notes().find((x) => x.id === nid);
+    const text = (note.draft || '').trim();
+    if (!text) return;
+    const id = this.uid();
+    this.patch(nid, (m) => {
+      m.items = m.items.filter((x) => !x.done).concat([{ id: id, text: text }], m.items.filter((x) => x.done));
+      m.draft = '';
+      return m;
+    });
+  }
+  newNote() {
+    const ns = this.notes();
+    const used = ns.map((n) => n.color);
+    const ord = this.order();
+    const color = ord.find((c) => used.indexOf(c) < 0) || ord[ns.length % ord.length];
+    const k = ns.length - 3;
+    const note = { id: this.uid(), title: '新便签', color: color, x: 300 + k * 40, y: 420 + (k % 4) * 24, w: 264, pinned: false, visible: true, draft: '', showDone: false, showTom: false, picker: false, items: [], tomorrow: [] };
+    this.setState({ notes: ns.concat([note]) });
+  }
+  showHide() {
+    const ns = this.notes();
+    const anyVisible = ns.some((n) => n.visible);
+    if (anyVisible) {
+      this._shown = ns.filter((n) => n.visible).map((n) => n.id);
+      this.setState({ notes: ns.map((n) => Object.assign({}, n, { visible: false, picker: false })) });
+    } else {
+      const keep = this._shown && this._shown.length ? this._shown : ns.map((n) => n.id);
+      this.setState({ notes: ns.map((n) => Object.assign({}, n, { visible: keep.indexOf(n.id) >= 0 })) });
+    }
+  }
+  renderVals() {
+    const dark = !!(this.props.dark ?? false);
+    const P = this.palette();
+    const s = this.state || {};
+    const T = dark
+      ? { text: '#E6E4E1', sec: '#A6A39F', done: '#6E6B68', ph: '#8A8783', panel: '#2B2E33', line: 'rgba(255,255,255,0.08)', edge: 'rgba(255,255,255,0.05)', desk: '#1C1E22', bar: 'rgba(44,46,51,0.92)', shadow: '0 1px 2px rgba(0,0,0,0.30), 0 8px 24px rgba(0,0,0,0.30)', pill: 'rgba(255,255,255,0.08)', toastBg: '#E6E4E1', toastText: '#2F3437' }
+      : { text: '#2F3437', sec: '#585E64', done: '#A3A8AD', ph: '#7E848A', panel: '#FBFBFA', line: 'rgba(0,0,0,0.07)', edge: 'rgba(0,0,0,0.04)', desk: '#D5D9DE', bar: 'rgba(246,247,248,0.82)', shadow: '0 1px 2px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.10)', pill: 'rgba(0,0,0,0.06)', toastBg: '#2F3437', toastText: '#F4F2EF' };
+    const ns = this.notes();
+    const notes = ns.map((n, i) => {
+      const c = P[n.color];
+      const bg = dark ? c.dbg : c.bg;
+      const head = dark ? this.mix(c.dbg, 0.06) : c.head;
+      const open = n.items.filter((x) => !x.done);
+      const done = n.items.filter((x) => x.done);
+      const row = (x) => {
+        const on = !!(x.done || x.pending);
+        return {
+          id: x.id, text: x.text, cls: on ? 'dn-item dn-done' : 'dn-item',
+          color: on ? T.done : T.text, checkBg: on ? c.acc : 'transparent', checkOp: on ? 1 : 0,
+          carry: x.carry || 0, hasCarry: !!x.carry && !on,
+          acc: c.acc, sec: T.sec, pill: T.pill,
+          toggle: () => this.toggleItem(n.id, x.id),
+          remove: () => this.removeItem(n.id, x.id)
+        };
+      };
+      const tom = n.tomorrow || [];
+      return {
+        id: n.id, title: n.title, visible: n.visible, x: n.x, y: n.y, w: n.w,
+        z: (n.pinned ? 40 : 10) + i, bg: bg, head: head, acc: c.acc,
+        text: T.text, sec: T.sec, ph: T.ph, shadow: T.shadow, line: T.line, edge: T.edge, panel: T.panel,
+        keepCls: n.picker ? 'dn-keep' : '',
+        count: open.length, hasCount: open.length > 0,
+        open: open.map(row), done: done.map(row), doneCount: done.length, hasDone: done.length > 0, showDone: !!n.showDone,
+        doneChev: n.showDone ? 'rotate(90deg)' : 'rotate(0deg)',
+        tomorrow: tom.map((x) => ({ id: x.id, text: x.text, acc: c.acc, sec: T.sec })),
+        tomCount: tom.length, hasTom: tom.length > 0, showTom: !!n.showTom,
+        tomChev: n.showTom ? 'rotate(90deg)' : 'rotate(0deg)',
+        empty: n.items.length === 0, draft: n.draft || '',
+        pinColor: n.pinned ? c.acc : T.sec, pinFill: n.pinned ? c.acc : 'none', pinLabel: n.pinned ? '取消置顶' : '始终置顶',
+        picker: !!n.picker,
+        swatches: this.order().map((k) => ({
+          label: P[k].name, fill: dark ? P[k].dbg : P[k].bg,
+          ring: k === n.color ? c.acc : (dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'),
+          ringW: k === n.color ? '2px' : '1px',
+          pick: () => this.patch(n.id, (m) => { m.color = k; m.picker = false; return m; })
+        })),
+        onDraft: (e) => { const v = e.target.value; this.patch(n.id, (m) => { m.draft = v; return m; }); },
+        onKey: (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); this.add(n.id); } },
+        togglePin: () => this.patch(n.id, (m) => { m.pinned = !m.pinned; return m; }),
+        togglePicker: () => this.patch(n.id, (m) => { m.picker = !m.picker; return m; }),
+        hide: () => this.patch(n.id, (m) => { m.visible = false; m.picker = false; return m; }),
+        toggleDone: () => this.patch(n.id, (m) => { m.showDone = !m.showDone; return m; }),
+        toggleTom: () => this.patch(n.id, (m) => { m.showTom = !m.showTom; return m; })
+      };
+    });
+    const trayOpen = s.tray === undefined ? true : !!s.tray;
+    const toast = s.toast || null;
+    return Object.assign({}, T, {
+      notes: notes,
+      trayOpen: trayOpen,
+      trayIconBg: trayOpen ? 'rgba(127,127,127,0.22)' : 'transparent',
+      toggleTray: () => this.setState({ tray: !trayOpen }),
+      trayNotes: ns.map((n) => ({
+        title: n.title, dot: dark ? P[n.color].dbg : P[n.color].bg, ring: P[n.color].acc, checkOp: n.visible ? 1 : 0,
+        toggle: () => this.patch(n.id, (m) => { m.visible = !m.visible; m.picker = false; return m; })
+      })),
+      newNote: () => this.newNote(),
+      showHide: () => this.showHide(),
+      showHideLabel: ns.some((n) => n.visible) ? '隐藏全部' : '显示全部',
+      hasToast: !!toast,
+      toastItem: toast ? toast.item.text : '',
+      undo: () => this.undo()
+    });
+  }
+}
+</script>
+</body>
+</html>
