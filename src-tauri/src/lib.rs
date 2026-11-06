@@ -1,8 +1,9 @@
+mod data_dir;
 mod db;
 use db::{Note, Store};
 use tauri::{
     Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem},
     tray::TrayIconBuilder,
 };
 type Result<T> = std::result::Result<T, String>;
@@ -117,6 +118,7 @@ fn spawn(app: &tauri::AppHandle, n: &Note, fresh: bool) -> Result<()> {
     Ok(())
 }
 fn changed(app: &tauri::AppHandle) -> Result<()> {
+    rebuild_menu(app)?;
     app.emit("notes-changed", ()).map_err(err)
 }
 #[tauri::command]
@@ -126,6 +128,66 @@ fn list_notes(store: tauri::State<Store>) -> Result<Vec<Note>> {
 #[tauri::command]
 fn today_items(store: tauri::State<Store>, id: String) -> Result<Vec<db::Item>> {
     db::today(&*connection(&store)?, &id).map_err(err)
+}
+#[tauri::command]
+fn mutate_item(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    store: tauri::State<Store>,
+    op: String,
+    item: db::Item,
+    order: Vec<String>,
+) -> Result<()> {
+    let id = window
+        .label()
+        .strip_prefix("note-")
+        .ok_or("Invalid window")?;
+    db::item_mutation(&mut *connection(&store)?, id, &op, &item, &order).map_err(err)?;
+    app.emit("items-changed", id).map_err(err)
+}
+fn rebuild_menu(app: &tauri::AppHandle) -> Result<()> {
+    let menu = Menu::new(app).map_err(err)?;
+    menu.append(
+        &MenuItem::with_id(app, "new", "新建便签 / New note", true, None::<&str>).map_err(err)?,
+    )
+    .map_err(err)?;
+    for n in db::active(&*connection(&app.state::<Store>())?).map_err(err)? {
+        menu.append(
+            &CheckMenuItem::with_id(
+                app,
+                format!("note-{}", n.id),
+                &n.title,
+                true,
+                n.visible,
+                None::<&str>,
+            )
+            .map_err(err)?,
+        )
+        .map_err(err)?;
+    }
+    for (id, label, enabled) in [
+        ("show", "显示全部 / Show all", true),
+        ("hide", "隐藏全部 / Hide all", true),
+        ("history", "历史… / History…", false),
+        ("settings", "设置… / Settings…", false),
+        ("quit", "退出 / Quit", true),
+    ] {
+        menu.append(&MenuItem::with_id(app, id, label, enabled, None::<&str>).map_err(err)?)
+            .map_err(err)?;
+    }
+    if let Some(tray) = app.tray_by_id("desknodes") {
+        tray.set_menu(Some(menu.clone())).map_err(err)?;
+    }
+    if let Some(control) = app.get_window("controls") {
+        let sub = tauri::menu::Submenu::new(app, "DeskNodes", true).map_err(err)?;
+        for item in menu.items().map_err(err)? {
+            sub.append(&item).map_err(err)?;
+        }
+        control
+            .set_menu(Menu::with_items(app, &[&sub]).map_err(err)?)
+            .map_err(err)?;
+    }
+    Ok(())
 }
 // Entry point reserved for the global shortcut integration.
 #[tauri::command]
@@ -219,6 +281,13 @@ fn action(app: &tauri::AppHandle, id: &str) -> Result<()> {
             app.exit(0);
             Ok(())
         }
+        label if label.starts_with("note-") => {
+            let notes = db::active(&*connection(&app.state::<Store>())?).map_err(err)?;
+            if let Some(n) = notes.iter().find(|n| format!("note-{}", n.id) == label) {
+                set_visible(app, label, !n.visible)?;
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -228,6 +297,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_notes,
             today_items,
+            mutate_item,
             create_note,
             update_note,
             hide_note,
@@ -279,9 +349,25 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            let dir = std::env::var_os("DESKNODES_DATA_DIR")
-                .map(std::path::PathBuf::from)
-                .unwrap_or(app.path().app_data_dir()?);
+            let override_dir = std::env::var_os("DESKNODES_DATA_DIR");
+            let dir = if let Some(dir) = override_dir {
+                std::path::PathBuf::from(dir)
+            } else {
+                let base = if cfg!(target_os = "windows") {
+                    std::env::var_os("APPDATA")
+                } else if cfg!(target_os = "linux") {
+                    std::env::var_os("XDG_DATA_HOME")
+                } else {
+                    None
+                };
+                let dir = data_dir::product_dir(
+                    std::env::consts::OS,
+                    &app.path().home_dir()?,
+                    base.map(Into::into),
+                );
+                data_dir::migrate(&app.path().app_data_dir()?, &dir)?;
+                dir
+            };
             std::fs::create_dir_all(&dir)?;
             eprintln!(
                 "DeskNodes database: {}",
@@ -325,6 +411,7 @@ pub fn run() {
                 db::save(&*connection(&store).map_err(std::io::Error::other)?, &n)?;
                 spawn(app.handle(), &n, false).map_err(std::io::Error::other)?;
             }
+            rebuild_menu(app.handle()).map_err(std::io::Error::other)?;
             eprintln!("DeskNodes: persistent notes ready");
             Ok(())
         })

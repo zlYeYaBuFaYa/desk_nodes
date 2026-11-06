@@ -55,3 +55,48 @@ ul { margin-top:18px;gap:12px; }
 @media (prefers-reduced-motion:reduce) { @keyframes show-note {from{opacity:0}to{opacity:1}} @keyframes hide-note {from{opacity:1}to{opacity:0}} .tools {transition:none;} }
 
 .resize-edge { position:fixed; width:10px; height:10px; padding:0; border-radius:0; z-index:20; opacity:0; }
+/* Opaque surfaces live above the scrolling list; the palette fits a 220×160 note. */
+.popover {position:fixed;top:49px;right:18px;z-index:50;background:var(--bg, #E3EBF3);isolation:isolate;}
+.palette {gap:8px;padding:10px;}
+.count {font-size:11px;color:var(--text-secondary);margin-left:auto;padding:0 4px;}
+.content {scrollbar-width:thin;scrollbar-color:transparent transparent;}
+.content:hover,.content:focus-within {scrollbar-color:var(--accent) transparent;}
+.open-list {margin-top:15px;display:grid;gap:6px;min-height:4px;}
+.item {display:flex;position:relative;gap:8px;align-items:flex-start;padding:3px 0;animation:item-in 150ms ease-out;}
+.item .check {width:16px;height:16px;flex:none;padding:0;margin-top:3px;opacity:1;border:1.5px solid var(--accent);transition:background 250ms;}
+.check svg {width:14px;height:14px;stroke:white;stroke-width:2;stroke-dasharray:16;stroke-dashoffset:16;transition:stroke-dashoffset 250ms;}
+.done .check {background:var(--accent);}
+.done .check svg {stroke-dashoffset:0;}
+.item-text {display:block;flex:1;text-align:left;width:auto;height:auto;padding:0;border-radius:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text-primary);line-height:1.5;position:relative;}
+.item-text:hover {background:transparent;}
+.done {text-decoration:none;}
+.done .item-text {color:var(--text-done);text-decoration:line-through;text-decoration-thickness:1px;transition:color 250ms;}
+.pending {animation:sink 300ms ease-out;}
+.item textarea {flex:1;width:0;resize:vertical;font:inherit;line-height:1.5;color:var(--text-primary);background:transparent;border:0;outline:0;padding:0;}
+.grip {position:absolute;left:-13px;top:2px;width:12px;height:22px;padding:0;cursor:grab;}
+.grip,.delete-item {opacity:0;transition:opacity 120ms;}
+.item:hover .grip,.item:hover .delete-item,.item:focus-within .delete-item,.item:focus-within .grip {opacity:1;}
+.delete-item {width:16px;height:21px;padding:0;flex:none;font-size:17px;}
+.item.selected {border-radius:4px;background:var(--border);}
+.input-row {margin-top:10px;align-items:flex-start;gap:8px;}
+.input-row input {font-size:14px;line-height:1.5;}
+.completed-toggle {width:auto;height:28px;padding:0;font-size:12px;gap:6px;margin-top:16px;}
+.completed-list {display:grid;gap:6px;margin-top:4px;}
+.undo-toast {position:absolute;bottom:38px;left:14px;right:14px;z-index:60;display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-radius:10px;background:var(--header);box-shadow:var(--shadow);font-size:12px;}
+.undo-toast button {width:auto;color:var(--accent);font-size:12px;}
+@keyframes item-in {from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes sink {0%,80%{opacity:1}100%{opacity:.4;transform:translateY(4px)}}
+@media(prefers-reduced-motion:reduce){.item{animation-name:fade-in}.pending{animation-name:fade-out}.check svg{transition:opacity 250ms;stroke-dasharray:none}.check svg{opacity:0}.done .check svg{opacity:1}@keyframes fade-in{from{opacity:0}to{opacity:1}}@keyframes fade-out{from{opacity:1}to{opacity:.4}}}
+.item-text {text-decoration-line:line-through;text-decoration-color:transparent;transition:color 250ms,text-decoration-color 250ms;}
+.done .item-text {text-decoration-color:var(--text-done);}
+.content:hover,.content:focus-within {scrollbar-color:transparent transparent;}
+.content.scrolling {scrollbar-color:var(--accent) transparent;}
+.content::-webkit-scrollbar {width:4px;}
+.content::-webkit-scrollbar-thumb {background:transparent;border-radius:4px;}
+.content.scrolling::-webkit-scrollbar-thumb {background:var(--accent);}
+.grip {display:inline-flex;align-items:center;justify-content:center;color:var(--text-secondary);border-radius:4px;}
+.grip:focus-visible {outline:2px solid var(--accent);opacity:1;}
+.item-text,.done .item-text {text-decoration:none;}
+.item-label {background-image:linear-gradient(var(--text-done),var(--text-done));background-repeat:no-repeat;background-position:left 55%;background-size:0% 1px;box-decoration-break:clone;-webkit-box-decoration-break:clone;transition:background-size 250ms ease-out;}
+.done .item-label {background-size:100% 1px;}
+@media(prefers-reduced-motion:reduce){.item-label{background-image:none;transition:none;text-decoration:line-through;text-decoration-color:transparent}.done .item-label{text-decoration-color:var(--text-done);transition:text-decoration-color 250ms}}

@@ -16,6 +16,7 @@ def geom(w):
 def notes():
  with sqlite3.connect(root/'desknodes.sqlite3') as c:c.row_factory=sqlite3.Row;return [dict(r) for r in c.execute('select * from notes order by sort_order')]
 def menu(index):
+ if index: index += sum(n["deleted_at"] is None for n in notes())
  c=next(l.split()[0] for l in run('wmctrl','-l').splitlines() if 'DeskNodes controls' in l);x,y,_,_=geom(c);click(x+40,y+13);click(x+65,y+41+index*29)
 def start():
  log=open('/workspace/desknotes/logs/f2-smoke-app.log','a');p=sp.Popen([binary],stdout=log,stderr=log,start_new_session=True);time.sleep(2);return p

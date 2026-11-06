@@ -18,11 +18,12 @@ pub struct Note {
     pub visible: bool,
     pub pinned: bool,
 }
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
     pub content: String,
     pub done: bool,
+    pub sort_order: i64,
 }
 pub fn migrate(c: &mut Connection) -> rusqlite::Result<()> {
     let version: i32 = c.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -101,7 +102,7 @@ pub fn seed(c: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 pub fn today(c: &Connection, id: &str) -> rusqlite::Result<Vec<Item>> {
-    c.prepare("SELECT id,content,done FROM items WHERE note_id=?1 AND day=?2 ORDER BY sort_order")?
+    c.prepare("SELECT id,content,done,sort_order FROM items WHERE note_id=?1 AND day=?2 ORDER BY sort_order,created_at,id")?
         .query_map(
             params![id, chrono::Local::now().format("%Y-%m-%d").to_string()],
             |r| {
@@ -109,10 +110,66 @@ pub fn today(c: &Connection, id: &str) -> rusqlite::Result<Vec<Item>> {
                     id: r.get(0)?,
                     content: r.get(1)?,
                     done: r.get(2)?,
+                    sort_order: r.get(3)?,
                 })
             },
         )?
         .collect()
+}
+pub fn item_mutation(
+    c: &mut Connection,
+    note: &str,
+    op: &str,
+    item: &Item,
+    order: &[String],
+) -> rusqlite::Result<()> {
+    let tx = c.transaction()?;
+    let day = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let next: i64 = tx.query_row(
+        "SELECT coalesce(max(sort_order),-1)+1 FROM items WHERE note_id=?1 AND day=?2 AND done=0",
+        params![note, day],
+        |r| r.get(0),
+    )?;
+    let content: String = item.content.trim().chars().take(200).collect();
+    match op {
+        "add" | "restore" if !content.is_empty() => {
+            tx.execute("INSERT INTO items(id,note_id,content,day,done,done_at,sort_order,created_at) SELECT ?1,?2,?3,?4,?5,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM notes WHERE id=?2 AND deleted_at IS NULL)", params![item.id,note,content,day,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),if op=="add" {next}else{item.sort_order},chrono::Utc::now().to_rfc3339()])?;
+        }
+        "edit" if !content.is_empty() => {
+            tx.execute(
+                "UPDATE items SET content=?3 WHERE id=?1 AND note_id=?2 AND day=?4",
+                params![item.id, note, content, day],
+            )?;
+        }
+        "toggle" => {
+            tx.execute("UPDATE items SET done=?3,done_at=?4,sort_order=CASE WHEN ?3=0 THEN ?5 ELSE sort_order END WHERE id=?1 AND note_id=?2 AND day=?6",params![item.id,note,item.done,item.done.then(||chrono::Utc::now().to_rfc3339()),next,day])?;
+        }
+        "delete" => {
+            tx.execute(
+                "DELETE FROM items WHERE id=?1 AND note_id=?2 AND day=?3",
+                params![item.id, note, day],
+            )?;
+        }
+        "reorder" => {
+            let mut current: Vec<String> = today(&tx, note)?
+                .into_iter()
+                .filter(|i| !i.done)
+                .map(|i| i.id)
+                .collect();
+            let mut requested = order.to_vec();
+            current.sort();
+            requested.sort();
+            if current != requested {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            for (i, id) in order.iter().enumerate() {
+                tx.execute("UPDATE items SET sort_order=?3 WHERE id=?1 AND note_id=?2 AND day=?4 AND done=0",params![id,note,i as i64,day])?;
+            }
+        }
+        "edit" | "add" | "restore" => {}
+        _ => return Err(rusqlite::Error::InvalidQuery),
+    }
+    tx.commit()
 }
 #[cfg(test)]
 mod tests {
@@ -159,5 +216,74 @@ mod tests {
         for i in 0..17 {
             assert_eq!(create(&c).unwrap().color, COLORS[i % 8]);
         }
+    }
+}
+
+#[cfg(test)]
+mod item_tests {
+    use super::*;
+    #[test]
+    fn item_lifecycle_and_order() {
+        let mut c = open(Path::new(":memory:")).unwrap();
+        let n = create(&c).unwrap();
+        let mut a = Item {
+            id: "a".into(),
+            content: "  first  ".into(),
+            done: false,
+            sort_order: 0,
+        };
+        let b = Item {
+            id: "b".into(),
+            content: "second".into(),
+            done: false,
+            sort_order: 1,
+        };
+        item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
+        item_mutation(&mut c, &n.id, "add", &b, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].content, "first");
+        a.content = "edited".into();
+        item_mutation(&mut c, &n.id, "edit", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].content, "edited");
+        a.done = true;
+        item_mutation(&mut c, &n.id, "toggle", &a, &[]).unwrap();
+        assert!(today(&c, &n.id).unwrap()[0].done);
+        a.done = false;
+        item_mutation(&mut c, &n.id, "toggle", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[1].id, "a");
+        item_mutation(&mut c, &n.id, "reorder", &a, &["a".into(), "b".into()]).unwrap();
+        let got = today(&c, &n.id).unwrap();
+        assert_eq!(got[0].id, "a");
+        assert_eq!(got[1].sort_order, 1);
+        assert!(item_mutation(&mut c, &n.id, "reorder", &a, &["a".into(), "a".into()]).is_err());
+        item_mutation(&mut c, &n.id, "delete", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap().len(), 1);
+        item_mutation(&mut c, &n.id, "restore", &got[0], &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].id, "a");
+    }
+    #[test]
+    fn validates_content_and_today_scope() {
+        let mut c = open(Path::new(":memory:")).unwrap();
+        let n = create(&c).unwrap();
+        let other = create(&c).unwrap();
+        let mut a = Item {
+            id: "a".into(),
+            content: " ".into(),
+            done: false,
+            sort_order: 0,
+        };
+        item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
+        assert!(today(&c, &n.id).unwrap().is_empty());
+        a.content = "字".repeat(201);
+        item_mutation(&mut c, &n.id, "add", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap()[0].content.chars().count(), 200);
+        item_mutation(&mut c, &other.id, "delete", &a, &[]).unwrap();
+        assert_eq!(today(&c, &n.id).unwrap().len(), 1);
+        c.execute("UPDATE items SET day='2000-01-01'", []).unwrap();
+        item_mutation(&mut c, &n.id, "delete", &a, &[]).unwrap();
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM items", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
     }
 }

@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
-    "svelte": "^5.56.3"
+    "svelte": "^5.56.3",
+    "svelte-dnd-action": "^0.9.80"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
