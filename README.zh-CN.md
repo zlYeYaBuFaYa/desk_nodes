@@ -2,7 +2,7 @@
 
 # DeskNodes
 
-安静、柔和的桌面待办便签。DeskNodes V1.0 将独立便签窗口、本地事项存储、明日计划与历史日历结合起来，为每天留一点空间。本文依据源码版本 `a9b34c3` 编写；npm、Cargo 与 Tauri 的打包版本均为 **1.0.0**。
+安静、柔和的桌面待办便签。DeskNodes V1.0 将独立便签窗口、本地事项存储、明日计划与历史日历结合起来，为每天留一点空间。本文依据源码版本 `e415d2f` 编写；npm、Cargo 与 Tauri 的打包版本均为 **1.0.0**。
 
 ![浅色便签：展开与折叠状态](docs/screenshots/f7-collapse-light.png)
 
@@ -41,32 +41,187 @@
 
 ## 开发与构建
 
-需要 Node.js 24+、npm、支持 Rust edition 2024 的近期 Rust stable 工具链，以及对应平台的 Tauri 2 依赖。在 Debian 13 上：
+请在对应的原生操作系统上构建完整分支 `cursor/v1.0-desknodes`。以下各节是独立流程，选择自己的系统即可；除非另有说明，命令均在仓库根目录执行。这些说明不代表 macOS 或 Windows 已通过运行验收，参见上方平台状态。
 
-```sh
-sudo apt update
-sudo apt install build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev \
-  librsvg2-dev patchelf libayatana-appindicator3-dev
-npm ci
-export CARGO_TARGET_DIR=/workspace/desknotes/target
-npm run tauri dev
-```
+仓库中的 [.cargo/config.toml](.cargo/config.toml) 将构建并发设为 2，并为原开发环境硬编码了 `target-dir = "/workspace/desknotes/target"`。你的机器**不需要该路径**：各节均通过环境变量覆盖为克隆目录内绝对、可写的 `target` 目录。每次打开新终端，执行原生命令前都要重新设置该变量。下列路径按原生宿主架构、不传 `--target` 参数的情况编写。
 
-在仓库根目录、图形桌面会话中执行。X11 会话可用 `GDK_BACKEND=x11 npm run tauri dev` 选择 GTK 的 X11 后端；必要时将 `DISPLAY` 设置为实际显示编号。`npm run dev` 仅启动端口 1420 上的 Vite，原生功能需要通过 Tauri 应用使用。
+`npm run dev` **仅启动 Vite 前端**（端口 1420）；`npm run build` 仅执行 Svelte/TypeScript 检查及前端资源构建。需要原生功能时，用 `npm run tauri dev` 开发，或用 `npm run tauri build -- ...` 构建原生生产版本；Tauri 会自动调用对应的前端脚本。构建或启动另一份应用前，先用 Ctrl+C 停止开发进程。
 
-macOS 需要 Xcode Command Line Tools；Windows 需要 MSVC C++ 构建工具及 WebView2，原生打包使用 Rust MSVC 工具链。完整平台环境要求参见官方 [Tauri 前置依赖文档](https://v2.tauri.app/start/prerequisites/)。
+### macOS（终端）
 
-```sh
-npm run build                               # Svelte/TypeScript 检查及 Vite 资源构建
-npm run tauri build -- --no-bundle           # 仅构建生产可执行文件
-npm run tauri build -- --bundles deb,appimage # Linux 安装包
-# 在对应原生平台上构建配置支持的安装包：
-npm run tauri build
-```
+1. 安装 Git（Xcode Command Line Tools 自带）和 Apple 桌面构建工具，完成安装对话框：
 
-仓库中的 [.cargo/config.toml](.cargo/config.toml)将并发构建任务设为 2，并将产物目录设为 `/workspace/desknotes/target`。在其他机器上，请将 `CARGO_TARGET_DIR` 覆盖为可写的绝对路径。生产可执行文件位于 `$CARGO_TARGET_DIR/release/`，安装包位于 `$CARGO_TARGET_DIR/release/bundle/`。
+   ```sh
+   xcode-select --install
+   ```
 
-Linux 支持 **deb 和 AppImage**；配置也列出了供对应原生平台构建的 DMG、MSI 与 NSIS。本地构建 deb 后，可用 `sudo apt install /absolute/path/to/package.deb` 安装；AppImage 赋予可执行权限后启动。部分环境需要 FUSE，也可使用 `--appimage-extract` 解包。本文不声称存在已发布版本或下载服务。macOS/Windows 对外分发仍需完成原生验收及签名配置；macOS 尚未进行公证。配置中的 macOS 最低版本为 10.15，仍须在原生发布机器上核实工具链和 WebView 要求。
+2. 从 [Node.js 官方下载页](https://nodejs.org/en/download) 选择 24 版本及对应 CPU 架构，使用 macOS `.pkg` 安装 **Node.js 24.x 和 npm**。通过 [官方 rustup](https://rust-lang.org/tools/install/) 安装 Rust，并选择支持 edition 2024 的当前 stable：
+
+   ```sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+   . "$HOME/.cargo/env"
+   rustup update stable
+   rustup default stable
+   node --version
+   npm --version
+   rustc --version
+   ```
+
+   若 PATH 尚未包含 Node，请重新打开终端。参见 [Tauri 官方前置依赖](https://v2.tauri.app/start/prerequisites/#macos)。配置中的 macOS 最低版本为 10.15；所选工具链和系统 WebView 的兼容性仍需原生验证。
+
+3. 在已登录的桌面会话中克隆、安装锁定依赖、覆盖 Cargo 产物目录并启动原生开发：
+
+   ```sh
+   git clone --branch cursor/v1.0-desknodes --single-branch https://github.com/zlYeYaBuFaYa/desk_nodes.git
+   cd desk_nodes
+   npm ci
+   export CARGO_TARGET_DIR="$PWD/target"
+   npm run tauri dev
+   ```
+
+4. 选择生产产物。**仅构建可执行文件**并启动：
+
+   ```sh
+   npm run tauri build -- --no-bundle
+   "$CARGO_TARGET_DIR/release/desk-nodes"
+   ```
+
+   如需 **应用包及 DMG**，明确选择 macOS 目标：
+
+   ```sh
+   npm run tauri build -- --bundles app,dmg
+   open "$CARGO_TARGET_DIR/release/bundle/macos/DeskNodes.app"
+   ```
+
+   应用位于 `target/release/bundle/macos/DeskNodes.app`，磁盘映像位于 `target/release/bundle/dmg/`。安装时在 Finder 中打开生成的 `.dmg`，将 **DeskNodes.app** 拖到 **Applications（应用程序）**，推出映像，再从应用程序启动 **DeskNodes**（或执行 `open /Applications/DeskNodes.app`）。产物文件名包含版本和架构，以实际构建结果为准。
+
+   尚未配置或验收签名及公证。未签名/未公证的应用可能被 Gatekeeper 阻止；对于可信的自建产物，可在可用时使用 macOS **系统设置 → 隐私与安全性 → 仍要打开**。原生运行及 DMG 安装尚未验证；对外分发前需要签名、公证和原生验收。
+
+### Windows（PowerShell，原生 MSVC）
+
+1. 安装 [Git for Windows](https://git-scm.com/downloads/win)。安装 [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，选择 **使用 C++ 的桌面开发**，包含对应架构的 MSVC 编译器和 Windows 10/11 SDK。确认已安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)；缺少时使用 Evergreen 安装程序。参照 [Tauri 官方 Windows 前置依赖](https://v2.tauri.app/start/prerequisites/#windows)。
+2. 从 [Node.js 官方下载页](https://nodejs.org/en/download) 选择 24 版本及对应架构，使用 Windows `.msi` 安装 **Node.js 24.x 和 npm**。从 [Rust 官方下载页](https://rust-lang.org/tools/install/) 下载并运行对应的 Windows `rustup-init.exe`，使用 **MSVC** 宿主工具链。安装后重新打开 PowerShell。对于 **x64 Windows**，选择 stable MSVC 并验证：
+
+   ```powershell
+   rustup toolchain install stable-x86_64-pc-windows-msvc
+   rustup default stable-x86_64-pc-windows-msvc
+   node --version
+   npm --version
+   rustc -vV
+   ```
+
+   host 行应为 `x86_64-pc-windows-msvc`。原生 ARM64 Windows 请安装 ARM64 C++ 构建工具，并改用 `stable-aarch64-pc-windows-msvc`。原生发布构建使用 MSVC。若 PowerShell 阻止 `npm.ps1`，下列命令中的 `npm` 可替换为 `npm.cmd`。
+
+3. 在 Windows 桌面会话中克隆并启动原生开发：
+
+   ```powershell
+   git clone --branch cursor/v1.0-desknodes --single-branch https://github.com/zlYeYaBuFaYa/desk_nodes.git
+   cd desk_nodes
+   npm ci
+   $env:CARGO_TARGET_DIR = Join-Path $PWD 'target'
+   npm run tauri dev
+   ```
+
+4. **仅构建生产可执行文件**并启动：
+
+   ```powershell
+   npm run tauri build -- --no-bundle
+   & (Join-Path $env:CARGO_TARGET_DIR 'release\desk-nodes.exe')
+   ```
+
+   目标机器仍需安装 WebView2。生成**安装程序**时，明确选择 Windows 目标：
+
+   ```powershell
+   npm run tauri build -- --bundles msi,nsis
+   Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release\bundle\msi\*.msi')
+   Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release\bundle\nsis\*-setup.exe')
+   ```
+
+   MSI 位于 `target\release\bundle\msi\`，NSIS 安装程序位于 `target\release\bundle\nsis\`。双击其中**一个**生成的 `.msi` 或 `-setup.exe`，完成安装后从开始菜单启动 **DeskNodes**。文件名包含版本、架构，也可能包含语言，请选择实际生成的文件。Tauri 按需下载打包工具，首次打包需要网络。生成 MSI 还要求启用 Windows **VBScript** 可选功能，参见 [Tauri Windows 安装程序指南](https://v2.tauri.app/distribute/windows-installer/)。仅构建 NSIS 可用 `npm run tauri build -- --bundles nsis`。
+
+   尚未配置 Windows 签名。SmartScreen 可能提示未知发布者或阻止未签名产物；仅对可信产物按本机策略继续操作。原生运行、MSI/NSIS 安装、自启和快捷键仍未验证。
+
+### Debian 13 Linux（shell）
+
+1. 根据 [Tauri 官方 Linux 前置依赖](https://v2.tauri.app/start/prerequisites/#linux) 安装原生编译器、GTK 3/WebKitGTK 4.1、托盘及打包依赖：
+
+   ```sh
+   sudo apt update
+   sudo apt install git build-essential pkg-config curl wget file libssl-dev libxdo-dev \
+     libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+     patchelf xz-utils ca-certificates
+   ```
+
+2. 从 [Node.js 官方下载页](https://nodejs.org/en/download) 安装 **Node.js 24.x 和 npm**：选择 24 版本、Linux 及对应架构，下载 `.tar.xz` 二进制归档，解压到可写目录，并将其 `bin` 加入 PATH（同时写入 shell 配置以持久生效）。不要假定 Debian 默认的 `nodejs` 包就是 24 版本。例如，归档保存在 `~/Downloads` 时，请确保只匹配一个归档：
+
+   ```sh
+   mkdir -p "$HOME/.local/lib/nodejs/node24"
+   tar -xJf "$HOME/Downloads/node-v24."*-linux-*.tar.xz \
+     --strip-components=1 -C "$HOME/.local/lib/nodejs/node24"
+   export PATH="$HOME/.local/lib/nodejs/node24/bin:$PATH"
+   node --version
+   npm --version
+   ```
+
+   通过 [官方 rustup](https://rust-lang.org/tools/install/) 安装支持 edition 2024 的当前 Rust stable：
+
+   ```sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+   . "$HOME/.cargo/env"
+   rustup update stable
+   rustup default stable
+   rustc --version
+   ```
+
+3. 使用已登录的**图形桌面会话**及其实际显示和会话环境；无图形环境的 SSH shell 无法直接启动界面。已测试环境为 Debian 13 x86_64 X11，Wayland 尚未验收。克隆并启动：
+
+   ```sh
+   git clone --branch cursor/v1.0-desknodes --single-branch https://github.com/zlYeYaBuFaYa/desk_nodes.git
+   cd desk_nodes
+   npm ci
+   export CARGO_TARGET_DIR="$PWD/target"
+   npm run tauri dev
+   ```
+
+   在 X11 会话中，`GDK_BACKEND=x11 npm run tauri dev` 可明确选择 GTK 的 X11 后端。必要时将 `DISPLAY` 设置为实际会话显示编号，不要照抄固定编号。
+
+4. **仅构建生产可执行文件**，在图形会话中启动：
+
+   ```sh
+   npm run tauri build -- --no-bundle
+   "$CARGO_TARGET_DIR/release/desk-nodes"
+   ```
+
+   该可执行文件仍依赖系统 GTK/WebKitGTK 等运行库。生成 **deb 和 AppImage 安装包**时，选择 Linux 目标：
+
+   ```sh
+   npm run tauri build -- --bundles deb,appimage
+   ls "$CARGO_TARGET_DIR/release/bundle/deb/"*.deb
+   ls "$CARGO_TARGET_DIR/release/bundle/appimage/"*.AppImage
+   ```
+
+   x86_64、版本 1.0.0 的预期路径为 `target/release/bundle/deb/DeskNodes_1.0.0_amd64.deb` 和 `target/release/bundle/appimage/DeskNodes_1.0.0_amd64.AppImage`。安装 deb 并启动已安装的可执行文件：
+
+   ```sh
+   sudo apt install "$CARGO_TARGET_DIR/release/bundle/deb/DeskNodes_1.0.0_amd64.deb"
+   desk-nodes
+   ```
+
+   也可不安装 deb，直接运行 AppImage：
+
+   ```sh
+   chmod +x "$CARGO_TARGET_DIR/release/bundle/appimage/DeskNodes_1.0.0_amd64.AppImage"
+   "$CARGO_TARGET_DIR/release/bundle/appimage/DeskNodes_1.0.0_amd64.AppImage"
+   ```
+
+   请按实际产物调整版本和架构文件名。AppImage 可能需要 FUSE 2（Debian 13 可用 `sudo apt install libfuse2t64`）。没有 FUSE 时，可在可写目录解包后启动：
+
+   ```sh
+   "$CARGO_TARGET_DIR/release/bundle/appimage/DeskNodes_1.0.0_amd64.AppImage" --appimage-extract
+   ./squashfs-root/AppRun
+   ```
+
+   Linux 安装包未签名。已有检查覆盖 deb 内容和解包后 AppImage 启动，但干净系统安装验收仍待完成。本文不声称存在已发布版本或下载服务。
 
 ## 日常操作与快捷键
 
