@@ -100,3 +100,8 @@ ul { margin-top:18px;gap:12px; }
 .item-label {background-image:linear-gradient(var(--text-done),var(--text-done));background-repeat:no-repeat;background-position:left 55%;background-size:0% 1px;box-decoration-break:clone;-webkit-box-decoration-break:clone;transition:background-size 250ms ease-out;}
 .done .item-label {background-size:100% 1px;}
 @media(prefers-reduced-motion:reduce){.item-label{background-image:none;transition:none;text-decoration:line-through;text-decoration-color:transparent}.done .item-label{text-decoration-color:var(--text-done);transition:text-decoration-color 250ms}}
+
+footer {justify-content:flex-end;}
+.carry-badge {display:block;width:fit-content;margin-top:3px;font-size:10px;line-height:1.5;color:var(--text-secondary);letter-spacing:.2px;}
+.content {transition:opacity 150ms ease-in-out;}
+.content.fading {opacity:0;pointer-events:none;}

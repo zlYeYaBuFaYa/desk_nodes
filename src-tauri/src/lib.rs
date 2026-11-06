@@ -1,5 +1,45 @@
 mod data_dir;
+mod day;
 mod db;
+use std::collections::HashSet;
+struct Rollover {
+    path: std::path::PathBuf,
+    waiting: std::sync::Mutex<Option<HashSet<String>>>,
+    recovered: bool,
+}
+
+fn finish_rollover(app: &tauri::AppHandle) -> Result<()> {
+    let state = app.state::<Rollover>();
+    let store = app.state::<Store>();
+    let mut c = connection(&store)?;
+    if day::target(&c, &day::WallClock).map_err(err)? > day::current(&c).map_err(err)? {
+        day::backup(&state.path).map_err(err)?;
+        day::sync(&mut c, &day::WallClock).map_err(err)?;
+    }
+    // Release paused editors even if the clock moved back during preparation.
+    app.emit("day-changed", ()).map_err(err)
+}
+#[tauri::command]
+fn rollover_ready(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<()> {
+    let state = app.state::<Rollover>();
+    let mut waiting = state.waiting.lock().map_err(err)?;
+    if let Some(labels) = waiting.as_mut() {
+        labels.remove(window.label());
+        if labels.is_empty() {
+            finish_rollover(&app)?;
+            *waiting = None;
+        }
+    }
+    Ok(())
+}
+#[tauri::command]
+fn recovery_notice(app: tauri::AppHandle) -> bool {
+    let recovered = app.state::<Rollover>().recovered;
+    if recovered && let Err(e) = app.emit("backup-restored", ()) {
+        eprintln!("Recovery notice: {e}");
+    }
+    recovered
+}
 use db::{Note, Store};
 use tauri::{
     Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
@@ -90,6 +130,15 @@ fn spawn(app: &tauri::AppHandle, n: &Note, fresh: bool) -> Result<()> {
     if let Some(w) = app.get_webview_window(&format!("note-{}", n.id)) {
         w.show().map_err(err)?;
         return Ok(());
+    }
+    if let Some(labels) = app
+        .state::<Rollover>()
+        .waiting
+        .lock()
+        .map_err(err)?
+        .as_mut()
+    {
+        labels.insert(format!("note-{}", n.id));
     }
     let theme = std::env::var("DESKNODES_THEME").unwrap_or("system".into());
     let window = WebviewWindowBuilder::new(
@@ -301,7 +350,9 @@ pub fn run() {
             create_note,
             update_note,
             hide_note,
-            delete_note
+            delete_note,
+            rollover_ready,
+            recovery_notice
         ])
         .on_window_event(|window, event| {
             if !window.label().starts_with("note-") {
@@ -373,9 +424,63 @@ pub fn run() {
                 "DeskNodes database: {}",
                 dir.join("desknodes.sqlite3").display()
             );
-            let mut c = db::open(&dir.join("desknodes.sqlite3"))?;
+            let path = dir.join("desknodes.sqlite3");
+            let (mut c, recovered) =
+                day::open_recover(&path).map_err(|e| std::io::Error::other(e.to_string()))?;
+            if day::due(&c, &day::WallClock)? {
+                day::backup(&path)?;
+            }
+            day::sync(&mut c, &day::WallClock)?;
             db::seed(&mut c)?;
             app.manage(Store(std::sync::Mutex::new(c)));
+            app.manage(Rollover {
+                path,
+                waiting: std::sync::Mutex::new(None),
+                recovered,
+            });
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    let result = (|| -> Result<()> {
+                        let state = handle.state::<Rollover>();
+                        let mut waiting = state.waiting.lock().map_err(err)?;
+                        if let Some(labels) = waiting.as_mut() {
+                            labels.retain(|label| handle.get_webview_window(label).is_some());
+                            if labels.is_empty() {
+                                finish_rollover(&handle)?;
+                                *waiting = None;
+                            } else {
+                                handle.emit("rollover-prepare", ()).map_err(err)?;
+                            }
+                            return Ok(());
+                        }
+                        let store = handle.state::<Store>();
+                        let c = connection(&store)?;
+                        let due = day::target(&c, &day::WallClock).map_err(err)?
+                            > day::current(&c).map_err(err)?;
+                        drop(c);
+                        if due {
+                            let labels: HashSet<String> = handle
+                                .webview_windows()
+                                .keys()
+                                .filter(|s| s.starts_with("note-"))
+                                .cloned()
+                                .collect();
+                            if labels.is_empty() {
+                                finish_rollover(&handle)?;
+                            } else {
+                                *waiting = Some(labels);
+                                handle.emit("rollover-prepare", ()).map_err(err)?;
+                            }
+                        }
+                        Ok(())
+                    })();
+                    if let Err(e) = result {
+                        eprintln!("Rollover: {e}");
+                    }
+                }
+            });
             let control = tauri::WindowBuilder::new(app, "controls")
                 .title("DeskNodes controls")
                 .inner_size(360., 50.)
