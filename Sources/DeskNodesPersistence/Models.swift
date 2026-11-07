@@ -58,7 +58,7 @@ public struct Settings: Equatable, Sendable {
 }
 
 /// Caller supplies a local civil day. No timezone, rollover or scheduler inference in N2.
-public struct HistoryDay: Hashable, Comparable, Sendable {
+public struct HistoryDay: Hashable, Comparable, Codable, Sendable {
     public let rawValue: String
     public init(_ value: String) throws {
         let parts = value.split(separator: "-", omittingEmptySubsequences: false)
@@ -76,9 +76,17 @@ public struct HistoryDay: Hashable, Comparable, Sendable {
         }
         rawValue = value
     }
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        try self.init(container.decode(String.self))
+    }
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 }
-public struct SnapshotItem: Equatable, Sendable {
+public struct SnapshotItem: Equatable, Codable, Sendable {
     public let id: ItemID
     public let text: String
     public let completed: Bool
@@ -86,7 +94,7 @@ public struct SnapshotItem: Equatable, Sendable {
     public let deletedAt: Date?
     public let carriedTo: HistoryDay?
 }
-public struct SnapshotNote: Equatable, Sendable {
+public struct SnapshotNote: Equatable, Codable, Sendable {
     public let id: NoteID
     public let title: String?
     public let color: NotePalette
@@ -94,7 +102,7 @@ public struct SnapshotNote: Equatable, Sendable {
     public let deletedAt: Date?
     public let items: [SnapshotItem]
 }
-public struct DailySnapshot: Equatable, Sendable {
+public struct DailySnapshot: Equatable, Codable, Sendable {
     public let day: HistoryDay
     public let capturedAt: Date
     public let notes: [SnapshotNote]

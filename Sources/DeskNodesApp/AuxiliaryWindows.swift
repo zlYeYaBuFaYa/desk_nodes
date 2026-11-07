@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
+import DeskNodesPersistence
 
-/// Created only on demand. N8/N9 will replace these views with real features.
+/// Created only on demand. History reads the shared store; Settings remains reserved for N9.
 @MainActor
 final class AuxiliaryWindows {
     enum Destination: String, CaseIterable {
@@ -10,23 +11,49 @@ final class AuxiliaryWindows {
 
         var detail: String {
             switch self {
-            case .history: return "尚未实现。后续将提供只读日历与每日快照；当前没有历史数据或统计。"
+            case .history: return "只读日历与每日快照"
             case .settings: return "尚未实现。后续将提供通用、停靠、边缘唤出、快捷键和备份设置。"
             }
         }
     }
     private var controllers: [Destination: NSWindowController] = [:]
 
-    func show(_ destination: Destination) {
+    private var history: HistoryPresentation?
+
+    func reloadHistoryIfVisible() {
+        if controllers[.history]?.window?.isVisible == true { history?.reload() }
+    }
+
+    func show(_ destination: Destination, store: Store? = nil) {
+        if destination == .history, history == nil {
+            guard let store else { return }
+            do {
+                let today = try BusinessCalendar(timeZone: .current).day(at: Date(), settings: store.settings())
+                history = HistoryPresentation(store: store, today: today)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "无法读取历史记录"
+                alert.informativeText = String(describing: error)
+                alert.runModal()
+                return
+            }
+        }
+        if destination == .history { history?.reload() }
         let controller: NSWindowController
         if let existing = controllers[destination] {
             controller = existing
         } else {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 280),
-                                  styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: destination == .history ? 1040 : 480, height: destination == .history ? 656 : 280),
+                                  styleMask: destination == .history ? [.titled, .closable, .resizable, .miniaturizable] : [.titled, .closable], backing: .buffered, defer: false)
             window.title = destination.rawValue
             window.isReleasedWhenClosed = false
-            window.contentViewController = NSHostingController(rootView: UnfinishedView(destination: destination))
+            if destination == .history, let history {
+                window.collectionBehavior = [.fullScreenNone]
+                window.contentMinSize = NSSize(width: 900, height: 656)
+                window.contentViewController = NSHostingController(rootView: HistoryView(model: history))
+            } else {
+                window.contentViewController = NSHostingController(rootView: UnfinishedView(destination: destination))
+            }
             window.center()
             controller = NSWindowController(window: window)
             controllers[destination] = controller

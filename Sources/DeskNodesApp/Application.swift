@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return true
             }
             rolloverDeferred = result == .deferredEditing
-            if case .advanced = result { refresh() }
+            if case .advanced = result { refresh(); auxiliary.reloadHistoryIfVisible() }
         } catch { report(error) }
     }
 
@@ -286,7 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = String(describing: error)
         alert.runModal()
     }
-    @objc private func showHistory(_ sender: Any?) { auxiliary.show(.history) }
+    @objc private func showHistory(_ sender: Any?) { auxiliary.show(.history, store: actions?.store) }
     @objc private func showSettings(_ sender: Any?) { auxiliary.show(.settings) }
     @objc private func quit(_ sender: Any?) { NSApp.terminate(sender) }
 

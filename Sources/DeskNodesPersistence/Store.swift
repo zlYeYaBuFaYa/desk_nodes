@@ -245,6 +245,19 @@ public final class Store {
             return DailySnapshot(day: day, capturedAt: captured, notes: notes)
         }
     }
+    /// Bounded read of sealed snapshots only; never captures or consults live content.
+    public func history(in month: HistoryMonth) throws -> [DailySnapshot] {
+        try locked {
+            let last = month.days.last!
+            return try db.query("SELECT day FROM days WHERE day>=? AND day<=? ORDER BY day",
+                                [.text(month.first.rawValue), .text(last.rawValue)]).map { row in
+                guard let key = row[0], let value = try snapshot(day: HistoryDay(key)) else {
+                    throw StoreError.corrupt("history day")
+                }
+                return value
+            }
+        }
+    }
     public func rolloverCheckpoint() throws -> RolloverCheckpoint? {
         try locked {
             guard let row = try db.query("SELECT active_day,high_water FROM rollover_state WHERE id=1").first,

@@ -1,5 +1,5 @@
 /// Platform independent design values. Hex strings are sRGB, without alpha.
-public enum NotePalette: String, CaseIterable, Sendable {
+public enum NotePalette: String, CaseIterable, Codable, Sendable {
     case paper, lemon, apricot, cherry, lavender, mist, mint, graphite
 
     public var name: String {
