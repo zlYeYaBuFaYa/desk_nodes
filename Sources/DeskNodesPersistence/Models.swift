@@ -25,6 +25,8 @@ public struct Note: Equatable, Sendable {
     public var placement: Placement
     public var level: WindowLevel
     public var order: Int
+    /// Last free placement survives docking, restart and deletion undo. Never a dock value.
+    public var freeRestore: Placement? = nil
     public var automaticHeight: Bool = true
     public var collapsed: Bool
     public let createdAt: Date

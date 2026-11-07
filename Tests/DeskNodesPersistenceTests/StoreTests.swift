@@ -143,7 +143,7 @@ final class StoreTests: XCTestCase {
         try db.capture(day: day())
         try db.close()
         let check = try SQLite(url: url)
-        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "3")
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "4")
     }
     func testMigrationFromNativeV2AddsAutoHeightWithoutChangingHistory() throws {
         let raw = try SQLite(url: url)
@@ -167,7 +167,36 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(try db.snapshot(day: day())?.notes.first?.color, .mist)
         try db.close()
         let check = try SQLite(url: url)
-        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "3")
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "4")
+    }
+    func testNativeV3MigrationAddsFreeRestorePreservingManualTombstoneAndHistory() throws {
+        let db = try store()
+        var note = try db.createNote(placement: .free(displayID: "display", x: -800, y: -90, width: 330, height: 550))
+        note.automaticHeight = false; note.collapsed = true; try db.update(note)
+        let history = try db.capture(day: day())
+        try db.deleteNote(note.id)
+        let retained = try db.notes(includeDeleted: true)
+        try db.close()
+        let raw = try SQLite(url: url)
+        try raw.run("ALTER TABLE notes DROP COLUMN free_restore")
+        try raw.run("PRAGMA user_version = 3"); try raw.close()
+        let migrated = try store()
+        XCTAssertEqual(try migrated.notes(includeDeleted: true), retained)
+        XCTAssertNil(try migrated.notes(includeDeleted: true).first?.freeRestore)
+        XCTAssertEqual(try migrated.snapshot(day: day()), history)
+        try migrated.close()
+        let check = try SQLite(url: url)
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "4")
+    }
+    func testInvalidFreeRestoreRejectedAtomically() throws {
+        let db = try store()
+        let original = try db.createNote()
+        var note = original; note.freeRestore = .dock(edge: .left, displayID: nil)
+        XCTAssertThrowsError(try db.update(note))
+        XCTAssertEqual(try db.notes().first, original)
+        note.freeRestore = .free(displayID: nil, x: .nan, y: 0, width: 240, height: 120)
+        XCTAssertThrowsError(try db.update(note))
+        XCTAssertEqual(try db.notes().first, original)
     }
     func testFailedMigrationRollsBackDDLAndVersion() throws {
         let raw = try SQLite(url: url)

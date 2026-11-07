@@ -10,6 +10,12 @@ final class NotePanel: NSPanel {
     var choice: WindowLevel = .desktop
     var modes = WindowModes()
     var temporarilyRaised = false
+    var docked = false
+    var dockingAction: ((DockEdge?) -> Void)?
+    var dragBegin: (() -> Void)?
+    var dragUpdate: ((NoteFrame, NSPoint) -> Void)?
+    var dragCancel: (() -> Void)?
+    var dragEnd: ((NoteFrame, NSPoint) -> Void)?
     var expandedFrame: NoteFrame?
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown {
@@ -126,7 +132,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         collapsedLabel.isHidden = !compact
         scroll.isHidden = compact
         tools.isHidden = !hovering; count.isHidden = hovering
-        grip.isHidden = compact || !hovering
+        grip.isHidden = compact || !hovering || (window as? NotePanel)?.docked == true
         let titleWidth = bounds.width - (hovering ? 124 : 82)
         titleEditor.frame = NSRect(x: 14, y: 10, width: titleWidth, height: 22)
         collapsedLabel.frame = NSRect(x: 14, y: 7, width: titleWidth, height: 20)
@@ -158,7 +164,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             orderedRows = []
             for item in items {
                 if rows[item.id] == nil {
-                    let row = ItemRow(item: item, owner: self, userInfo: nil)
+                    let row = ItemRow(item: item, owner: self)
                     rows[item.id] = row
                     list.addSubview(row)
                 }
@@ -209,6 +215,13 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
+        for (index, title) in ["停靠到顶部", "停靠到左侧", "停靠到右侧", "移出停靠条"].enumerated() {
+            let item = NSMenuItem(title: title, action: #selector(docking(_:)), keyEquivalent: "")
+            item.target = self; item.tag = index
+            if index == 3 { item.isEnabled = (window as? NotePanel)?.docked == true }
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
         for (title, selector) in [(note.collapsed ? "展开" : "折叠", #selector(collapse)),
                                   ("随内容调整高度", #selector(autoHeight)), ("添加事项", #selector(addItem)), ("删除便签", #selector(deleteNote))] {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
@@ -218,6 +231,9 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         }
         activeMenu = menu
         return menu
+    }
+    @objc private func docking(_ sender: NSMenuItem) {
+        (window as? NotePanel)?.dockingAction?(sender.tag == 3 ? nil : [DockEdge.top, .left, .right][sender.tag])
     }
     @objc private func showMenu() { contextMenu().popUp(positioning: nil, at: NSPoint(x: bounds.width - 108, y: 34), in: self) }
     @objc private func selectColor(_ sender: NSButton) {

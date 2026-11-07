@@ -45,7 +45,7 @@ public final class Store {
     }
     public func notes(includeDeleted: Bool = false) throws -> [Note] {
         try locked {
-            try db.query("SELECT id,title,color,placement,level,position,collapsed,created,updated,deleted,automatic_height FROM notes \(includeDeleted ? "" : "WHERE deleted IS NULL") ORDER BY position,id").map(decodeNote)
+            try db.query("SELECT id,title,color,placement,level,position,collapsed,created,updated,deleted,automatic_height,free_restore FROM notes \(includeDeleted ? "" : "WHERE deleted IS NULL") ORDER BY position,id").map(decodeNote)
         }
     }
     public func items(in noteID: NoteID, includeDeleted: Bool = false) throws -> [Item] {
@@ -72,11 +72,15 @@ public final class Store {
     public func update(_ note: Note) throws {
         try transaction { _ in
             try validate(note.placement, order: note.order)
+            if let saved = note.freeRestore {
+                guard case .free = saved else { throw StoreError.invalid("free restore") }
+                try validate(saved, order: 0)
+            }
             guard try notes().contains(where: { $0.id == note.id }) else { throw StoreError.notFound }
-            try db.run("UPDATE notes SET title=?,color=?,placement=?,level=?,position=?,collapsed=?,automatic_height=?,updated=? WHERE id=?",
+            try db.run("UPDATE notes SET title=?,color=?,placement=?,level=?,position=?,collapsed=?,automatic_height=?,free_restore=?,updated=? WHERE id=?",
                        [text(note.title), .text(note.color.rawValue), .text(try encode(note.placement)),
                         .text(note.level.rawValue), .integer(Int64(note.order)), .number(note.collapsed ? 1 : 0), .number(note.automaticHeight ? 1 : 0),
-                        .date(try timestamp()), .text(note.id.rawValue.uuidString)])
+                        text(try note.freeRestore.map(encode)), .date(try timestamp()), .text(note.id.rawValue.uuidString)])
         }
     }
     @discardableResult public func createItem(in noteID: NoteID, text: String = "", completed: Bool = false,
@@ -257,7 +261,7 @@ public final class Store {
               let placement = row[3], let created = try date(row[7]), let updated = try date(row[8]) else { throw StoreError.corrupt("note") }
         return Note(id: try identity(row[0]), title: row[1], color: color,
                     placement: try JSONDecoder().decode(Placement.self, from: Data(placement.utf8)),
-                    level: level, order: try integer(row[5]), automaticHeight: row[10] == "1", collapsed: row[6] == "1",
+                    level: level, order: try integer(row[5]), freeRestore: try row[11].map { try JSONDecoder().decode(Placement.self, from: Data($0.utf8)) }, automaticHeight: row[10] == "1", collapsed: row[6] == "1",
                     createdAt: created, updatedAt: updated, deletedAt: try date(row[9]))
     }
     private func decodeItem(_ row: [String?]) throws -> Item {

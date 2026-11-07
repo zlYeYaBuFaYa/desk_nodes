@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var panels: [NoteID: NotePanel] = [:]
     private var actions: NoteActions?
+    private var docking: DockController?
     private var toast: DeletionToast?
     private var emptyWindow: NSPanel?
     private var expiryTimer: Timer?
@@ -37,6 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
+            if let actions {
+                docking = DockController(actions: actions, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
+            }
+            NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            try actions?.reconcileScreens(DockController.screens())
             refresh()
         } catch { report(error) }
     }
@@ -47,6 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("新建便签", to: menu, action: #selector(createNote(_:)))
         let toggle = NSMenuItem(title: "全部置顶", action: #selector(toggleTopmost(_:)), keyEquivalent: "")
         toggle.target = self; menu.addItem(toggle); topmostMenuItem = toggle
+        let dockMenu = NSMenuItem(title: "停靠", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(); submenu.delegate = self; dockMenu.submenu = submenu; menu.addItem(dockMenu)
         menu.addItem(.separator())
         add("历史记录…", to: menu, action: #selector(showHistory(_:)))
         add("设置…", to: menu, action: #selector(showSettings(_:)), key: ",")
@@ -94,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let actions else { return }
         do {
             let note = try actions.createNote()
-            if let visible = NSScreen.main?.visibleFrame {
+            if let visible = NSScreen.screens.first?.visibleFrame {
                 let offset = Double(panels.count % 6) * 24
                 try actions.finalGeometry(note.id, frame: NoteFrame(x: visible.midX - 120 + offset,
                     y: visible.maxY - 180 - offset))
@@ -109,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let notes = try actions.store.notes()
             let ids = Set(notes.map(\.id))
             for id in Array(panels.keys) where !ids.contains(id) { panels.removeValue(forKey: id)?.dismissNote() }
-            let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
+            let visible = NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
             for (index, note) in notes.enumerated() {
                 if let panel = panels[note.id], let card = panel.contentView as? NoteCardView {
                     card.refresh(note); try configure(panel, note: note); continue
@@ -135,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.frame = NSRect(x: 50, y: 30, width: 140, height: 32)
                 panel.contentView?.addSubview(button); panel.makeKeyAndOrderFront(nil); emptyWindow = panel
             }
+            docking?.layout(panels: panels, modes: modes)
             updateToast()
         } catch { report(error) }
     }
@@ -144,13 +153,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var expanded: NoteFrame
         switch note.placement {
         case .free(_, let x, let y, let width, let height):
-            expanded = try NoteFrame(x: x, y: y, width: width, height: height).bounded()
-        case .dock:
-            // Preserve the N2 placement until N5 installs a real strip.
-            expanded = panel.expandedFrame ?? NoteFrame(x: panel.frame.minX, y: panel.frame.minY, height: 260)
+            expanded = NoteFrame(x: x, y: y, width: width, height: height)
+        case .dock: return // DockController owns strip geometry; free geometry stays durable.
         }
         if note.automaticHeight {
-            let height = NoteFrame.automaticHeight(content: (panel.contentView as? NoteCardView)?.preferredHeight(width: expanded.width) ?? 120)
+            let availableHeight = DockGeometry.screen(note.placement.displayID, screens: DockController.screens())?.available.height ?? 480
+            let height = min(availableHeight, NoteFrame.automaticHeight(content: (panel.contentView as? NoteCardView)?.preferredHeight(width: expanded.width) ?? 120))
             expanded.y += expanded.height - height; expanded.height = height
         }
         let changedCollapse = panel.frame.height == 32 ? !note.collapsed : note.collapsed
@@ -159,13 +167,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let placement = Placement.free(displayID: {
                 if case .free(let display, _, _, _, _) = note.placement { return display }; return nil
             }(), x: expanded.x, y: expanded.y, width: expanded.width, height: expanded.height)
-            if placement != note.placement { try actions.finalGeometry(note.id, frame: expanded) }
+            if placement != note.placement, expanded.width >= 200, expanded.height >= 120 { try actions.finalGeometry(note.id, frame: expanded) }
         }
+    }
+    @objc private func screensChanged() {
+        do { try actions?.reconcileScreens(DockController.screens()); refresh() } catch { report(error) }
     }
     @objc private func toggleTopmost(_ sender: Any?) {
         modes.allTopmost.toggle()
         topmostMenuItem?.title = modes.allTopmost ? "全部恢复" : "全部置顶"
         for panel in panels.values { panel.modes = modes; panel.applyLevel() }
+        docking?.layout(panels: panels, modes: modes)
     }
     func applicationDidResignActive(_ notification: Notification) {
         for panel in panels.values { panel.temporarilyRaised = false; panel.applyLevel() }
@@ -222,4 +234,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? actions?.store.close()
         if let item = statusItem { NSStatusBar.system.removeStatusItem(item) }
     }
+}
+
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) { docking?.populateControls(menu) }
 }

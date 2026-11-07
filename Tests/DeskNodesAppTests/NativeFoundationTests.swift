@@ -88,6 +88,42 @@ final class NativeFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testDockDetachKeepsMarkedEditorIdentityAndManualState() throws {
+        _ = NSApplication.shared
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try Store(url: url); defer { try? store.close() }
+        let actions = NoteActions(store: store), panel = NotePanel(origin: .zero)
+        defer { panel.close() }
+        let note = try actions.createNote()
+        try actions.finalGeometry(note.id, frame: NoteFrame(x: -500, y: -80, width: 320, height: 550), manuallyResized: true)
+        let card = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") })
+        panel.contentView = card
+        func editors(_ view: NSView) -> [NoteTextView] {
+            (view as? NoteTextView).map { [$0] } ?? view.subviews.flatMap(editors)
+        }
+        let editor = try XCTUnwrap(editors(card).first)
+        editor.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let marked = editor.markedRange(), selection = editor.selectedRange(), text = editor.string
+        for edge in [DockEdge.top, .left, .right] {
+            try actions.dock(note.id, edge: edge, displayID: nil, index: 0)
+            card.refresh(try XCTUnwrap(store.notes().first))
+            panel.docked = true
+            panel.present(NoteFrame(x: 8, y: 300, width: edge == .top ? 220 : 240, height: 260), collapsed: false, animate: false)
+            card.layoutSubtreeIfNeeded()
+            try actions.detach(note.id)
+            let restored = try XCTUnwrap(store.notes().first)
+            XCTAssertFalse(restored.automaticHeight)
+            XCTAssertEqual(restored.placement.freeFrame, NoteFrame(x: -500, y: -80, width: 320, height: 550))
+            card.refresh(restored); panel.docked = false
+            panel.present(restored.placement.freeFrame!, collapsed: false, animate: false)
+            XCTAssertTrue(editors(card).contains { $0 === editor })
+            XCTAssertEqual(editor.markedRange(), marked); XCTAssertEqual(editor.selectedRange(), selection)
+            XCTAssertEqual(editor.string, text)
+        }
+    }
+
+    @MainActor
     func testNativeTextUndoWithoutDeletionInterception() throws {
         _ = NSApplication.shared
         let panel = NotePanel(origin: .zero)

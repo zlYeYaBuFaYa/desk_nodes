@@ -31,9 +31,12 @@ final class NoteGestureView: NSView {
     var finish: ((NoteFrame, Bool) -> Void)?
     override func mouseDown(with event: NSEvent) {
         guard let panel = window as? NotePanel, let original = panel.expandedFrame else { return }
-        if resize && panel.frame.height == 32 { return }
+        if resize && (panel.frame.height == 32 || panel.docked) { return }
         let start = NSEvent.mouseLocation
         var result = original
+        var moved = false
+        var released = false
+        let collapsed = panel.frame.height == 32
         while let next = panel.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             let point = NSEvent.mouseLocation
             let dx = point.x - start.x, dy = point.y - start.y
@@ -42,10 +45,17 @@ final class NoteGestureView: NSView {
                     width: original.width + dx, height: original.height - dy).bounded()) ?? original
                 result.y = original.y + original.height - result.height
             } else { result.x = original.x + dx; result.y = original.y + dy }
-            panel.present(result, collapsed: panel.frame.height == 32, animate: false)
-            if next.type == .leftMouseUp { break }
+            if !moved && hypot(dx, dy) >= 4 { moved = true; if !resize { panel.dragBegin?() } }
+            if moved {
+                panel.present(result, collapsed: collapsed, animate: false)
+                if !resize { panel.dragUpdate?(result, point) }
+            }
+            if next.type == .leftMouseUp { released = true; break }
         }
-        finish?(result, resize)
+        guard moved else { return }
+        guard released else { panel.dragCancel?(); return }
+        if !resize, let end = panel.dragEnd { end(result, NSEvent.mouseLocation) }
+        else { finish?(result, resize) }
     }
     override func draw(_ dirtyRect: NSRect) {
         guard resize else { return }
