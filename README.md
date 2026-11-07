@@ -1,6 +1,6 @@
-# DeskNodes
+# DeskNodes — native macOS
 
-macOS 14+ Swift/AppKit notes with native SQLite persistence (N1–N5). Optional titles, native item editing, same-note reorder, five-second deletion undo, levels, collapse and free sizing are implemented. N5 adds top/left/right docking, overflow tabs, drag reorder/detach/snap and monitor recovery. History and Settings remain unfinished placeholders; limited monitor/edge selection lives in the menu-bar docking controls.
+Swift + AppKit, macOS 14+, Chinese UI, local system SQLite, no third-party packages. The native app implements N1–N6: persisted note editing and five-second deletion undo, palette/chrome/levels/collapse/sizing, docking and monitor recovery, and daily rollover with wake/startup catch-up. History and Settings remain explicit unfinished placeholders; boundary settings already persist in the model, with controls reserved for N9.
 
 On a Mac with compatible Xcode selected:
 
@@ -10,8 +10,10 @@ xcrun swift test
 open build/DeskNodes.app
 ```
 
-[N5 design choices, validation and exact Mac gates](docs/native-n5.md) describes current behavior. **56 production portable XCTest tests pass** on Linux using official Swift 6.2.1 and actual system SQLite. Native frontend syntax parsing passes; AppKit typechecking/runtime, monitor hardware, Chinese IME/focus, Spaces/fullscreen, signing and screenshot fidelity remain **unexecuted Mac acceptance gates**. No Mac SDK stubs or simulated native screenshots.
+[N6 architecture, policies, executed checks and exact Mac gates](docs/native-n6.md): **74 production portable XCTest tests pass** on Linux with Swift 6.2.1 and real isolated SQLite files. Default rollover is 04:00 local Gregorian time. Completed items leave live lists into sealed daily snapshots; unfinished items keep their IDs and record carry continuity. Missed days close only the last observed active day, carrying directly to today; no intermediate snapshots or invented completions. An observed empty day seals once. Deleted content is retained, with one pending deletion membership rather than repetition in all future days. Clock/date reversal holds the checkpoint. Rollover defers during marked IME composition, then flushes committed text before archival.
 
-Storage is native-only under `~/Library/Application Support/local.desknodes.native/DeskNodes.sqlite3`. No Tauri discovery/import/migration, hide or tomorrow features. See [N2 storage/environment](docs/native-n2.md), [N4 geometry/levels](docs/native-n4.md), [N1 build entry](docs/native-n1.md), [authoritative spec](docs/spec/macos-native/README.md) and [milestone plan](docs/macos-native-plan.md). N6 rollover and N7 fullscreen edge reveal remain pending.
+Native frontend syntax parsing passes. **AppKit typechecking/build/signing, timer/wake notification runtime, real Chinese IME/focus/undo and native screenshots remain unexecuted Mac gates.** No Mac SDK stubs or simulated native screenshots. The timer checks every 30 seconds with 2 seconds tolerance; wake/timezone/system-clock notifications also request catch-up.
 
-N5 is an uncommitted supervisor-review patch on **LOCAL authoring HEAD `5e935c043787fab5e7fa113459fd17b2f3059deb`**. Remote integration/cherry-pick hashes differ and are not inferred here. No commit/push/rebase was performed; authoritative specs and Tauri checkout are untouched. All-topmost remains a session override preserving individual durable levels.
+Storage: `~/Library/Application Support/local.desknodes.native/DeskNodes.sqlite3`. Native schema 5 preserves sealed N2 history and separates rollover archival from user tombstone deletion. No purge, Tauri discovery/import/migration, hide or tomorrow features. See [N2 storage/environment](docs/native-n2.md), [N5 docking](docs/native-n5.md), [N4 geometry/levels](docs/native-n4.md), [N1 build entry](docs/native-n1.md), [authoritative spec](docs/spec/macos-native/README.md) and [milestone plan](docs/macos-native-plan.md).
+
+N6 is an uncommitted supervisor-review patch on **LOCAL authoring HEAD `5e9e958127a6d0c8555a065ac5b6f9696b9793c0`**. Remote integration/cherry-pick hashes can differ and are not inferred or verified here. No commit/push/rebase was performed; authoritative specs, plan, prior milestone documents and old Tauri checkout are untouched. N7 can reuse the shared live store and composition gate; N7–N10 remain pending.

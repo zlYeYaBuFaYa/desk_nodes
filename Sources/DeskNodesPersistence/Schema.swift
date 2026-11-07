@@ -1,7 +1,7 @@
 import Foundation
 
 internal enum Schema {
-    static let version = 4
+    static let version = 5
     // Application ID 'DSKN': reject unrelated databases, even if user_version coincides.
     static let applicationID = 0x44534B4E
     static func migrate(_ db: SQLite) throws {
@@ -33,6 +33,10 @@ internal enum Schema {
                 try db.run("ALTER TABLE notes ADD COLUMN free_restore TEXT")
                 try db.run("PRAGMA user_version = 4")
             }
+            if version < 5 {
+                for sql in rollover { try db.run(sql) }
+                try db.run("PRAGMA user_version = 5")
+            }
             guard try db.query("PRAGMA foreign_key_check").isEmpty else {
                 throw StoreError.corrupt("foreign keys")
             }
@@ -42,6 +46,17 @@ internal enum Schema {
             throw error
         }
     }
+    static let rollover = [
+        "CREATE TABLE rollover_state (id INTEGER PRIMARY KEY CHECK(id=1), active_day TEXT NOT NULL, high_water REAL NOT NULL)",
+        "CREATE TABLE item_archives (item_id TEXT PRIMARY KEY REFERENCES items(id), day TEXT NOT NULL REFERENCES days(day), FOREIGN KEY(day,item_id) REFERENCES snapshot_items(day,item_id))",
+        "CREATE TABLE pending_deleted_notes (note_id TEXT PRIMARY KEY REFERENCES notes(id))",
+        "CREATE TABLE pending_deleted_items (item_id TEXT PRIMARY KEY REFERENCES items(id))",
+        // Existing tombstones enter daily membership only if no prior snapshot recorded deletion.
+        "INSERT INTO pending_deleted_notes SELECT id FROM notes WHERE deleted IS NOT NULL AND NOT EXISTS (SELECT 1 FROM snapshot_notes WHERE note_id=notes.id AND deleted IS NOT NULL)",
+        "INSERT INTO pending_deleted_items SELECT id FROM items WHERE deleted IS NOT NULL AND NOT EXISTS (SELECT 1 FROM snapshot_items WHERE item_id=items.id AND deleted IS NOT NULL)",
+        "CREATE TRIGGER immutable_archive_update BEFORE UPDATE ON item_archives BEGIN SELECT RAISE(ABORT, 'immutable archive'); END",
+        "CREATE TRIGGER immutable_archive_delete BEFORE DELETE ON item_archives BEGIN SELECT RAISE(ABORT, 'immutable archive'); END"
+    ]
     static let initial = [
         """
         CREATE TABLE notes (

@@ -39,6 +39,8 @@ public struct Item: Equatable, Sendable {
     public var text: String
     public var completed: Bool
     public var order: Int
+    /// Rollover archival is separate from user deletion; retained content is read-only.
+    public internal(set) var archivedDay: HistoryDay? = nil
     public let createdAt: Date
     public internal(set) var updatedAt: Date
     public internal(set) var deletedAt: Date?

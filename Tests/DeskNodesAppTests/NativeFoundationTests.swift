@@ -180,4 +180,52 @@ final class NativeFoundationTests: XCTestCase {
         XCTAssertFalse(panel.collectionBehavior.contains(.fullScreenAuxiliary))
         panel.close()
     }
+    @MainActor
+    func testRolloverDefersMarkedCompletedRowThenFlushesAndKeepsUnfinishedEditor() throws {
+        _ = NSApplication.shared
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var now = ISO8601DateFormatter().date(from: "2026-11-06T03:59:59Z")!
+        let store = try Store(url: url, clock: { now }); defer { try? store.close() }
+        let actions = NoteActions(store: store, clock: { now })
+        let calendar = try BusinessCalendar(timeZone: TimeZone(secondsFromGMT: 0)!)
+        let note = try actions.createNote()
+        let done = try XCTUnwrap(store.items(in: note.id).first)
+        try actions.text(done.id, in: note.id, "完成")
+        try actions.toggle(done.id, in: note.id)
+        let todo = try actions.add(in: note.id)
+        try actions.text(todo.id, in: note.id, "继续")
+        let panel = NotePanel(origin: .zero); defer { panel.close() }
+        let card = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") })
+        panel.contentView = card
+        func editors(_ view: NSView) -> [NoteTextView] {
+            (view as? NoteTextView).map { [$0] } ?? view.subviews.flatMap(editors)
+        }
+        let completed = try XCTUnwrap(editors(card).first { $0.string == "完成" })
+        let unfinished = try XCTUnwrap(editors(card).first { $0.string == "继续" })
+        unfinished.setSelectedRange(NSRange(location: 1, length: 0))
+        completed.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let text = completed.string, marked = completed.markedRange(), selected = completed.selectedRange()
+        try store.rollover(using: calendar)
+        now.addTimeInterval(1)
+        func prepare() throws -> Bool {
+            guard !card.hasMarkedComposition else { return false }
+            try card.flushRolloverEdits(); return true
+        }
+        XCTAssertEqual(try store.rollover(using: calendar, prepareEditing: prepare), .deferredEditing)
+        XCTAssertTrue(editors(card).contains { $0 === completed })
+        XCTAssertEqual(completed.string, text); XCTAssertEqual(completed.markedRange(), marked)
+        XCTAssertEqual(completed.selectedRange(), selected)
+        completed.unmarkText()
+        // Simulate committed editor content not yet delivered to the delegate.
+        completed.string = "完成中文"
+        guard case let .advanced(snapshot) = try store.rollover(using: calendar, prepareEditing: prepare) else { return XCTFail("rollover") }
+        XCTAssertEqual(snapshot.notes[0].items.first { $0.id == done.id }?.text, "完成中文")
+        card.refresh(try XCTUnwrap(store.notes().first))
+        XCTAssertFalse(editors(card).contains { $0 === completed })
+        XCTAssertTrue(editors(card).contains { $0 === unfinished })
+        XCTAssertEqual(unfinished.selectedRange(), NSRange(location: 1, length: 0))
+        XCTAssertEqual(try store.items(in: note.id).map(\.id), [todo.id])
+    }
+
 }

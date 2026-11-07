@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var toast: DeletionToast?
     private var emptyWindow: NSPanel?
     private var expiryTimer: Timer?
+    private var rolloverTimer: Timer?
+    private var rollingOver = false
+    private var rolloverDeferred = false
     private let auxiliary = AuxiliaryWindows()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -42,8 +45,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 docking = DockController(actions: actions, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
             }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            installRolloverScheduler()
+            catchUpDay()
             try actions?.reconcileScreens(DockController.screens())
             refresh()
+        } catch { report(error) }
+    }
+
+    private func installRolloverScheduler() {
+        let center = NotificationCenter.default
+        for name in [Notification.Name.NSSystemTimeZoneDidChange, NSNotification.Name.NSSystemClockDidChange] {
+            center.addObserver(self, selector: #selector(dayEnvironmentChanged), name: name, object: nil)
+        }
+        // A committed composition retries on the next run-loop turn, before the next timer.
+        center.addObserver(self, selector: #selector(editorChanged), name: NSText.didChangeNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(dayEnvironmentChanged), name: NSWorkspace.didWakeNotification, object: nil)
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.catchUpDay() }
+        }
+        timer.tolerance = 2
+        RunLoop.main.add(timer, forMode: .common)
+        rolloverTimer = timer
+    }
+    @objc private func dayEnvironmentChanged() { catchUpDay() }
+    @objc private func editorChanged() {
+        guard rolloverDeferred else { return }
+        DispatchQueue.main.async { [weak self] in self?.catchUpDay() }
+    }
+    private func catchUpDay() {
+        guard !rollingOver, let actions else { return }
+        rollingOver = true; defer { rollingOver = false }
+        do {
+            // Resolve the current timezone on each trigger, never cache an offset across DST.
+            let calendar = try BusinessCalendar(timeZone: .current)
+            let result = try actions.store.rollover(using: calendar) {
+                for panel in self.panels.values {
+                    if (panel.contentView as? NoteCardView)?.hasMarkedComposition == true { return false }
+                }
+                for panel in self.panels.values {
+                    try (panel.contentView as? NoteCardView)?.flushRolloverEdits()
+                }
+                return true
+            }
+            rolloverDeferred = result == .deferredEditing
+            if case .advanced = result { refresh() }
         } catch { report(error) }
     }
 
@@ -231,6 +276,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         expiryTimer?.invalidate()
+        rolloverTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         try? actions?.store.close()
         if let item = statusItem { NSStatusBar.system.removeStatusItem(item) }
     }

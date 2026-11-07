@@ -159,7 +159,13 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             let items = try actions.store.items(in: id)
             let ids = Set(items.map(\.id))
             for key in Array(rows.keys) where !ids.contains(key) {
-                rows[key]?.removeFromSuperview(); rows.removeValue(forKey: key)
+                if let row = rows[key] {
+                    // A completed focused editor must relinquish focus before leaving the view tree.
+                    if window?.firstResponder === row.editor { window?.makeFirstResponder(nil) }
+                    row.editor.undoManager?.removeAllActions(withTarget: row.editor)
+                    row.removeFromSuperview()
+                }
+                rows.removeValue(forKey: key)
             }
             orderedRows = []
             for item in items {
@@ -182,6 +188,32 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             if let color = tools.subviews.first as? NSButton { color.contentTintColor = NoteTheme.secondary }
             needsLayout = true; colors()
         } catch { failure(error) }
+    }
+    var hasMarkedComposition: Bool {
+        // NSTextField uses a shared field editor outside this card's subtree.
+        if let editor = window?.firstResponder as? NSTextView, editor.hasMarkedText() { return true }
+        func marked(_ view: NSView) -> Bool {
+            if let editor = view as? NSTextView, editor.hasMarkedText() { return true }
+            return view.subviews.contains { marked($0) }
+        }
+        return marked(self)
+    }
+    /// Called only after the application has checked every editor for marked text.
+    /// No refresh callbacks inside the rollover transaction.
+    func flushRolloverEdits() throws {
+        if var current = try actions.store.notes().first(where: { $0.id == id }),
+           (current.title ?? "") != titleEditor.stringValue {
+            current.title = titleEditor.stringValue.isEmpty ? nil : titleEditor.stringValue
+            try actions.store.update(current)
+        }
+        let live = try actions.store.items(in: id)
+        for row in orderedRows {
+            if var item = live.first(where: { $0.id == row.item.id }), item.text != row.editor.string {
+                item.text = row.editor.string
+                try actions.store.update(item)
+            }
+            row.editor.breakUndoCoalescing()
+        }
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
