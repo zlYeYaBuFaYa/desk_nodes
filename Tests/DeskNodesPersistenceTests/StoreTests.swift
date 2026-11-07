@@ -143,7 +143,31 @@ final class StoreTests: XCTestCase {
         try db.capture(day: day())
         try db.close()
         let check = try SQLite(url: url)
-        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "2")
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "3")
+    }
+    func testMigrationFromNativeV2AddsAutoHeightWithoutChangingHistory() throws {
+        let raw = try SQLite(url: url)
+        for sql in Schema.initial + Schema.history { try raw.run(sql) }
+        let id = UUID().uuidString
+        let placement = String(decoding: try JSONEncoder().encode(Placement.free(displayID: nil, x: -400, y: -80, width: 300, height: 500)), as: UTF8.self)
+        try raw.run("INSERT INTO notes VALUES (?,NULL,'mist',?,'ordinary',0,1,1,1,NULL)", [.text(id), .text(placement)])
+        try raw.run("BEGIN")
+        try raw.run("PRAGMA defer_foreign_keys = ON")
+        try raw.run("INSERT INTO snapshot_notes VALUES ('2026-11-06',?,NULL,'mist',0,NULL)", [.text(id)])
+        try raw.run("INSERT INTO days VALUES ('2026-11-06',1)")
+        try raw.run("COMMIT")
+        try raw.run("PRAGMA application_id = \(Schema.applicationID)")
+        try raw.run("PRAGMA user_version = 2")
+        try raw.close()
+        let db = try store()
+        let note = try XCTUnwrap(db.notes().first)
+        XCTAssertTrue(note.automaticHeight); XCTAssertTrue(note.collapsed)
+        XCTAssertEqual(note.level, .ordinary)
+        XCTAssertEqual(note.placement, .free(displayID: nil, x: -400, y: -80, width: 300, height: 500))
+        XCTAssertEqual(try db.snapshot(day: day())?.notes.first?.color, .mist)
+        try db.close()
+        let check = try SQLite(url: url)
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "3")
     }
     func testFailedMigrationRollsBackDDLAndVersion() throws {
         let raw = try SQLite(url: url)

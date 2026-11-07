@@ -16,6 +16,8 @@ struct DeskNodesApplication {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var modes = WindowModes()
+    private var topmostMenuItem: NSMenuItem?
     private var statusItem: NSStatusItem?
     private var panels: [NoteID: NotePanel] = [:]
     private var actions: NoteActions?
@@ -43,9 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.autoenablesItems = false
         add("新建便签", to: menu, action: #selector(createNote(_:)))
-        let unfinished = NSMenuItem(title: "全部置顶 / 全部恢复（尚未实现）", action: nil, keyEquivalent: "")
-        unfinished.isEnabled = false
-        menu.addItem(unfinished)
+        let toggle = NSMenuItem(title: "全部置顶", action: #selector(toggleTopmost(_:)), keyEquivalent: "")
+        toggle.target = self; menu.addItem(toggle); topmostMenuItem = toggle
         menu.addItem(.separator())
         add("历史记录…", to: menu, action: #selector(showHistory(_:)))
         add("设置…", to: menu, action: #selector(showSettings(_:)), key: ",")
@@ -91,7 +92,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func createNote(_ sender: Any?) {
         guard let actions else { return }
-        do { let note = try actions.createNote(); refresh(); panels[note.id]?.makeKeyAndOrderFront(nil) }
+        do {
+            let note = try actions.createNote()
+            if let visible = NSScreen.main?.visibleFrame {
+                let offset = Double(panels.count % 6) * 24
+                try actions.finalGeometry(note.id, frame: NoteFrame(x: visible.midX - 120 + offset,
+                    y: visible.maxY - 180 - offset))
+            }
+            refresh(); panels[note.id]?.makeKeyAndOrderFront(nil)
+        }
         catch { report(error) }
     }
     private func refresh() {
@@ -99,10 +108,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let notes = try actions.store.notes()
             let ids = Set(notes.map(\.id))
-            for id in Array(panels.keys) where !ids.contains(id) { panels.removeValue(forKey: id)?.close() }
+            for id in Array(panels.keys) where !ids.contains(id) { panels.removeValue(forKey: id)?.dismissNote() }
             let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
             for (index, note) in notes.enumerated() {
-                if let card = panels[note.id]?.contentView as? NoteCardView { card.refresh(note); continue }
+                if let panel = panels[note.id], let card = panel.contentView as? NoteCardView {
+                    card.refresh(note); try configure(panel, note: note); continue
+                }
                 let panel = NotePanel(origin: NSPoint(x: visible.midX - 120 + CGFloat(index % 5) * 24,
                                                       y: visible.maxY - 300 - CGFloat(index % 5) * 24))
                 panel.deletionUndo = { [weak self] in self?.routeDeletionUndo() ?? false }
@@ -110,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     changed: { [weak self] in self?.refresh() },
                     undoDelete: { [weak self] in self?.routeDeletionUndo() ?? false },
                     failure: { [weak self] in self?.report($0) })
-                panels[note.id] = panel; panel.showNote()
+                panels[note.id] = panel; try configure(panel, note: note); panel.showNote()
             }
             emptyWindow?.close(); emptyWindow = nil
             if notes.isEmpty {
@@ -126,6 +137,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             updateToast()
         } catch { report(error) }
+    }
+    private func configure(_ panel: NotePanel, note: Note) throws {
+        guard let actions else { return }
+        panel.choice = note.level; panel.modes = modes; panel.applyLevel()
+        var expanded: NoteFrame
+        switch note.placement {
+        case .free(_, let x, let y, let width, let height):
+            expanded = try NoteFrame(x: x, y: y, width: width, height: height).bounded()
+        case .dock:
+            // Preserve the N2 placement until N5 installs a real strip.
+            expanded = panel.expandedFrame ?? NoteFrame(x: panel.frame.minX, y: panel.frame.minY, height: 260)
+        }
+        if note.automaticHeight {
+            let height = NoteFrame.automaticHeight(content: (panel.contentView as? NoteCardView)?.preferredHeight(width: expanded.width) ?? 120)
+            expanded.y += expanded.height - height; expanded.height = height
+        }
+        let changedCollapse = panel.frame.height == 32 ? !note.collapsed : note.collapsed
+        panel.present(expanded, collapsed: note.collapsed, animate: changedCollapse)
+        if case .free = note.placement {
+            let placement = Placement.free(displayID: {
+                if case .free(let display, _, _, _, _) = note.placement { return display }; return nil
+            }(), x: expanded.x, y: expanded.y, width: expanded.width, height: expanded.height)
+            if placement != note.placement { try actions.finalGeometry(note.id, frame: expanded) }
+        }
+    }
+    @objc private func toggleTopmost(_ sender: Any?) {
+        modes.allTopmost.toggle()
+        topmostMenuItem?.title = modes.allTopmost ? "全部恢复" : "全部置顶"
+        for panel in panels.values { panel.modes = modes; panel.applyLevel() }
+    }
+    func applicationDidResignActive(_ notification: Notification) {
+        for panel in panels.values { panel.temporarilyRaised = false; panel.applyLevel() }
     }
     private func updateToast() {
         guard let actions else { return }

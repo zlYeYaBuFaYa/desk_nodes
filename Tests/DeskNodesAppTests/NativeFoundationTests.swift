@@ -72,7 +72,15 @@ final class NativeFoundationTests: XCTestCase {
         let selected = editor.selectedRange(), marked = editor.markedRange(), text = editor.string
         try actions.toggle(first.id, in: note.id)
         try actions.reorder(note.id, ids: [second.id, first.id])
-        card.refresh(note)
+        try actions.appearance(note.id, color: .mist, level: .topmost, collapsed: true)
+        try actions.finalGeometry(note.id, frame: NoteFrame(x: -400, y: -30, width: 300, height: 500), manuallyResized: true)
+        card.refresh(try XCTUnwrap(store.notes().first))
+        card.frame = NSRect(x: 0, y: 0, width: 300, height: 32)
+        card.layoutSubtreeIfNeeded()
+        try actions.appearance(note.id, collapsed: false)
+        card.refresh(try XCTUnwrap(store.notes().first))
+        card.frame.size.height = 500
+        card.layoutSubtreeIfNeeded()
         XCTAssertTrue(editors(card).contains(where: { $0 === editor }))
         XCTAssertEqual(editor.string, text)
         XCTAssertEqual(editor.selectedRange(), selected)
@@ -97,6 +105,31 @@ final class NativeFoundationTests: XCTestCase {
         XCTAssertEqual(editor.string, "原文")
         XCTAssertEqual(intercepted, 0)
         XCTAssertTrue(manager.canRedo)
+    }
+
+    @MainActor
+    func testNativeLevelPolicyAndCollapsedGeometry() {
+        _ = NSApplication.shared
+        let panel = NotePanel(origin: .zero)
+        defer { panel.close() }
+        panel.choice = .desktop; panel.applyLevel()
+        XCTAssertEqual(panel.level.rawValue, Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        panel.temporarilyRaised = true; panel.applyLevel()
+        XCTAssertEqual(panel.level, .floating)
+        panel.resignKey()
+        XCTAssertEqual(panel.level.rawValue, Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        panel.choice = .ordinary; panel.modes.allTopmost = true; panel.applyLevel()
+        XCTAssertEqual(panel.level, .floating)
+        panel.modes.allTopmost = false; panel.applyLevel()
+        XCTAssertEqual(panel.level, .normal)
+        XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenNone))
+        XCTAssertFalse(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        let expanded = NoteFrame(x: -500, y: -30, width: 300, height: 550)
+        panel.present(expanded, collapsed: true, animate: false)
+        XCTAssertEqual(panel.frame, NSRect(x: -500, y: 488, width: 300, height: 32))
+        panel.present(expanded, collapsed: false, animate: false)
+        XCTAssertEqual(panel.frame, NSRect(x: -500, y: -30, width: 300, height: 550))
     }
 
     @MainActor

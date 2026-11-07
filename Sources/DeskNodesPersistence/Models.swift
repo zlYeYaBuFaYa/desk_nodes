@@ -25,6 +25,7 @@ public struct Note: Equatable, Sendable {
     public var placement: Placement
     public var level: WindowLevel
     public var order: Int
+    public var automaticHeight: Bool = true
     public var collapsed: Bool
     public let createdAt: Date
     public internal(set) var updatedAt: Date

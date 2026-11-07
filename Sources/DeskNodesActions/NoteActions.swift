@@ -33,7 +33,7 @@ public final class NoteActions {
             let retained = try store.notes(includeDeleted: true)
             let maximum = retained.map(\.order).max() ?? -1
             guard maximum < Int.max else { throw StoreError.invalid("note order exhausted") }
-            let note = try store.createNote(order: maximum + 1)
+            let note = try store.createNote(placement: .free(displayID: nil, x: 100, y: 100, width: 240, height: 120), order: maximum + 1)
             try store.createItem(in: note.id)
             return note
         }
