@@ -20,8 +20,10 @@ cp "$binary_dir/DeskNodes" "$app_path/Contents/MacOS/DeskNodes"
 cp Resources/Info.plist "$app_path/Contents/Info.plist"
 chmod 755 "$app_path/Contents/MacOS/DeskNodes"
 /usr/bin/plutil -lint "$app_path/Contents/Info.plist"
-# Local ad-hoc signature: no account, entitlements, sandbox, or notarization.
-/usr/bin/codesign --force --sign - --timestamp=none "$app_path"
+# Ad-hoc is the local default, not proof of SMAppService acceptance. An existing
+# local signing identity can be selected explicitly; no account/certificate is installed.
+signing_identity="${DESKNODES_SIGNING_IDENTITY:--}"
+/usr/bin/codesign --force --sign "$signing_identity" --timestamp=none "$app_path"
 /usr/bin/codesign --verify --strict --verbose=2 "$app_path"
 # ditto updates a build artifact only, leaving installed copies untouched.
 if [[ -e "$repo_root/build/DeskNodes.app" ]]; then

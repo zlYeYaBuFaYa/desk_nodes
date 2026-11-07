@@ -30,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var rollingOver = false
     private var rolloverDeferred = false
     private let auxiliary = AuxiliaryWindows()
+    private let login = LoginService()
+    private var globalHotkey: GlobalHotkey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
@@ -57,6 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             catchUpDay()
             try actions?.reconcileScreens(DockController.screens())
             refresh()
+            if let actions {
+                // Registration errors must not prevent the first-launch consent question.
+                do {
+                    globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) }
+                    try globalHotkey?.apply(Hotkey(actions.store.preferences().hotkey), persist: {})
+                } catch { report(error) }
+                do { try login.askOnFirstLaunch(store: actions.store) } catch { report(error) }
+            }
         } catch { report(error) }
     }
 
@@ -156,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func createNote(_ sender: Any?) {
+        guard !hasMarkedComposition else { return }
         guard let actions else { return }
         do {
             let note = try actions.createNote()
@@ -287,11 +298,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
     @objc private func showHistory(_ sender: Any?) { auxiliary.show(.history, store: actions?.store) }
-    @objc private func showSettings(_ sender: Any?) { auxiliary.show(.settings) }
+    @objc private func showSettings(_ sender: Any?) {
+        guard let actions else { return }
+        if auxiliary.settings == nil {
+            auxiliary.settings = SettingsPresentation(actions: actions, login: login,
+                changed: { [weak self] in self?.refresh(); self?.catchUpDay() },
+                hotkey: { [weak self] key, persist in
+                    guard let self else { throw StoreError.closed }
+                    if self.globalHotkey == nil { self.globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) } }
+                    try self.globalHotkey?.apply(key, persist: persist)
+                }, export: { [weak self] in
+                    guard let self else { throw StoreError.closed }
+                    return try actions.store.exportBackup {
+                        guard !self.hasMarkedComposition else { return false }
+                        for panel in self.panels.values { try (panel.contentView as? NoteCardView)?.flushRolloverEdits() }
+                        try self.reveal?.flushEdits(); return true
+                    }
+                }, importBackup: { [weak self] backup in
+                    guard let self else { throw StoreError.closed }
+                    try self.importBackup(backup)
+                }, canImport: { [weak self] in self?.hasMarkedComposition == false })
+        }
+        auxiliary.show(.settings)
+    }
+    private func importBackup(_ backup: ValidatedBackup) throws {
+        guard let actions, !hasMarkedComposition else { throw StoreError.invalid("请先完成输入法组词，再导入备份") }
+        if globalHotkey == nil { globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) } }
+        // A conflicting imported shortcut refuses the entire import. Failed replacement
+        // retires the candidate only; old data/UI/binding remain usable.
+        try globalHotkey?.apply(Hotkey(backup.contents.preferences.hotkey)) {
+            try actions.store.replace(with: backup, confirmed: true, prepareEditing: { !self.hasMarkedComposition })
+        }
+        // Invalidate even if imported IDs match. Relinquishing focus cannot flush old data.
+        for panel in panels.values { (panel.contentView as? NoteCardView)?.prepareForRemoval() }
+        reveal?.invalidateAfterImport(); reveal = nil
+        docking?.invalidateAfterImport()
+        for panel in panels.values { panel.undoManager?.removeAllActions(); panel.close() }
+        panels = [:]; actions.invalidateUndoAfterImport()
+        modes = WindowModes(); topmostMenuItem?.title = "全部置顶"
+        docking = DockController(actions: actions, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
+        reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
+            undo: { [weak self] in self?.routeDeletionUndo() ?? false },
+            restoreDeletion: { [weak self] in self?.undoDeletion() ?? false },
+            canMutate: { [weak self] in self?.hasMarkedComposition == false }, failure: { [weak self] in self?.report($0) })
+        rolloverDeferred = false
+        refresh(); auxiliary.reloadHistoryIfVisible()
+        // No autostart registration and no rollover/capture on import.
+    }
     @objc private func quit(_ sender: Any?) { NSApp.terminate(sender) }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        globalHotkey?.stop()
         expiryTimer?.invalidate()
         rolloverTimer?.invalidate()
         reveal?.stop()

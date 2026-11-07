@@ -4,13 +4,18 @@ import DeskNodesCore
 /// Synchronous, serialized repository. Do not suspend or dispatch to another thread inside
 /// transaction closures. Nesting uses savepoints; errors roll back just the relevant scope.
 public final class Store {
-    private let db: SQLite
+    internal let db: SQLite
     private let lock = NSRecursiveLock()
     private let clock: () -> Date
-    private var depth = 0
+    internal var depth = 0
     public init(url: URL, clock: @escaping () -> Date = Date.init) throws {
         self.clock = clock
         db = try SQLite(url: url)
+        try Schema.migrate(db)
+    }
+    internal init(staging: Void) throws {
+        clock = Date.init
+        db = try SQLite(url: nil)
         try Schema.migrate(db)
     }
     public func close() throws {
@@ -19,7 +24,7 @@ public final class Store {
             try db.close()
         }
     }
-    private func locked<T>(_ body: () throws -> T) rethrows -> T {
+    internal func locked<T>(_ body: () throws -> T) rethrows -> T {
         lock.lock(); defer { lock.unlock() }
         return try body()
     }
@@ -317,8 +322,8 @@ public final class Store {
             guard [x,y,width,height].allSatisfy(\.isFinite), width > 0, height > 0 else { throw StoreError.invalid("frame") }
         }
     }
-    private func text(_ value: String?) -> SQLValue { value.map(SQLValue.text) ?? .null }
-    private func encode(_ placement: Placement) throws -> String {
+    internal func text(_ value: String?) -> SQLValue { value.map(SQLValue.text) ?? .null }
+    internal func encode(_ placement: Placement) throws -> String {
         String(decoding: try JSONEncoder().encode(placement), as: UTF8.self)
     }
     private func identity<K>(_ value: String?) throws -> StableID<K> {

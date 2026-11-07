@@ -18,7 +18,7 @@ public enum Placement: Equatable, Codable, Sendable {
     /// Screen coordinates in points; nil display means primary display preference.
     case free(displayID: String?, x: Double, y: Double, width: Double, height: Double)
 }
-public struct Note: Equatable, Sendable {
+public struct Note: Equatable, Codable, Sendable {
     public let id: NoteID
     public var title: String?
     public var color: NotePalette
@@ -33,7 +33,7 @@ public struct Note: Equatable, Sendable {
     public internal(set) var updatedAt: Date
     public internal(set) var deletedAt: Date?
 }
-public struct Item: Equatable, Sendable {
+public struct Item: Equatable, Codable, Sendable {
     public let id: ItemID
     public let noteID: NoteID
     public var text: String
@@ -46,7 +46,7 @@ public struct Item: Equatable, Sendable {
     public internal(set) var deletedAt: Date?
 }
 /// Singleton identity is fixed rather than regenerated on launch.
-public enum EdgePreference: String, Sendable { case automatic, left, right }
+public enum EdgePreference: String, Codable, Sendable { case automatic, left, right }
 public struct Settings: Equatable, Sendable {
     public let id = "native-settings"
     public var rolloverHour: Int = 4

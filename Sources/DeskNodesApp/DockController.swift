@@ -24,6 +24,14 @@ final class DockController: NSObject {
     init(actions: NoteActions, changed: @escaping () -> Void, failure: @escaping (Error) -> Void) {
         self.actions = actions; self.changed = changed; self.failure = failure
     }
+    func invalidateAfterImport() {
+        for panel in panels.values {
+            panel.dockingAction = nil; panel.dragBegin = nil; panel.dragUpdate = nil
+            panel.dragCancel = nil; panel.dragEnd = nil
+        }
+        rails.forEach { $0.close() }; rails = []; placeholder?.close(); placeholder = nil
+        panels = [:]; dragging = nil; selected = [:]; layouts = [:]
+    }
     /// NSScreen.screens[0] is the menu-bar/primary screen; NSScreen.main is the key-window screen.
     static func screens() -> [DockScreen] {
         let mapped = NSScreen.screens.enumerated().map { index, screen in

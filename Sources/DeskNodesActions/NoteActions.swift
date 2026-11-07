@@ -27,6 +27,7 @@ public final class NoteActions {
         let elapsed = clock().timeIntervalSince(pending.1)
         return elapsed.isFinite && elapsed >= 0 && elapsed < 5
     }
+    public func invalidateUndoAfterImport() { pending = nil; prefersDeletionUndo = false }
     public func expireDeletion() { if !canUndoDeletion { pending = nil } }
     @discardableResult public func createNote() throws -> Note {
         try store.transaction { store in

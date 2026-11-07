@@ -9,8 +9,8 @@ internal enum SQLValue {
 /// One connection, serialized by Store's recursive lock; statements never escape a call.
 internal final class SQLite {
     private var handle: OpaquePointer?
-    init(url: URL) throws {
-        let result = sqlite3_open_v2(url.path, &handle,
+    init(url: URL?) throws {
+        let result = sqlite3_open_v2(url?.path ?? ":memory:", &handle,
                                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil)
         guard result == SQLITE_OK else {
             let error = failure(result)
@@ -29,6 +29,17 @@ internal final class SQLite {
     }
     private func failure(_ code: Int32) -> StoreError {
         .sqlite(code: code, message: handle.map { String(cString: sqlite3_errmsg($0)) } ?? "SQLite open failed")
+    }
+    /// Public SQLite backup API: destination transaction commits only at DONE.
+    /// An interrupted/incomplete copy is rolled back by backup_finish.
+    func replace(from source: SQLite, interruptAfterPage: Bool = false) throws {
+        guard let handle, let sourceHandle = source.handle else { throw StoreError.closed }
+        guard let copy = sqlite3_backup_init(handle, "main", sourceHandle, "main") else { throw failure(sqlite3_errcode(handle)) }
+        let step = sqlite3_backup_step(copy, interruptAfterPage ? 1 : -1)
+        let finish = sqlite3_backup_finish(copy)
+        guard step == SQLITE_DONE, finish == SQLITE_OK else {
+            throw StoreError.sqlite(code: step == SQLITE_DONE ? finish : step, message: "atomic backup replacement failed")
+        }
     }
     func run(_ sql: String, _ values: [SQLValue] = []) throws {
         _ = try query(sql, values)

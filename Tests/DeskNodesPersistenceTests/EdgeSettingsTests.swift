@@ -11,6 +11,7 @@ final class EdgeSettingsTests: XCTestCase {
         let day = try HistoryDay("2026-11-06"), snapshot = try db.capture(day: day)
         try db.close()
         let raw = try SQLite(url: url)
+        try raw.run("DROP TABLE native_preferences")
         try raw.run("ALTER TABLE settings DROP COLUMN edge_preference")
         try raw.run("PRAGMA user_version = 5"); try raw.close()
         let migrated = try Store(url: url)

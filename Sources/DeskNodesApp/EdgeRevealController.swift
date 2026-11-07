@@ -93,6 +93,12 @@ final class EdgeRevealController: NSObject {
         timer.tolerance = 0.005
         RunLoop.main.add(timer, forMode: .common); self.timer = timer
     }
+    func invalidateAfterImport() {
+        stop(); generation += 1
+        for card in cards.values { card.prepareForRemoval(); card.removeFromSuperview() }
+        cards = [:]; ordered = []; panel.beforeFocusLoss = nil
+        panel.undoManager?.removeAllActions(); panel.makeFirstResponder(nil); panel.orderOut(nil)
+    }
     func stop() { timer?.invalidate(); timer = nil }
     var hasMarkedComposition: Bool { cards.values.contains { $0.hasMarkedComposition } }
     func flushEdits() throws { for card in cards.values { try card.flushRolloverEdits() } }

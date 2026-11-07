@@ -85,6 +85,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private var note: Note
     private let reveal: Bool
     var canMutate: () -> Bool = { true }
+    private var invalidated = false
     private var hovering = false
     private let tools = NSView()
     private let header = NoteGestureView()
@@ -162,6 +163,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         Double(56 + orderedRows.reduce(CGFloat(0)) { $0 + $1.fittingHeight(width: width - 28) })
     }
     func refresh(_ note: Note) {
+        guard !invalidated else { return }
         self.note = note
         let titleInput = titleEditor.currentEditor() as? NSTextView
         let titleActive = window?.isKeyWindow == true && titleInput != nil
@@ -220,6 +222,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     /// Called only after the application has checked every editor for marked text.
     /// No refresh callbacks inside the rollover transaction.
     func flushRolloverEdits() throws {
+        guard !invalidated else { return }
         // Passive views are never authoritative. Only the live first responder can
         // contribute an unnotified committed edit, inside the rollover transaction.
         if window?.isKeyWindow == true, let editor = titleEditor.currentEditor() as? NSTextView,
@@ -242,6 +245,9 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         do { try flushRolloverEdits() } catch { failure(error) }
     }
     func prepareForRemoval() {
+        invalidated = true
+        activeMenu?.cancelTracking()
+        canMutate = { false }
         if titleEditor.currentEditor() != nil || orderedRows.contains(where: { window?.firstResponder === $0.editor }) {
             window?.makeFirstResponder(nil)
         }
@@ -299,6 +305,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         return menu
     }
     @objc private func docking(_ sender: NSMenuItem) {
+        guard !invalidated else { return }
         (window as? NotePanel)?.dockingAction?(sender.tag == 3 ? nil : [DockEdge.top, .left, .right][sender.tag])
     }
     @objc private func showMenu() { contextMenu().popUp(positioning: nil, at: NSPoint(x: bounds.width - 108, y: 34), in: self) }
@@ -311,9 +318,9 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     @objc private func pin() { run { try actions.appearance(id, level: note.level == .topmost ? .desktop : .topmost) } }
     @objc private func collapse() { run { try actions.appearance(id, collapsed: !note.collapsed) } }
     @objc private func autoHeight() { run { try actions.appearance(id, automaticHeight: true) } }
-    func run(_ body: () throws -> Void) { guard canMutate() else { return }; do { try body(); changed() } catch { failure(error) } }
+    func run(_ body: () throws -> Void) { guard !invalidated, canMutate() else { return }; do { try body(); changed() } catch { failure(error) } }
     func save(_ item: ItemID, text: String) { // No reload while typing/composing.
-        guard let editor = rows[item]?.editor, !editor.hasMarkedText() else { return }
+        guard !invalidated, let editor = rows[item]?.editor, !editor.hasMarkedText() else { return }
         do { try actions.text(item, in: id, text); changed() } catch { failure(error) }
     }
     func toggle(_ item: ItemID) { run { try actions.toggle(item, in: id) } }
@@ -338,20 +345,26 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             try actions.reorder(id, ids: ids)
         }
     }
-    func undo() -> Bool { undoDelete() }
+    func undo() -> Bool { !invalidated && undoDelete() }
     func editingEnded() {
         // AppKit may notify before makeFirstResponder has finished. Never reenter
         // reconciliation while a disappearing row is relinquishing focus.
-        DispatchQueue.main.async { [weak self] in self?.changed() }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.invalidated else { return }
+            self.changed()
+        }
     }
     func controlTextDidChange(_ notification: Notification) {
-        guard let editor = titleEditor.currentEditor() as? NSTextView, !editor.hasMarkedText() else { return }
+        guard !invalidated, let editor = titleEditor.currentEditor() as? NSTextView, !editor.hasMarkedText() else { return }
         do { try actions.title(id, editor.string); changed() } catch { failure(error) }
     }
     func controlTextDidEndEditing(_ notification: Notification) {
         // Change notifications and the focus-loss flush own writes. An ended
         // field editor may already be passive and must never republish stale text.
-        DispatchQueue.main.async { [weak self] in self?.changed() }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.invalidated else { return }
+            self.changed()
+        }
     }
     @objc private func addItem() { add() }
     @objc private func deleteNote() { run { try actions.deleteNote(id) } }

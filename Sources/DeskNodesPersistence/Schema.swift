@@ -1,7 +1,7 @@
 import Foundation
 
 internal enum Schema {
-    static let version = 6
+    static let version = 7
     // Application ID 'DSKN': reject unrelated databases, even if user_version coincides.
     static let applicationID = 0x44534B4E
     static func migrate(_ db: SQLite) throws {
@@ -40,6 +40,12 @@ internal enum Schema {
             if version < 6 {
                 try db.run("ALTER TABLE settings ADD COLUMN edge_preference TEXT NOT NULL DEFAULT 'automatic' CHECK(edge_preference IN ('automatic','left','right'))")
                 try db.run("PRAGMA user_version = 6")
+            }
+            if version < 7 {
+                try db.run("CREATE TABLE native_preferences (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)")
+                let defaults = String(decoding: try JSONEncoder().encode(NativePreferences()), as: UTF8.self)
+                try db.run("INSERT INTO native_preferences VALUES (1,?)", [.text(defaults)])
+                try db.run("PRAGMA user_version = 7")
             }
             guard try db.query("PRAGMA foreign_key_check").isEmpty else {
                 throw StoreError.corrupt("foreign keys")
