@@ -3,7 +3,7 @@
 from pathlib import Path
 import plistlib
 import struct
-import subprocess
+from n10_preservation import verify_protected_files
 import zlib
 
 root = Path(__file__).resolve().parents[1]
@@ -63,7 +63,6 @@ for name, width, height in [('01-desktop-overview',2880,1800),('02-fullscreen-ed
     data = (root/f'docs/spec/macos-native/prototypes/png/{name}.png').read_bytes()
     assert struct.unpack_from('>II',data,16) == (width,height)
     assert '<html lang="zh-CN">' in html and '<script' not in html
-# Full authoritative inputs and milestone plan are immutable for N10.
-subprocess.run(['git','diff','--exit-code','5e6443371a6181f63fe30cd41d8c6f023ea8410b','--',
-                'docs/spec','docs/macos-native-plan.md',*[f'docs/native-n{i}.md' for i in range(1,10)]],cwd=root,check=True)
+# Content anchor survives cherry-pick/git-am and later followup commits.
+verify_protected_files(root)
 print('N10 resource/source/spec preservation checks passed; no Mac acceptance implied.')
