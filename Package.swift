@@ -5,6 +5,8 @@ var products: [Product] = [.library(name: "DeskNodesCore", targets: ["DeskNodesC
     .library(name: "DeskNodesPersistence", targets: ["DeskNodesPersistence"])]
 var targets: [Target] = [
     .target(name: "DeskNodesCore"),
+    .target(name: "DeskNodesActions", dependencies: ["DeskNodesPersistence"]),
+    .testTarget(name: "DeskNodesActionsTests", dependencies: ["DeskNodesActions"]),
     .systemLibrary(name: "CSQLite", pkgConfig: "sqlite3"),
     .target(name: "DeskNodesPersistence", dependencies: ["DeskNodesCore", "CSQLite"]),
     .testTarget(name: "DeskNodesPersistenceTests", dependencies: ["DeskNodesPersistence", "CSQLite"]),
@@ -12,7 +14,7 @@ var targets: [Target] = [
 ]
 #if os(macOS)
 products.append(.executable(name: "DeskNodes", targets: ["DeskNodesApp"]))
-targets.append(.executableTarget(name: "DeskNodesApp", dependencies: ["DeskNodesCore"]))
+targets.append(.executableTarget(name: "DeskNodesApp", dependencies: ["DeskNodesCore", "DeskNodesActions", "DeskNodesPersistence"]))
 targets.append(.testTarget(name: "DeskNodesAppTests", dependencies: ["DeskNodesApp", "DeskNodesCore"]))
 #endif
 

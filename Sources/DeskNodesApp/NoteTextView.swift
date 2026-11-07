@@ -1,19 +1,37 @@
 import AppKit
 import DeskNodesCore
+import DeskNodesActions
 
 /// AppKit owns the input context, selection, undo, and marked range throughout editing.
-/// N1 never replaces the text storage in response to a text-change notification.
+/// Persistence observes edits without replacing text storage. Structural commands alone create/remove rows.
 final class NoteTextView: NSTextView {
     var hasUncommittedComposition: Bool { hasMarkedText() }
 
+    var addRow: (() -> Void)?
+    var deleteEmptyRow: (() -> Void)?
+    var deletionUndo: (() -> Bool)?
+    // keyDown sees the marked range BEFORE the input context consumes Return.
+    private var acceptingComposition = false
+    override func keyDown(with event: NSEvent) {
+        acceptingComposition = hasMarkedText()
+        defer { acceptingComposition = false }
+        super.keyDown(with: event)
+    }
     override func doCommand(by selector: Selector) {
-        guard CompositionPolicy.allowsStructuralCommand(hasMarkedText: hasMarkedText()) else {
-            super.doCommand(by: selector)
-            return
+        let command = EditingPolicy.command(returnKey: selector == #selector(insertNewline(_:)),
+            backspace: selector == #selector(deleteBackward(_:)),
+            marked: acceptingComposition || hasMarkedText(), empty: string.isEmpty)
+        switch command {
+        case .addRow: if let addRow { addRow(); return }
+        case .deleteRow: if let deleteEmptyRow { deleteEmptyRow(); return }
+        case .native: break
         }
-        // N3 will route Return/empty Backspace to item actions here. Until then,
-        // these remain ordinary native text commands, including newline and undo.
         super.doCommand(by: selector)
+    }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers == "z", !hasMarkedText(), deletionUndo?() == true { return true }
+        return super.performKeyEquivalent(with: event)
     }
 
     init(text: String) {
@@ -41,7 +59,7 @@ final class NoteTextView: NSTextView {
         paragraph.maximumLineHeight = NoteMetrics.rowHeight
         defaultParagraphStyle = paragraph
         typingAttributes = [.font: font!, .foregroundColor: NoteTheme.primary, .paragraphStyle: paragraph]
-        setAccessibilityLabel("事项（临时编辑，不保存）")
+        setAccessibilityLabel("事项")
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }

@@ -121,6 +121,44 @@ public final class Store {
             try db.run("UPDATE notes SET deleted=?,updated=? WHERE id=?", [.date(now), .date(now), .text(id.rawValue.uuidString)])
         }
     }
+    /// Restore only an existing tombstone, preserving identity and exact pre-delete timestamps.
+    /// Callers retain the original records; history tables are never touched.
+    public func restoreItem(_ original: Item) throws {
+        try transaction { _ in
+            guard original.deletedAt == nil,
+                  try notes().contains(where: { $0.id == original.noteID }),
+                  let retained = try items(in: original.noteID, includeDeleted: true).first(where: { $0.id == original.id }),
+                  retained.deletedAt != nil,
+                  retained.text == original.text, retained.completed == original.completed,
+                  retained.order == original.order, retained.createdAt == original.createdAt else {
+                throw StoreError.invalid("restore item conflict")
+            }
+            try db.run("UPDATE items SET deleted=NULL,updated=? WHERE id=?",
+                       [.date(original.updatedAt), .text(original.id.rawValue.uuidString)])
+        }
+    }
+    public func restoreNote(_ original: Note, items originals: [Item]) throws {
+        try transaction { _ in
+            guard original.deletedAt == nil,
+                  var retained = try notes(includeDeleted: true).first(where: { $0.id == original.id }),
+                  retained.deletedAt != nil else { throw StoreError.invalid("restore note conflict") }
+            retained.deletedAt = nil
+            retained.updatedAt = original.updatedAt
+            guard retained == original else { throw StoreError.invalid("restore note conflict") }
+            let children = try items(in: original.id, includeDeleted: true)
+            guard Set(children.map(\.id)) == Set(originals.map(\.id)),
+                  Set(originals.map(\.id)).count == originals.count else { throw StoreError.invalid("restore children") }
+            try db.run("UPDATE notes SET deleted=NULL,updated=? WHERE id=?",
+                       [.date(original.updatedAt), .text(original.id.rawValue.uuidString)])
+            for item in originals {
+                guard item.noteID == original.id else { throw StoreError.invalid("restore parent") }
+                if item.deletedAt == nil { try restoreItem(item) }
+                else if children.first(where: { $0.id == item.id }) != item {
+                    throw StoreError.invalid("restore retained child conflict")
+                }
+            }
+        }
+    }
     public func settings() throws -> Settings {
         try locked {
             let rows = try db.query("SELECT hour,minute,dock_edge,display_id FROM settings WHERE id='native-settings'")
