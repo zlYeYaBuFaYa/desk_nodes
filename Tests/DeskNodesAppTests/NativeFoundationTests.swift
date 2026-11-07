@@ -216,6 +216,8 @@ final class NativeFoundationTests: XCTestCase {
         XCTAssertTrue(editors(card).contains { $0 === completed })
         XCTAssertEqual(completed.string, text); XCTAssertEqual(completed.markedRange(), marked)
         XCTAssertEqual(completed.selectedRange(), selected)
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(completed)
         completed.unmarkText()
         // Simulate committed editor content not yet delivered to the delegate.
         completed.string = "完成中文"
@@ -226,6 +228,84 @@ final class NativeFoundationTests: XCTestCase {
         XCTAssertTrue(editors(card).contains { $0 === unfinished })
         XCTAssertEqual(unfinished.selectedRange(), NSRange(location: 1, length: 0))
         XCTAssertEqual(try store.items(in: note.id).map(\.id), [todo.id])
+    }
+
+    @MainActor
+    func testRevealAloneHasFullscreenAuxiliaryPolicy() {
+        _ = NSApplication.shared
+        let reveal = RevealPanel(), ordinary = NotePanel(origin: .zero)
+        defer { reveal.close(); ordinary.close() }
+        XCTAssertTrue(reveal.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(reveal.collectionBehavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(reveal.collectionBehavior.contains(.canJoinAllSpaces))
+        XCTAssertFalse(reveal.collectionBehavior.contains(.fullScreenNone))
+        XCTAssertFalse(ordinary.collectionBehavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(ordinary.collectionBehavior.contains(.fullScreenNone))
+        XCTAssertTrue(reveal.canBecomeKey); XCTAssertFalse(reveal.canBecomeMain)
+    }
+
+    @MainActor
+    func testTwoSurfacesSynchronizeWithoutPassiveFlushOrMarkedReplacement() throws {
+        _ = NSApplication.shared
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try Store(url: url); defer { try? store.close() }
+        let actions = NoteActions(store: store), note = try actions.createNote()
+        let item = try XCTUnwrap(store.items(in: note.id).first)
+        try actions.text(item.id, in: note.id, "first")
+        let ordinary = NotePanel(origin: .zero), reveal = RevealPanel()
+        defer { ordinary.close(); reveal.close() }
+        let a = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") })
+        let b = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") }, reveal: true)
+        ordinary.contentView = a; reveal.contentView = b
+        func editors(_ view: NSView) -> [NoteTextView] {
+            (view as? NoteTextView).map { [$0] } ?? view.subviews.flatMap(editors)
+        }
+        let first = try XCTUnwrap(editors(a).first), second = try XCTUnwrap(editors(b).first)
+        ordinary.makeKeyAndOrderFront(nil); ordinary.makeFirstResponder(first)
+        reveal.makeKeyAndOrderFront(nil); reveal.makeFirstResponder(second)
+        second.string = "new 中文"
+        try b.flushRolloverEdits()
+        // An inactive window retains firstResponder: it still must not flush.
+        first.string = "stale"
+        try a.flushRolloverEdits()
+        XCTAssertEqual(try store.items(in: note.id).first?.text, "new 中文")
+        a.refresh(try XCTUnwrap(store.notes().first))
+        XCTAssertEqual(first.string, "new 中文")
+        second.setSelectedRange(NSRange(location: 2, length: 0))
+        second.setMarkedText("拼音", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let text = second.string, range = second.markedRange(), selection = second.selectedRange()
+        try actions.toggle(item.id, in: note.id)
+        b.refresh(try XCTUnwrap(store.notes().first))
+        XCTAssertEqual(second.string, text); XCTAssertEqual(second.markedRange(), range)
+        XCTAssertEqual(second.selectedRange(), selection)
+        XCTAssertTrue(b.hasMarkedComposition)
+        XCTAssertFalse(first.undoManager === second.undoManager)
+    }
+
+    @MainActor
+    func testRevealTitleFieldCompositionIsIncludedInGate() throws {
+        _ = NSApplication.shared
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try Store(url: url); defer { try? store.close() }
+        let actions = NoteActions(store: store), note = try actions.createNote()
+        let panel = RevealPanel(); defer { panel.close() }
+        let card = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") }, reveal: true)
+        panel.contentView = card
+        let field = try XCTUnwrap(card.subviews.compactMap { $0 as? NoteTitleField }.first)
+        panel.makeKeyAndOrderFront(nil); panel.makeFirstResponder(field)
+        let editor = try XCTUnwrap(field.currentEditor() as? NoteTextView)
+        XCTAssertTrue(editor === field.ownedEditor)
+        editor.setMarkedText("标题拼音", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(card.hasMarkedComposition)
+        let marked = editor.markedRange(), selection = editor.selectedRange(), text = editor.string
+        card.refresh(try XCTUnwrap(store.notes().first))
+        XCTAssertEqual(editor.string, text); XCTAssertEqual(editor.markedRange(), marked)
+        XCTAssertEqual(editor.selectedRange(), selection)
+        editor.unmarkText(); editor.string = "已提交标题"
+        try card.flushRolloverEdits()
+        XCTAssertEqual(try store.notes().first?.title, "已提交标题")
     }
 
 }

@@ -5,6 +5,8 @@ import DeskNodesActions
 /// AppKit owns the input context, selection, undo, and marked range throughout editing.
 /// Persistence observes edits without replacing text storage. Structural commands alone create/remove rows.
 final class NoteTextView: NSTextView {
+    private let textUndo = UndoManager()
+    override var undoManager: UndoManager? { textUndo }
     var hasUncommittedComposition: Bool { hasMarkedText() }
 
     var addRow: (() -> Void)?
@@ -63,4 +65,15 @@ final class NoteTextView: NSTextView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+}
+
+/// Each title owns a field editor and undo history; switching windows/notes never
+/// transfers the shared system field editor's previous note undo into this title.
+final class NoteTitleField: NSTextField {
+    let ownedEditor = NoteTextView(text: "")
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        ownedEditor.isFieldEditor = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
 }

@@ -46,10 +46,12 @@ public struct Item: Equatable, Sendable {
     public internal(set) var deletedAt: Date?
 }
 /// Singleton identity is fixed rather than regenerated on launch.
+public enum EdgePreference: String, Sendable { case automatic, left, right }
 public struct Settings: Equatable, Sendable {
     public let id = "native-settings"
     public var rolloverHour: Int = 4
     public var rolloverMinute: Int = 0
+    public var edgePreference: EdgePreference = .automatic
     public var dockEdge: DockEdge = .top
     public var displayID: String? = nil
     public init() {}

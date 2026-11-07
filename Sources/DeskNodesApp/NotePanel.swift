@@ -4,7 +4,10 @@ import DeskNodesCore
 import DeskNodesPersistence
 import DeskNodesActions
 
-final class NotePanel: NSPanel {
+final class NotePanel: NSPanel, NSWindowDelegate {
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
+        (client as? NoteTitleField)?.ownedEditor
+    }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     var choice: WindowLevel = .desktop
@@ -25,6 +28,7 @@ final class NotePanel: NSPanel {
         super.sendEvent(event)
     }
     override func resignKey() {
+        if let card = contentView as? NoteCardView, !card.hasMarkedComposition { card.flushBeforeFocusLoss() }
         super.resignKey(); temporarilyRaised = false; applyLevel()
     }
     var deletionUndo: (() -> Bool)?
@@ -36,6 +40,7 @@ final class NotePanel: NSPanel {
     init(origin: NSPoint) {
         super.init(contentRect: NSRect(origin: origin, size: NSSize(width: 240, height: 260)),
                    styleMask: [.borderless], backing: .buffered, defer: false)
+        delegate = self
         title = "便签"
         isOpaque = false; backgroundColor = .clear; hasShadow = true
         isFloatingPanel = false; hidesOnDeactivate = false; isReleasedWhenClosed = false
@@ -71,13 +76,15 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private let changed: () -> Void
     private let failure: (Error) -> Void
     private let undoDelete: () -> Bool
-    private let titleEditor = NSTextField()
+    private let titleEditor = NoteTitleField(frame: .zero)
     private let count = NSTextField(labelWithString: "")
     private let list = FlippedList()
     private var orderedRows: [ItemRow] = []
     private let scroll = NSScrollView()
     private var rows: [ItemID: ItemRow] = [:]
     private var note: Note
+    private let reveal: Bool
+    var canMutate: () -> Bool = { true }
     private var hovering = false
     private let tools = NSView()
     private let header = NoteGestureView()
@@ -88,8 +95,9 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private var palette: NotePalette = .paper
     override var isFlipped: Bool { true }
     init(note: Note, actions: NoteActions, changed: @escaping () -> Void,
-         undoDelete: @escaping () -> Bool, failure: @escaping (Error) -> Void) {
+         undoDelete: @escaping () -> Bool, failure: @escaping (Error) -> Void, reveal: Bool = false) {
         self.note = note
+        self.reveal = reveal
         id = note.id; self.actions = actions; self.changed = changed
         self.undoDelete = undoDelete; self.failure = failure
         super.init(frame: .zero)
@@ -127,12 +135,13 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     override func layout() {
         super.layout()
         header.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 40)
-        let compact = note.collapsed
+        let compact = !reveal && note.collapsed
         titleEditor.isHidden = compact
         collapsedLabel.isHidden = !compact
         scroll.isHidden = compact
         tools.isHidden = !hovering; count.isHidden = hovering
-        grip.isHidden = compact || !hovering || (window as? NotePanel)?.docked == true
+        header.isHidden = reveal
+        grip.isHidden = reveal || compact || !hovering || (window as? NotePanel)?.docked == true
         let titleWidth = bounds.width - (hovering ? 124 : 82)
         titleEditor.frame = NSRect(x: 14, y: 10, width: titleWidth, height: 22)
         collapsedLabel.frame = NSRect(x: 14, y: 7, width: titleWidth, height: 20)
@@ -154,6 +163,15 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     }
     func refresh(_ note: Note) {
         self.note = note
+        let titleInput = titleEditor.currentEditor() as? NSTextView
+        let titleActive = window?.isKeyWindow == true && titleInput != nil
+        let localTitle = titleInput?.string ?? titleEditor.stringValue
+        if EditorSynchronization.receive(local: localTitle, committed: note.title ?? "",
+            active: titleActive, marked: titleInput?.hasMarkedText() == true) {
+            titleEditor.ownedEditor.undoManager?.removeAllActions()
+            titleEditor.stringValue = note.title ?? ""
+            if let titleInput { titleInput.string = note.title ?? "" }
+        }
         palette = note.color
         do {
             let items = try actions.store.items(in: id)
@@ -162,7 +180,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
                 if let row = rows[key] {
                     // A completed focused editor must relinquish focus before leaving the view tree.
                     if window?.firstResponder === row.editor { window?.makeFirstResponder(nil) }
-                    row.editor.undoManager?.removeAllActions(withTarget: row.editor)
+                    row.editor.undoManager?.removeAllActions()
                     row.removeFromSuperview()
                 }
                 rows.removeValue(forKey: key)
@@ -176,10 +194,11 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
                 }
                 let row = rows[item.id]!
                 orderedRows.append(row)
+                row.synchronize(item.text)
                 row.setCompleted(item.completed)
             }
             collapsedLabel.stringValue = WindowModes.collapsedTitle(note.title, firstItem: items.first?.text)
-            layer?.cornerRadius = note.collapsed ? 10 : 12
+            layer?.cornerRadius = !reveal && note.collapsed ? 10 : 12
             count.stringValue = "\(items.filter(\.completed).count) / \(items.count)"
             if let pin = tools.subviews.dropFirst().first as? NSButton {
                 pin.image = NSImage(systemSymbolName: note.level == .topmost ? "pin.fill" : "pin", accessibilityDescription: "置顶")
@@ -190,7 +209,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         } catch { failure(error) }
     }
     var hasMarkedComposition: Bool {
-        // NSTextField uses a shared field editor outside this card's subtree.
+        // The owned title field editor lives outside this card's subtree.
         if let editor = window?.firstResponder as? NSTextView, editor.hasMarkedText() { return true }
         func marked(_ view: NSView) -> Bool {
             if let editor = view as? NSTextView, editor.hasMarkedText() { return true }
@@ -201,19 +220,33 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     /// Called only after the application has checked every editor for marked text.
     /// No refresh callbacks inside the rollover transaction.
     func flushRolloverEdits() throws {
-        if var current = try actions.store.notes().first(where: { $0.id == id }),
-           (current.title ?? "") != titleEditor.stringValue {
-            current.title = titleEditor.stringValue.isEmpty ? nil : titleEditor.stringValue
-            try actions.store.update(current)
+        // Passive views are never authoritative. Only the live first responder can
+        // contribute an unnotified committed edit, inside the rollover transaction.
+        if window?.isKeyWindow == true, let editor = titleEditor.currentEditor() as? NSTextView,
+           !editor.hasMarkedText(),
+           let current = try actions.store.notes().first(where: { $0.id == id }),
+           (current.title ?? "") != editor.string {
+            var updated = current; updated.title = editor.string.isEmpty ? nil : editor.string
+            try actions.store.update(updated)
         }
-        let live = try actions.store.items(in: id)
-        for row in orderedRows {
-            if var item = live.first(where: { $0.id == row.item.id }), item.text != row.editor.string {
-                item.text = row.editor.string
-                try actions.store.update(item)
+        for row in orderedRows where window?.isKeyWindow == true && window?.firstResponder === row.editor {
+            guard !row.editor.hasMarkedText(),
+                  let item = try actions.store.items(in: id).first(where: { $0.id == row.item.id }) else { continue }
+            if EditorSynchronization.flush(local: row.editor.string, committed: item.text, active: true, marked: row.editor.hasMarkedText()) {
+                var updated = item; updated.text = row.editor.string; try actions.store.update(updated)
             }
             row.editor.breakUndoCoalescing()
         }
+    }
+    func flushBeforeFocusLoss() {
+        do { try flushRolloverEdits() } catch { failure(error) }
+    }
+    func prepareForRemoval() {
+        if titleEditor.currentEditor() != nil || orderedRows.contains(where: { window?.firstResponder === $0.editor }) {
+            window?.makeFirstResponder(nil)
+        }
+        titleEditor.ownedEditor.undoManager?.removeAllActions()
+        for row in orderedRows { row.editor.undoManager?.removeAllActions() }
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -250,7 +283,8 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         for (index, title) in ["停靠到顶部", "停靠到左侧", "停靠到右侧", "移出停靠条"].enumerated() {
             let item = NSMenuItem(title: title, action: #selector(docking(_:)), keyEquivalent: "")
             item.target = self; item.tag = index
-            if index == 3 { item.isEnabled = (window as? NotePanel)?.docked == true }
+            item.isEnabled = !reveal
+            if index == 3 { item.isEnabled = !reveal && (window as? NotePanel)?.docked == true }
             menu.addItem(item)
         }
         menu.addItem(.separator())
@@ -277,12 +311,14 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     @objc private func pin() { run { try actions.appearance(id, level: note.level == .topmost ? .desktop : .topmost) } }
     @objc private func collapse() { run { try actions.appearance(id, collapsed: !note.collapsed) } }
     @objc private func autoHeight() { run { try actions.appearance(id, automaticHeight: true) } }
-    func run(_ body: () throws -> Void) { do { try body(); changed() } catch { failure(error) } }
+    func run(_ body: () throws -> Void) { guard canMutate() else { return }; do { try body(); changed() } catch { failure(error) } }
     func save(_ item: ItemID, text: String) { // No reload while typing/composing.
+        guard let editor = rows[item]?.editor, !editor.hasMarkedText() else { return }
         do { try actions.text(item, in: id, text); changed() } catch { failure(error) }
     }
     func toggle(_ item: ItemID) { run { try actions.toggle(item, in: id) } }
     func delete(_ item: ItemID) {
+        guard canMutate() else { return }
         let previous = orderedRows.firstIndex(where: { $0.item.id == item }) ?? 0
         run { try actions.deleteItem(item, in: id) }
         if !orderedRows.isEmpty {
@@ -303,8 +339,19 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         }
     }
     func undo() -> Bool { undoDelete() }
+    func editingEnded() {
+        // AppKit may notify before makeFirstResponder has finished. Never reenter
+        // reconciliation while a disappearing row is relinquishing focus.
+        DispatchQueue.main.async { [weak self] in self?.changed() }
+    }
     func controlTextDidChange(_ notification: Notification) {
-        do { try actions.title(id, titleEditor.stringValue) } catch { failure(error) }
+        guard let editor = titleEditor.currentEditor() as? NSTextView, !editor.hasMarkedText() else { return }
+        do { try actions.title(id, editor.string); changed() } catch { failure(error) }
+    }
+    func controlTextDidEndEditing(_ notification: Notification) {
+        // Change notifications and the focus-loss flush own writes. An ended
+        // field editor may already be passive and must never republish stale text.
+        DispatchQueue.main.async { [weak self] in self?.changed() }
     }
     @objc private func addItem() { add() }
     @objc private func deleteNote() { run { try actions.deleteNote(id) } }
@@ -371,6 +418,16 @@ private final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: NSFont.systemFont(ofSize: 13), .paragraphStyle: paragraph])
         return max(26, ceil(rect.height))
+    }
+    func synchronize(_ text: String) {
+        guard EditorSynchronization.receive(local: editor.string, committed: text, active: window?.isKeyWindow == true && window?.firstResponder === editor, marked: editor.hasMarkedText()) else { return }
+        editor.breakUndoCoalescing()
+        editor.undoManager?.removeAllActions()
+        editor.string = text
+    }
+    func textDidEndEditing(_ notification: Notification) {
+        guard let owner else { return }
+        owner.editingEnded() // refresh only; never write an inactive copy
     }
     func setCompleted(_ completed: Bool) {
         check.state = completed ? .on : .off

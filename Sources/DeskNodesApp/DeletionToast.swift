@@ -9,6 +9,7 @@ final class DeletionToast: NSPanel {
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
         super.init(contentRect: NSRect(x: visible.midX - 130, y: visible.minY + 24, width: 260, height: 44),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenNone]
         isReleasedWhenClosed = false; isOpaque = false; backgroundColor = .clear; hasShadow = true
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 44))
         view.wantsLayer = true; view.layer?.cornerRadius = 12

@@ -311,11 +311,12 @@ final class RolloverTests: XCTestCase {
         for table in ["item_archives", "pending_deleted_items", "pending_deleted_notes", "rollover_state"] {
             try raw.run("DROP TABLE \(table)")
         }
+        try raw.run("ALTER TABLE settings DROP COLUMN edge_preference")
         try raw.run("PRAGMA user_version = 4")
         let migrated = try store()
         XCTAssertEqual(try migrated.items(in: note.id, includeDeleted: true), retained)
         XCTAssertEqual(try migrated.snapshot(day: old.day), old)
-        XCTAssertEqual(try raw.query("PRAGMA user_version")[0][0], "5")
+        XCTAssertEqual(try raw.query("PRAGMA user_version")[0][0], "6")
         XCTAssertEqual(try raw.query("SELECT item_id FROM pending_deleted_items")[0][0], unrecorded.id.rawValue.uuidString)
         try migrated.rollover(using: utc)
         let snapshot = try advance(migrated, to: "2026-11-07T04:00:00Z")
@@ -328,6 +329,7 @@ final class RolloverTests: XCTestCase {
         let db = try store(); let old = try db.capture(day: day("2026-11-05")); try db.close()
         let raw = try SQLite(url: url)
         for table in ["item_archives", "pending_deleted_items", "pending_deleted_notes", "rollover_state"] { try raw.run("DROP TABLE \(table)") }
+        try raw.run("ALTER TABLE settings DROP COLUMN edge_preference")
         try raw.run("PRAGMA user_version = 4")
         try raw.run("CREATE TABLE pending_deleted_items (conflict TEXT)")
         XCTAssertThrowsError(try store())

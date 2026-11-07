@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panels: [NoteID: NotePanel] = [:]
     private var actions: NoteActions?
     private var docking: DockController?
+    private var reveal: EdgeRevealController?
     private var toast: DeletionToast?
     private var emptyWindow: NSPanel?
     private var expiryTimer: Timer?
@@ -45,6 +46,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 docking = DockController(actions: actions, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
             }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            if let actions {
+                reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
+                    undo: { [weak self] in self?.routeDeletionUndo() ?? false },
+                    restoreDeletion: { [weak self] in self?.undoDeletion() ?? false },
+                    canMutate: { [weak self] in self?.hasMarkedComposition == false },
+                    failure: { [weak self] in self?.report($0) })
+            }
             installRolloverScheduler()
             catchUpDay()
             try actions?.reconcileScreens(DockController.screens())
@@ -79,12 +87,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Resolve the current timezone on each trigger, never cache an offset across DST.
             let calendar = try BusinessCalendar(timeZone: .current)
             let result = try actions.store.rollover(using: calendar) {
-                for panel in self.panels.values {
-                    if (panel.contentView as? NoteCardView)?.hasMarkedComposition == true { return false }
-                }
+                if self.hasMarkedComposition { return false }
                 for panel in self.panels.values {
                     try (panel.contentView as? NoteCardView)?.flushRolloverEdits()
                 }
+                try self.reveal?.flushEdits()
                 return true
             }
             rolloverDeferred = result == .deferredEditing
@@ -92,6 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch { report(error) }
     }
 
+    private var hasMarkedComposition: Bool {
+        reveal?.hasMarkedComposition == true || panels.values.contains {
+            ($0.contentView as? NoteCardView)?.hasMarkedComposition == true
+        }
+    }
     private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -161,7 +173,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let notes = try actions.store.notes()
             let ids = Set(notes.map(\.id))
-            for id in Array(panels.keys) where !ids.contains(id) { panels.removeValue(forKey: id)?.dismissNote() }
+            for id in Array(panels.keys) where !ids.contains(id) {
+                (panels[id]?.contentView as? NoteCardView)?.prepareForRemoval()
+                panels.removeValue(forKey: id)?.dismissNote()
+            }
             let visible = NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
             for (index, note) in notes.enumerated() {
                 if let panel = panels[note.id], let card = panel.contentView as? NoteCardView {
@@ -174,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     changed: { [weak self] in self?.refresh() },
                     undoDelete: { [weak self] in self?.routeDeletionUndo() ?? false },
                     failure: { [weak self] in self?.report($0) })
+                (panel.contentView as? NoteCardView)?.canMutate = { [weak self] in self?.hasMarkedComposition == false }
                 panels[note.id] = panel; try configure(panel, note: note); panel.showNote()
             }
             emptyWindow?.close(); emptyWindow = nil
@@ -189,6 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.contentView?.addSubview(button); panel.makeKeyAndOrderFront(nil); emptyWindow = panel
             }
             docking?.layout(panels: panels, modes: modes)
+            reveal?.refresh(notes)
             updateToast()
         } catch { report(error) }
     }
@@ -247,12 +264,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private func tickExpiry() { actions?.expireDeletion(); updateToast() }
     @discardableResult private func undoDeletion() -> Bool {
-        guard let actions, actions.canUndoDeletion else { return false }
+        guard !hasMarkedComposition, let actions, actions.canUndoDeletion else { return false }
         do { let restored = try actions.undoDeletion(); refresh(); return restored }
         catch { report(error); return true }
     }
     private func routeDeletionUndo() -> Bool {
-        guard actions?.prefersDeletionUndo == true else { return false }
+        guard !hasMarkedComposition, actions?.prefersDeletionUndo == true else { return false }
         if let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.hasMarkedText() { return false }
         return undoDeletion()
     }
@@ -277,6 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         expiryTimer?.invalidate()
         rolloverTimer?.invalidate()
+        reveal?.stop()
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         try? actions?.store.close()

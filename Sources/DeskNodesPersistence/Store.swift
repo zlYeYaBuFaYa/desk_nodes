@@ -171,12 +171,14 @@ public final class Store {
     }
     public func settings() throws -> Settings {
         try locked {
-            let rows = try db.query("SELECT hour,minute,dock_edge,display_id FROM settings WHERE id='native-settings'")
+            let rows = try db.query("SELECT hour,minute,dock_edge,display_id,edge_preference FROM settings WHERE id='native-settings'")
             guard let row = rows.first, let hour = Int(row[0] ?? ""), let minute = Int(row[1] ?? ""),
                   let edge = DockEdge(rawValue: row[2] ?? "") else { throw StoreError.corrupt("settings") }
             var value = Settings()
             value.rolloverHour = hour; value.rolloverMinute = minute
             value.dockEdge = edge; value.displayID = row[3]
+            guard let preference = EdgePreference(rawValue: row[4] ?? "") else { throw StoreError.corrupt("edge preference") }
+            value.edgePreference = preference
             return value
         }
     }
@@ -185,9 +187,9 @@ public final class Store {
             guard (0...23).contains(settings.rolloverHour), (0...59).contains(settings.rolloverMinute) else {
                 throw StoreError.invalid("rollover time")
             }
-            try db.run("UPDATE settings SET hour=?,minute=?,dock_edge=?,display_id=? WHERE id='native-settings'",
+            try db.run("UPDATE settings SET hour=?,minute=?,dock_edge=?,display_id=?,edge_preference=? WHERE id='native-settings'",
                        [.integer(Int64(settings.rolloverHour)), .integer(Int64(settings.rolloverMinute)),
-                        .text(settings.dockEdge.rawValue), text(settings.displayID)])
+                        .text(settings.dockEdge.rawValue), text(settings.displayID), .text(settings.edgePreference.rawValue)])
         }
     }
     /// Captures exactly once; retry returns the original, including its original carry decision.
