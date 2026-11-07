@@ -1,9 +1,13 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
-var products: [Product] = [.library(name: "DeskNodesCore", targets: ["DeskNodesCore"])]
+var products: [Product] = [.library(name: "DeskNodesCore", targets: ["DeskNodesCore"]),
+    .library(name: "DeskNodesPersistence", targets: ["DeskNodesPersistence"])]
 var targets: [Target] = [
     .target(name: "DeskNodesCore"),
+    .systemLibrary(name: "CSQLite", pkgConfig: "sqlite3"),
+    .target(name: "DeskNodesPersistence", dependencies: ["DeskNodesCore", "CSQLite"]),
+    .testTarget(name: "DeskNodesPersistenceTests", dependencies: ["DeskNodesPersistence", "CSQLite"]),
     .testTarget(name: "DeskNodesCoreTests", dependencies: ["DeskNodesCore"])
 ]
 #if os(macOS)
