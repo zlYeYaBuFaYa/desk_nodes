@@ -6,6 +6,7 @@
     <key>CFBundleLocalizations</key><array><string>zh_CN</string></array>
     <key>CFBundleDisplayName</key><string>DeskNodes</string>
     <key>CFBundleName</key><string>DeskNodes</string>
+    <key>CFBundleIconFile</key><string>DeskNodes.icns</string>
     <key>CFBundleExecutable</key><string>DeskNodes</string>
     <key>CFBundleIdentifier</key><string>local.desknodes.native</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>

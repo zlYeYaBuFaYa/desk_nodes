@@ -30,7 +30,8 @@ final class NoteGestureView: NSView {
     var resize = false
     var finish: ((NoteFrame, Bool) -> Void)?
     override func mouseDown(with event: NSEvent) {
-        guard let panel = window as? NotePanel, let original = panel.expandedFrame else { return }
+        guard let panel = window as? NotePanel, let original = panel.expandedFrame,
+              (panel.contentView as? NoteCardView)?.canMutate() != false else { return }
         if resize && (panel.frame.height == 32 || panel.docked) { return }
         let start = NSEvent.mouseLocation
         var result = original

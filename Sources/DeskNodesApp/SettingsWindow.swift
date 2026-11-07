@@ -49,6 +49,7 @@ final class SettingsPresentation: ObservableObject {
     }
     func saveSettings(docking: Bool = false) {
         perform {
+            if docking && !canImport() { throw StoreError.invalid("请先完成输入法组词，再调整停靠条") }
             if docking { try actions.dockPreference(edge: settings.dockEdge, displayID: settings.displayID) }
             else { try actions.store.update(settings) }
             changed()
@@ -108,7 +109,7 @@ struct SettingsView: View {
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4)
-            VStack(spacing: 0, content: content).background(Color(nsColor: .controlBackgroundColor))
+            VStack(spacing: 0, content: content).background(Color(nsColor: NoteTheme.dynamic("FFFFFF", "302E2B")))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
         }
@@ -180,8 +181,8 @@ struct SettingsView: View {
                 }
                 if let message = model.message { Text(message).foregroundStyle(.red).textSelection(.enabled) }
             }.padding(.horizontal, 40).padding(.vertical, 20)
-        }.font(.system(size: 13)).frame(minWidth: 760, minHeight: 620)
-            .background(Color(nsColor: .windowBackgroundColor))
+        }.font(.system(size: 13)).frame(minWidth: 760, minHeight: 576)
+            .background(Color(nsColor: NoteTheme.dynamic("F4F3F0", "242321")))
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.reload() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in model.reload() }
     }

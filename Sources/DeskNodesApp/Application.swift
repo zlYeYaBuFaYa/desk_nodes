@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
             if let actions {
-                docking = DockController(actions: actions, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
+                docking = DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false }, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
             }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
             if let actions {
@@ -270,7 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 expiryTimer = timer
             }
         } else {
-            toast?.close(); toast = nil; expiryTimer?.invalidate(); expiryTimer = nil
+            toast?.dismiss(); toast = nil; expiryTimer?.invalidate(); expiryTimer = nil
         }
     }
     private func tickExpiry() { actions?.expireDeletion(); updateToast() }
@@ -293,7 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private func report(_ error: Error) {
         let alert = NSAlert()
-        alert.messageText = "无法保存便签"
+        alert.messageText = "无法完成操作"
         alert.informativeText = String(describing: error)
         alert.runModal()
     }
@@ -336,7 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for panel in panels.values { panel.undoManager?.removeAllActions(); panel.close() }
         panels = [:]; actions.invalidateUndoAfterImport()
         modes = WindowModes(); topmostMenuItem?.title = "全部置顶"
-        docking = DockController(actions: actions, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
+        docking = DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false }, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
         reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
             undo: { [weak self] in self?.routeDeletionUndo() ?? false },
             restoreDeletion: { [weak self] in self?.undoDeletion() ?? false },
@@ -348,6 +348,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quit(_ sender: Any?) { NSApp.terminate(sender) }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !hasMarkedComposition else {
+            report(StoreError.invalid("请先完成输入法组词，再退出 DeskNodes。"))
+            return .terminateCancel
+        }
+        do {
+            for panel in panels.values { try (panel.contentView as? NoteCardView)?.flushRolloverEdits() }
+            try reveal?.flushEdits()
+            return .terminateNow
+        } catch { report(error); return .terminateCancel }
+    }
     func applicationWillTerminate(_ notification: Notification) {
         globalHotkey?.stop()
         expiryTimer?.invalidate()

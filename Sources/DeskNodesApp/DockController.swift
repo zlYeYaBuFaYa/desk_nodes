@@ -9,6 +9,7 @@ import DeskNodesPersistence
 @MainActor
 final class DockController: NSObject {
     let actions: NoteActions
+    let canMutate: () -> Bool
     let changed: () -> Void
     let failure: (Error) -> Void
     private var panels: [NoteID: NotePanel] = [:]
@@ -21,7 +22,8 @@ final class DockController: NSObject {
     private var layouts: [String: DockLayout] = [:]
     private var pages: [String: Int] = [:]
     private var controls: [(DockEdge, String?)] = []
-    init(actions: NoteActions, changed: @escaping () -> Void, failure: @escaping (Error) -> Void) {
+    init(actions: NoteActions, canMutate: @escaping () -> Bool = { true }, changed: @escaping () -> Void, failure: @escaping (Error) -> Void) {
+        self.canMutate = canMutate
         self.actions = actions; self.changed = changed; self.failure = failure
     }
     func invalidateAfterImport() {
@@ -288,6 +290,7 @@ final class DockController: NSObject {
         } catch { failure(error) }
     }
     private func changeDock(_ id: NoteID, edge: DockEdge?) {
+        guard canMutate() else { return }
         do {
             if let edge { try actions.dock(id, edge: edge, displayID: nil, index: Int.max, screens: Self.screens()) }
             else { try actions.detach(id); try actions.reconcileScreens(Self.screens()) }
@@ -318,7 +321,7 @@ final class DockController: NSObject {
         }
     }
     @objc private func preference(_ sender: NSMenuItem) {
-        guard controls.indices.contains(sender.tag) else { return }
+        guard canMutate(), controls.indices.contains(sender.tag) else { return }
         do { let value = controls[sender.tag]; try actions.dockPreference(edge: value.0, displayID: value.1); changed() } catch { failure(error) }
     }
     private func rect(_ frame: NoteFrame) -> NSRect { NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height) }

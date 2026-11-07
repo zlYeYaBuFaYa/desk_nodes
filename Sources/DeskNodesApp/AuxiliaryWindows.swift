@@ -39,7 +39,7 @@ final class AuxiliaryWindows {
         if let existing = controllers[destination] {
             controller = existing
         } else {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: destination == .history ? 1040 : 760, height: destination == .history ? 656 : 680),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: destination == .history ? 1040 : 760, height: destination == .history ? 656 : 576),
                                   styleMask: destination == .history ? [.titled, .closable, .resizable, .miniaturizable] : [.titled, .closable], backing: .buffered, defer: false)
             window.title = destination.rawValue
             window.isReleasedWhenClosed = false

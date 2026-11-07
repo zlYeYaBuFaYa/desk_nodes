@@ -186,6 +186,43 @@ final class BackupTests: XCTestCase {
         XCTAssertThrowsError(try db.exportBackup { throw Failure.flush })
         XCTAssertEqual(try db.items(in: note.id)[0].text, "final中文")
     }
+    func testExportFlushFailureRollsBackAllCommittedEditorWrites() throws {
+        let db = try populated(), before = try db.exportBackup()
+        let note = try XCTUnwrap(db.notes().first)
+        let item = try XCTUnwrap(db.items(in: note.id).first)
+        enum Failure: Error { case flush }
+        XCTAssertThrowsError(try db.exportBackup {
+            var edited = item; edited.text = "已提交，但导出事务失败"
+            try db.update(edited)
+            var titled = note; titled.title = "未完成的刷新"
+            try db.update(titled)
+            throw Failure.flush
+        })
+        XCTAssertEqual(try db.exportBackup(), before)
+        try db.close()
+    }
+    func testInterruptedImportPreservesHotkeyPolicyAndEveryDestinationTable() throws {
+        let target = try populated(), before = try target.exportBackup()
+        let source = try store(), note = try source.createNote(title: "导入候选")
+        for i in 0..<20 { _ = try source.createItem(in: note.id, text: String(repeating: "大备份", count: 1000) + String(i)) }
+        var preferences = try source.preferences(); preferences.hotkey = "Control+Shift+8"
+        try source.update(preferences)
+        let backup = try Store.validateBackup(source.exportBackup())
+        let binding = HotkeyBinding<Int>(), old = try Hotkey(target.preferences().hotkey)
+        let candidate = try Hotkey(preferences.hotkey)
+        var retired: [Int] = []
+        try binding.replace(old, register: { _ in 1 }, persist: {}, unregister: { retired.append($0) })
+        XCTAssertThrowsError(try binding.replace(candidate, register: { _ in 2 }, persist: {
+            try target.replace(with: backup, confirmed: true, prepareEditing: { true }, interruptAfterPage: true)
+        }, unregister: { retired.append($0) }))
+        XCTAssertEqual(binding.binding, old); XCTAssertEqual(retired, [2])
+        XCTAssertEqual(try target.exportBackup(), before)
+        try binding.replace(candidate, register: { _ in 3 }, persist: {
+            try target.replace(with: backup, confirmed: true)
+        }, unregister: { retired.append($0) })
+        XCTAssertEqual(binding.binding, candidate); XCTAssertEqual(retired, [2, 1])
+        XCTAssertEqual(try contents(target), try contents(source))
+    }
     func testEmptyBackupAndExtremeOrderAreSupported() throws {
         let source = try store(), target = try populated()
         try target.replace(with: Store.validateBackup(source.exportBackup()), confirmed: true)

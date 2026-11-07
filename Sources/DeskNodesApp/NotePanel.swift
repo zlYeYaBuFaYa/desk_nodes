@@ -78,6 +78,8 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private let undoDelete: () -> Bool
     private let titleEditor = NoteTitleField(frame: .zero)
     private let count = NSTextField(labelWithString: "")
+    private let pinIndicator = NSImageView()
+    private let addButton = NSButton(title: "＋ 添加事项", target: nil, action: nil)
     private let list = FlippedList()
     private var orderedRows: [ItemRow] = []
     private let scroll = NSScrollView()
@@ -102,14 +104,30 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         id = note.id; self.actions = actions; self.changed = changed
         self.undoDelete = undoDelete; self.failure = failure
         super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: "便签菜单") { [weak self] in
+                guard let self, !self.invalidated else { return false }
+                self.showMenu(); return true
+            }
+        ])
         wantsLayer = true; layer?.cornerRadius = 12; layer?.borderWidth = 1; layer?.masksToBounds = true
         titleEditor.stringValue = note.title ?? ""
         titleEditor.placeholderString = "标题（可选）"
+        titleEditor.setAccessibilityLabel("便签标题（可选）")
+        pinIndicator.image = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "已置顶")
+        pinIndicator.contentTintColor = NoteTheme.secondary
+        addButton.target = self; addButton.action = #selector(addItem)
+        addButton.isBordered = false; addButton.alignment = .left
+        addButton.font = .systemFont(ofSize: 12); addButton.contentTintColor = NoteTheme.secondary
+        addButton.setAccessibilityLabel("添加事项")
         titleEditor.isBordered = false; titleEditor.drawsBackground = false
         titleEditor.font = .systemFont(ofSize: 13, weight: .semibold)
         titleEditor.textColor = NoteTheme.primary; titleEditor.delegate = self
         count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         count.textColor = NoteTheme.secondary
+        collapsedLabel.textColor = NoteTheme.primary
         collapsedLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         collapsedLabel.lineBreakMode = .byTruncatingTail
         for (index, entry) in [("circle", "更换颜色", #selector(showMenu)),
@@ -118,6 +136,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
                                ("ellipsis", "更多", #selector(showMenu))].enumerated() {
             let button = NSButton(image: NSImage(systemSymbolName: entry.0, accessibilityDescription: entry.1)!, target: self, action: entry.2)
             button.isBordered = false; button.contentTintColor = NoteTheme.secondary
+            button.setAccessibilityLabel(entry.1)
             button.toolTip = entry.1; button.frame = NSRect(x: CGFloat(index * 24), y: 0, width: 24, height: 24)
             tools.addSubview(button)
         }
@@ -129,7 +148,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         header.finish = finish; grip.finish = finish
         scroll.drawsBackground = false; scroll.hasVerticalScroller = true
         scroll.documentView = list
-        [header, titleEditor, collapsedLabel, count, scroll, tools, grip].forEach { addSubview($0) }
+        [header, titleEditor, collapsedLabel, count, scroll, tools, grip, pinIndicator, addButton].forEach { addSubview($0) }
         refresh(note)
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -143,13 +162,20 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         tools.isHidden = !hovering; count.isHidden = hovering
         header.isHidden = reveal
         grip.isHidden = reveal || compact || !hovering || (window as? NotePanel)?.docked == true
-        let titleWidth = bounds.width - (hovering ? 124 : 82)
-        titleEditor.frame = NSRect(x: 14, y: 10, width: titleWidth, height: 22)
-        collapsedLabel.frame = NSRect(x: 14, y: 7, width: titleWidth, height: 20)
+        let pinned = note.level == .topmost
+        pinIndicator.isHidden = !pinned || hovering
+        pinIndicator.frame = NSRect(x: 14, y: compact ? 10 : 14, width: 12, height: 12)
+        let titleX: CGFloat = pinned && !hovering ? 32 : 14
+        let titleWidth = max(1, bounds.width - (hovering ? 110 : 68) - titleX)
+        let footer = !reveal && !compact && isDocked
+        addButton.isHidden = !footer
+        addButton.frame = NSRect(x: 14, y: bounds.height - 36, width: bounds.width - 28, height: 22)
+        titleEditor.frame = NSRect(x: titleX, y: 10, width: titleWidth, height: 22)
+        collapsedLabel.frame = NSRect(x: titleX, y: 7, width: titleWidth, height: 20)
         count.frame = NSRect(x: bounds.width - 68, y: compact ? 9 : 14, width: 54, height: 18)
         tools.frame = NSRect(x: bounds.width - 108, y: compact ? 4 : 9, width: 96, height: 24)
         grip.frame = NSRect(x: bounds.width - 18, y: bounds.height - 18, width: 16, height: 16)
-        scroll.frame = NSRect(x: 14, y: 42, width: max(1, bounds.width - 28), height: max(1, bounds.height - 56))
+        scroll.frame = NSRect(x: 14, y: 42, width: max(1, bounds.width - 28), height: max(1, bounds.height - (footer ? 82 : 56)))
         var y: CGFloat = 0
         for row in orderedRows {
             let height = row.fittingHeight(width: scroll.contentSize.width)
@@ -159,8 +185,9 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         list.frame = NSRect(x: 0, y: 0, width: scroll.contentSize.width,
                             height: max(scroll.contentSize.height, y))
     }
+    private var isDocked: Bool { if case .dock = note.placement { return true }; return false }
     func preferredHeight(width: CGFloat) -> Double {
-        Double(56 + orderedRows.reduce(CGFloat(0)) { $0 + $1.fittingHeight(width: width - 28) })
+        Double((!reveal && isDocked ? 82 : 56) + orderedRows.reduce(CGFloat(0)) { $0 + $1.fittingHeight(width: width - 28) })
     }
     func refresh(_ note: Note) {
         guard !invalidated else { return }
@@ -200,11 +227,19 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
                 row.setCompleted(item.completed)
             }
             collapsedLabel.stringValue = WindowModes.collapsedTitle(note.title, firstItem: items.first?.text)
+            setAccessibilityLabel("便签：" + (collapsedLabel.stringValue.isEmpty ? "无标题" : collapsedLabel.stringValue))
+            setAccessibilityValue("完成 \(items.filter(\.completed).count) / \(items.count)" + (note.collapsed && !reveal ? "，已折叠" : ""))
             layer?.cornerRadius = !reveal && note.collapsed ? 10 : 12
             count.stringValue = "\(items.filter(\.completed).count) / \(items.count)"
             if let pin = tools.subviews.dropFirst().first as? NSButton {
                 pin.image = NSImage(systemSymbolName: note.level == .topmost ? "pin.fill" : "pin", accessibilityDescription: "置顶")
                 pin.state = note.level == .topmost ? .on : .off
+                pin.setAccessibilityLabel(note.level == .topmost ? "取消置顶" : "置顶")
+            }
+            if let collapse = tools.subviews.dropFirst(2).first as? NSButton {
+                let label = note.collapsed ? (reveal ? "展开桌面便签" : "展开") : (reveal ? "折叠桌面便签" : "折叠")
+                collapse.image = NSImage(systemSymbolName: note.collapsed ? "chevron.down" : "chevron.up", accessibilityDescription: label)
+                collapse.setAccessibilityLabel(label); collapse.toolTip = label
             }
             if let color = tools.subviews.first as? NSButton { color.contentTintColor = NoteTheme.secondary }
             needsLayout = true; colors()
@@ -275,7 +310,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             button.layer?.backgroundColor = NoteTheme.background(color).cgColor
             button.layer?.borderColor = NoteTheme.primary.withAlphaComponent(0.6).cgColor
             button.layer?.borderWidth = color == note.color ? 2 : 0.5
-            button.toolTip = color.name; button.setAccessibilityLabel(color.name)
+            button.toolTip = color.name; button.setAccessibilityLabel(color.name + (color == note.color ? "（当前）" : ""))
             swatches.addSubview(button)
         }
         paletteItem.view = swatches; menu.addItem(paletteItem); menu.addItem(.separator())
@@ -305,7 +340,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         return menu
     }
     @objc private func docking(_ sender: NSMenuItem) {
-        guard !invalidated else { return }
+        guard !invalidated, canMutate() else { return }
         (window as? NotePanel)?.dockingAction?(sender.tag == 3 ? nil : [DockEdge.top, .left, .right][sender.tag])
     }
     @objc private func showMenu() { contextMenu().popUp(positioning: nil, at: NSPoint(x: bounds.width - 108, y: 34), in: self) }
@@ -395,6 +430,7 @@ private final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         super.init(frame: .zero)
         check.target = self; check.action = #selector(toggle)
         remove.target = self; remove.action = #selector(deleteItem); remove.isBordered = false
+        remove.setAccessibilityLabel("删除事项")
         remove.toolTip = "删除事项"; handle.textColor = NoteTheme.secondary
         textScroll.drawsBackground = false
         textScroll.documentView = editor
@@ -453,6 +489,10 @@ private final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         manager.addTemporaryAttribute(.foregroundColor, value: completed ? NoteTheme.completed : NoteTheme.primary, forCharacterRange: range)
         if completed { manager.addTemporaryAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, forCharacterRange: range) }
     }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        setCompleted(check.state == .on)
+    }
     func textDidChange(_ notification: Notification) { owner?.save(item.id, text: editor.string); setCompleted(check.state == .on) }
     @objc private func toggle() { owner?.toggle(item.id) }
     @objc private func deleteItem() { owner?.delete(item.id) }
@@ -489,14 +529,14 @@ private final class CompletionButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5))
         if state == .on {
-            NoteTheme.primary.withAlphaComponent(0.72).setFill(); circle.fill()
-            NoteTheme.background(.paper).setStroke()
+            NoteTheme.checkboxFill.setFill(); circle.fill()
+            NoteTheme.checkmark.setStroke()
             let path = NSBezierPath()
             path.move(to: NSPoint(x: 4, y: 9)); path.line(to: NSPoint(x: 7, y: 6))
             path.line(to: NSPoint(x: 13, y: 12))
             path.lineWidth = 1.6; path.lineCapStyle = .round; path.stroke()
         } else {
-            NoteTheme.primary.withAlphaComponent(0.42).setStroke()
+            NoteTheme.checkboxBorder.setStroke()
             circle.lineWidth = 1.5; circle.stroke()
         }
     }

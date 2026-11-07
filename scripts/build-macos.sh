@@ -18,6 +18,7 @@ app_path="$stage_dir/DeskNodes.app"
 mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources" "$repo_root/build"
 cp "$binary_dir/DeskNodes" "$app_path/Contents/MacOS/DeskNodes"
 cp Resources/Info.plist "$app_path/Contents/Info.plist"
+cp Resources/DeskNodes.icns "$app_path/Contents/Resources/DeskNodes.icns"
 chmod 755 "$app_path/Contents/MacOS/DeskNodes"
 /usr/bin/plutil -lint "$app_path/Contents/Info.plist"
 # Ad-hoc is the local default, not proof of SMAppService acceptance. An existing

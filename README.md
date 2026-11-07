@@ -1,23 +1,28 @@
-# DeskNodes — native macOS
+# DeskNodes · 原生 macOS 便签
 
-Swift + AppKit, macOS14+, Chinese UI, local system SQLite, no third-party packages. N1–N9 source implements notes/deletion undo, chrome/levels/collapse, docking/display recovery, daily rollover, fullscreen edge reveal, read-only History, lazy SwiftUI Settings, configurable Carbon new-note shortcut, first-launch login consent and full native JSON backups. N10 native acceptance/fidelity remains pending.
+Swift + AppKit 常驻便签，SwiftUI 设置与只读历史，系统 SQLite 本机存储。macOS 14+，中文界面，菜单栏常驻，无 Dock 图标、无沙盒、无第三方依赖。
 
-On a Mac with compatible Xcode selected:
+支持自由便签与顶部／侧边停靠、八色明暗配色、折叠与窗口层级、事项排序、5 秒删除撤销、默认凌晨 04:00 跨天归档与顺延、全屏侧边唤出、可配置新建快捷键、首次询问登录启动和完整原生 JSON 备份。只有唤出面板具有全屏辅助窗口行为。
+
+**这是待 Mac 验收的原生实现，不是已经通过原生验证的应用。** Linux 的 Swift 6.2.1 生产便携测试、静态检查与语法解析不证明 AppKit／SwiftUI／Carbon／ServiceManagement 的 SDK 编译、签名、启动或实际交互成功。完整证据和已知限制见 [N10 审计与 Mac 验收矩阵](docs/native-n10.md)。
+
+在已安装兼容 Xcode 的 Mac 上，从仓库目录执行：
 
 ```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+export TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault
+xcrun swift --version
+xcrun swift package clean
 xcrun swift test
 ./scripts/build-macos.sh
+/usr/bin/codesign --verify --strict --verbose=2 build/DeskNodes.app
 open build/DeskNodes.app
 ```
 
-[N9 implementation, backup contract and focused Mac acceptance](docs/native-n9.md): **118 production portable XCTest tests pass** on Linux with preinstalled Swift6.2.1 and isolated real SQLite stores. Static/shell/native syntax/diff/spec checks pass. **Mac Carbon/SMAppService/SwiftUI/AppKit SDK typecheck/build/signing, dialogs/permissions, real IME/native undo/focus, autostart runtime and native visuals remain UNVERIFIED.** Fifteen native test methods are present but uncompiled/unrun on Linux. No OS hotkey/login registration runs on Linux.
+[本机构建、签名、运行与备份恢复](docs/native-build.md) 包含准确的工具链要求、稳定安装路径、已有本地签名身份用法和恢复步骤。构建脚本默认临时本地签名（ad-hoc），打包原生 ICNS 图标，不安装证书、不修改系统设置。登录项是否接受该签名必须在实际 Mac 验证。不要用裸 `swift run` 代替签名 `.app` 验收。
 
-Settings provides rollover **04:00**, valid hours0–23/minutes0–59, docking side/display, edge automatic/manual and current Dock/fallback explanation. Default shortcut is **Control+Option+N**; enter modifier names joined by `+` and a physical ANSI letter/digit/Space, then Apply. Conflicts preserve the old binding. First launch **asks** before `SMAppService.mainApp` registration; persisted decline is respected. Imported consent never changes OS registrations. Default build signing is local ad-hoc; **login-item acceptance is not guaranteed unsigned/ad-hoc**. See N9's stable bundle path, optional existing local signing identity and approval/logout-login gate.
+新建快捷键默认为 **⌃⌥N**。设置中使用 `Control+Option+N` 这样的修饰键与物理 ANSI 字母／数字／Space 组合；冲突保留旧绑定。登录启动只有首次明确同意或设置中的主动操作才会注册；导入的意愿不修改操作系统注册。
 
-Settings → 数据 → 导出… saves a full versioned **native** JSON backup through a native save dialog. 导入… validates all data in isolation, then requires explicit destructive confirmation before atomic replacement. It covers retained notes/items/tombstones, immutable history, order/placement/settings, archives, checkpoint, pending deletion memberships, carry and new preferences. Invalid/incompatible/cancelled import leaves data unchanged. Marked composition refuses import/export; export flushes owning committed edits. Successful import retires stale editors/native and shared undo and refreshes History. **No Tauri compatibility is assumed.** Keep a backup before replacement; imported login intent is not an OS registration.
+数据位于 `~/Library/Application Support/local.desknodes.native/DeskNodes.sqlite3`。设置 → 数据 → 导出… 生成完整原生 JSON；导入… 校验后要求确认替换全部数据。先备份，再导入；输入法组词期间拒绝导入／导出。成功导入会清理旧编辑器与撤销状态，保留导入的历史、归档、布局、设置、跨天检查点及删除记录。格式为 native backup v1 / schema 7，**不兼容旧 Tauri 备份**，没有自动迁移或云同步。
 
-Storage: `~/Library/Application Support/local.desknodes.native/DeskNodes.sqlite3`. Native schema7 adds preferences while preserving schema6 edge/history/rollover data. No Tauri discovery/migration, hide/tomorrow feature or cloud sync. [N6 rollover](docs/native-n6.md) and [N7 reveal/shared-editing](docs/native-n7.md) policies remain, including direct carry across skipped days and all-surface composition gating. Only the reveal panel has fullscreen auxiliary behavior. Public read-only Dock orientation is best-effort; missing/unknown → right reveal. Native Spaces/pointer/focus behavior still needs acceptance.
-
-[History](docs/native-n8.md), [storage](docs/native-n2.md), [docking](docs/native-n5.md), [windows](docs/native-n4.md), [build entry](docs/native-n1.md), [authoritative specification](docs/spec/macos-native/README.md), [milestone plan](docs/macos-native-plan.md).
-
-N9 is an **uncommitted supervisor-review patch on LOCAL `7a9a0e9`**. No commit/push/rebase performed. Specs, plan, prior docs and old Tauri checkout are preserved. Logs and reproducible runner: `/workspace/desknotes/logs/native-n9*`. Supervisor owns review and commits; Linux results do not establish Mac acceptance.
+N10 基于 `5e6443371a6181f63fe30cd41d8c6f023ea8410b`，保留权威 [需求与全部五组原型](docs/spec/macos-native/README.md) 和 [里程碑计划](docs/macos-native-plan.md)。此前 N1–N9 文档是历史记录。当前补丁由 Codex 编写，留给 supervisor 审查、测试及一次提交；未 commit、push 或 merge。可复现 Linux 检查入口：`/workspace/desknotes/logs/native-n10-checks.sh`，日志同目录。
