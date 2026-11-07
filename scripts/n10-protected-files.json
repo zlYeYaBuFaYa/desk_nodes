@@ -1,0 +1,98 @@
+{
+  "docs/macos-native-plan.md": {
+    "mode": "100644",
+    "sha256": "cf38097a926bd73dbfaf68324dd2b2ef2b0c788d57fbea1486cfc3cd583d4a42"
+  },
+  "docs/native-n1.md": {
+    "mode": "100644",
+    "sha256": "337f234c2e8e5a1a65afc5d8fa815029f32cddba5dee8c39171bdf596974da7a"
+  },
+  "docs/native-n2.md": {
+    "mode": "100644",
+    "sha256": "9e2edba560dcf110bd889b415cf99870b4c49b9b17b7a8612328dd4c08c5e9b0"
+  },
+  "docs/native-n3.md": {
+    "mode": "100644",
+    "sha256": "a27977aaa699a003f20d2f27422e5ba1b4d974194ae3754776969c8decf5cf5c"
+  },
+  "docs/native-n4.md": {
+    "mode": "100644",
+    "sha256": "a8cef8337f9025817d9f316be453273cc3251344126dfbb162322da29aa531d0"
+  },
+  "docs/native-n5.md": {
+    "mode": "100644",
+    "sha256": "adaabb017f4800fd44713ed80e649b2d20b6546f686f84f5a22c8ab68ac72517"
+  },
+  "docs/native-n6.md": {
+    "mode": "100644",
+    "sha256": "14688bf8f24f060fb107f5aff6d94163ad4889e47f342b976586834662e9953a"
+  },
+  "docs/native-n7.md": {
+    "mode": "100644",
+    "sha256": "030b4e33f6aa6f074600bc77157fe53f625e9e99a3518211c65bbca518c3f5d2"
+  },
+  "docs/native-n8.md": {
+    "mode": "100644",
+    "sha256": "16411349a480b493542f941a758ab7558bc9498bf8ef459bf968d15b2eb0de12"
+  },
+  "docs/native-n9.md": {
+    "mode": "100644",
+    "sha256": "638944122dc181004dc0d9abcc138a6f0bd0d0823d6afa5ff5c96ba2e67d118f"
+  },
+  "docs/spec/macos-native/README.md": {
+    "mode": "100644",
+    "sha256": "381f8f91939c1079782703d9e2da4d5721b67c87a36c8b29adc8f5cebe4e112d"
+  },
+  "docs/spec/macos-native/notes.txt": {
+    "mode": "100644",
+    "sha256": "dcd6d06c286421970f61eb4e136358f2868d08c5e16a86449883461fc2344056"
+  },
+  "docs/spec/macos-native/prototypes/html/01-desktop-overview.html": {
+    "mode": "100644",
+    "sha256": "1380f784b1a48b82c01befa755ff984ff0767bb6117a20e7c192f973884a5ea2"
+  },
+  "docs/spec/macos-native/prototypes/html/02-fullscreen-edge-reveal.html": {
+    "mode": "100644",
+    "sha256": "1b6370d0c5cd4556cfb9c3adf8845f1071c1cebf9fdbc3348062ac27eb1ec6c0"
+  },
+  "docs/spec/macos-native/prototypes/html/03-note-states-menu.html": {
+    "mode": "100644",
+    "sha256": "38e17e88f333f3346b1b84c386feea3baa662bbfad34a1065ae6fbc86cfe1c3e"
+  },
+  "docs/spec/macos-native/prototypes/html/04-history-window.html": {
+    "mode": "100644",
+    "sha256": "c09925d6104f8a275087f9a955c5e56a48036b92b2e226468141e12d88814c77"
+  },
+  "docs/spec/macos-native/prototypes/html/05-settings-window.html": {
+    "mode": "100644",
+    "sha256": "e7150cc4e617aeaf80ab009169abbfd336950d22a45359a6f476e7cb9cfe850e"
+  },
+  "docs/spec/macos-native/prototypes/png/01-desktop-overview.png": {
+    "mode": "100644",
+    "sha256": "54fc99e9523048bd865604413231a498300f7c96e8efb2e3c00508956b9ead54"
+  },
+  "docs/spec/macos-native/prototypes/png/02-fullscreen-edge-reveal.png": {
+    "mode": "100644",
+    "sha256": "bff8e9bb5e3ba041910e548cc3dec1dad6338827962fd278fd29d5f07340efba"
+  },
+  "docs/spec/macos-native/prototypes/png/03-note-states-menu.png": {
+    "mode": "100644",
+    "sha256": "3501ed51e97bd066f25a6f659b17aacd601ce17303c757917f439698daa1a4ee"
+  },
+  "docs/spec/macos-native/prototypes/png/04-history-window.png": {
+    "mode": "100644",
+    "sha256": "0c5225393b115d8058ca9777f6d7c92228ee1ded0bf6890c7526dd4ee6fc8ced"
+  },
+  "docs/spec/macos-native/prototypes/png/05-settings-window.png": {
+    "mode": "100644",
+    "sha256": "65c8fc276ba71335a0363c9790927370abacc340454194a8a14f9459cbc7636e"
+  },
+  "docs/spec/macos-native/requirements.md": {
+    "mode": "100644",
+    "sha256": "afd358e1e22f76321abaee7fa6d34274ac2a8de0c2b31151b16a22783594841a"
+  },
+  "docs/spec/macos-native/requirements.pdf": {
+    "mode": "100644",
+    "sha256": "9407f79577bb1a6ae54063b70845c9ed73a94fa93593b45e10b6aa7caa84a955"
+  }
+}
