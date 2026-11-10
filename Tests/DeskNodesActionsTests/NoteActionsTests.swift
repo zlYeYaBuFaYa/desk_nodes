@@ -180,3 +180,65 @@ final class NoteActionsTests: XCTestCase {
         XCTAssertEqual(EditingPolicy.command(returnKey: false, backspace: false, marked: false, empty: true), .native)
     }
 }
+
+final class DeletionStackTests: XCTestCase {
+    private var directory: URL!
+    private var store: Store!
+    private var actions: NoteActions!
+    private var now = Date(timeIntervalSince1970: 1000)
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        store = try Store(url: directory.appendingPathComponent("test.sqlite"), clock: { [unowned self] in now })
+        actions = NoteActions(store: store, clock: { [unowned self] in now })
+    }
+    override func tearDownWithError() throws { try store.close(); try FileManager.default.removeItem(at: directory) }
+
+    func testEveryDeletionInsideItsWindowIsRecoverableNewestFirst() throws {
+        let a = try actions.createNote(), b = try actions.createNote()
+        try actions.deleteNote(a.id); now.addTimeInterval(2); try actions.deleteNote(b.id)
+        XCTAssertEqual(actions.recoverableDeletionCount, 2)
+        XCTAssertTrue(try actions.undoDeletion())
+        XCTAssertEqual(try store.notes().map(\.id), [b.id])
+        XCTAssertTrue(try actions.undoDeletion())
+        XCTAssertEqual(try store.notes().map(\.id), [a.id, b.id])
+        XCTAssertFalse(try actions.undoDeletion())
+    }
+    func testEachDeletionExpiresOnItsOwnClock() throws {
+        let a = try actions.createNote(), b = try actions.createNote()
+        try actions.deleteNote(a.id); now.addTimeInterval(3); try actions.deleteNote(b.id)
+        now.addTimeInterval(2.5) // a: 5.5s, b: 2.5s
+        XCTAssertEqual(actions.recoverableDeletionCount, 1)
+        XCTAssertTrue(try actions.undoDeletion())
+        XCTAssertFalse(try actions.undoDeletion())
+        XCTAssertEqual(try store.notes().map(\.id), [b.id])
+    }
+    func testBlankRowsAreDiscardedSilentlyAndOneRowAlwaysRemains() throws {
+        let note = try actions.createNote()
+        let first = try XCTUnwrap(store.items(in: note.id).first)
+        let second = try actions.add(in: note.id, after: first.id)
+        try actions.discardBlankItem(second.id, in: note.id)
+        XCTAssertFalse(actions.canUndoDeletion)
+        _ = try actions.add(in: note.id); _ = try actions.add(in: note.id)
+        try actions.pruneBlankItems(in: note.id)
+        let remaining = try store.items(in: note.id)
+        XCTAssertEqual(remaining.count, 1)
+        let text = try actions.add(in: note.id, after: remaining[0].id, text: "粘贴的行")
+        _ = try actions.add(in: note.id)
+        try actions.pruneBlankItems(in: note.id)
+        XCTAssertEqual(try store.items(in: note.id).map(\.id), [text.id])
+    }
+    func testCreateNoteAppliesFrameAndDisplayInOneTransaction() throws {
+        let note = try actions.createNote(frame: NoteFrame(x: -800, y: 300, width: 900, height: 50), displayID: "屏幕")
+        XCTAssertEqual(note.placement, .free(displayID: "屏幕", x: -800, y: 300, width: 400, height: 120))
+    }
+    func testTypingPrefersTextUndoBeforeTheSaveLands() throws {
+        let note = try actions.createNote()
+        let item = try actions.add(in: note.id, text: "x")
+        try actions.deleteItem(item.id, in: note.id)
+        XCTAssertTrue(actions.prefersDeletionUndo)
+        actions.noteTyping()
+        XCTAssertFalse(actions.prefersDeletionUndo)
+        XCTAssertTrue(actions.canUndoDeletion)
+    }
+}

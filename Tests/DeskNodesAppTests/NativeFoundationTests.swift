@@ -151,7 +151,7 @@ final class NativeFoundationTests: XCTestCase {
         panel.choice = .desktop; panel.applyLevel()
         XCTAssertEqual(panel.level.rawValue, Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
         panel.temporarilyRaised = true; panel.applyLevel()
-        XCTAssertEqual(panel.level, .floating)
+        XCTAssertEqual(panel.level, .normal)
         panel.resignKey()
         XCTAssertEqual(panel.level.rawValue, Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
         panel.choice = .ordinary; panel.modes.allTopmost = true; panel.applyLevel()

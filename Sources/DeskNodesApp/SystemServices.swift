@@ -3,6 +3,20 @@ import Carbon
 import ServiceManagement
 import DeskNodesPersistence
 
+/// Physical ANSI virtual key codes shared by the Carbon adapter and the shortcut recorder.
+enum HotkeyKeyCodes {
+    static let codes: [String: UInt32] = ["A":0,"S":1,"D":2,"F":3,"H":4,"G":5,"Z":6,"X":7,"C":8,"V":9,"B":11,"Q":12,"W":13,"E":14,"R":15,"Y":16,"T":17,"1":18,"2":19,"3":20,"4":21,"6":22,"5":23,"9":25,"7":26,"8":28,"0":29,"O":31,"U":32,"I":34,"P":35,"L":37,"J":38,"K":40,"N":45,"M":46,"Space":49]
+    static let names = Dictionary(uniqueKeysWithValues: codes.map { ($0.value, $0.key) })
+    /// "Control+Option+N" style text for a key press, or nil for unsupported keys.
+    static func shortcut(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String? {
+        guard let key = names[UInt32(keyCode)] else { return nil }
+        let flags = modifiers.intersection(.deviceIndependentFlagsMask)
+        let parts = [(NSEvent.ModifierFlags.control, "Control"), (.option, "Option"), (.shift, "Shift"), (.command, "Command")]
+            .filter { flags.contains($0.0) }.map(\.1)
+        return (parts + [key]).joined(separator: "+")
+    }
+}
+
 @MainActor
 final class GlobalHotkey {
     private let binding = HotkeyBinding<EventHotKeyRef>()
@@ -17,7 +31,7 @@ final class GlobalHotkey {
             guard let context, let event else { return OSStatus(eventNotHandledErr) }
             var identity = EventHotKeyID()
             let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
-                ByteCount(MemoryLayout<EventHotKeyID>.size), nil, &identity)
+                numericCast(MemoryLayout<EventHotKeyID>.size), nil, &identity)
             guard status == noErr else { return status }
             return MainActor.assumeIsolated {
                 let owner = Unmanaged<GlobalHotkey>.fromOpaque(context).takeUnretainedValue()
@@ -31,8 +45,7 @@ final class GlobalHotkey {
         var candidateID = activeID
         try binding.replace(shortcut, register: { key in
             self.serial &+= 1; candidateID = self.serial
-            let codes: [String: UInt32] = ["A":0,"S":1,"D":2,"F":3,"H":4,"G":5,"Z":6,"X":7,"C":8,"V":9,"B":11,"Q":12,"W":13,"E":14,"R":15,"Y":16,"T":17,"1":18,"2":19,"3":20,"4":21,"6":22,"5":23,"9":25,"7":26,"8":28,"0":29,"O":31,"U":32,"I":34,"P":35,"L":37,"J":38,"K":40,"N":45,"M":46,"Space":49]
-            guard let code = codes[key.key] else { throw StoreError.invalid("不支持的按键") }
+            guard let code = HotkeyKeyCodes.codes[key.key] else { throw StoreError.invalid("不支持的按键") }
             var modifiers: UInt32 = 0
             for (name, value) in [("Control", controlKey), ("Option", optionKey), ("Shift", shiftKey), ("Command", cmdKey)] where key.modifiers.contains(name) { modifiers |= UInt32(value) }
             var reference: EventHotKeyRef?
@@ -75,6 +88,7 @@ final class LoginService {
     }
     func askOnFirstLaunch(store: Store) throws {
         guard try store.preferences().shouldAskForLogin else { return }
+        NSApp.activate(ignoringOtherApps: true) // accessory app: otherwise the alert may open behind other windows
         let alert = NSAlert()
         alert.messageText = "登录时自动启动 DeskNodes？"
         alert.informativeText = "同意后才会向系统注册。您可以稍后在设置中修改；系统可能仍需批准。"

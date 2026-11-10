@@ -13,7 +13,9 @@ final class DockController: NSObject {
     let changed: () -> Void
     let failure: (Error) -> Void
     private var panels: [NoteID: NotePanel] = [:]
-    private var rails: [NSPanel] = []
+    /// Overflow tab windows per strip, reused while their content is unchanged.
+    private var rails: [String: (signature: String, windows: [NSPanel])] = [:]
+    private var railsInUse: Set<String> = []
     private var selected: [String: NoteID] = [:]
     private var dragging: NoteID?
     private var promoting = false
@@ -31,7 +33,7 @@ final class DockController: NSObject {
             panel.dockingAction = nil; panel.dragBegin = nil; panel.dragUpdate = nil
             panel.dragCancel = nil; panel.dragEnd = nil
         }
-        rails.forEach { $0.close() }; rails = []; placeholder?.close(); placeholder = nil
+        rails.values.flatMap(\.windows).forEach { $0.close() }; rails = [:]; placeholder?.close(); placeholder = nil
         panels = [:]; dragging = nil; selected = [:]; layouts = [:]
     }
     /// NSScreen.screens[0] is the menu-bar/primary screen; NSScreen.main is the key-window screen.
@@ -57,7 +59,11 @@ final class DockController: NSObject {
     func layout(panels: [NoteID: NotePanel], modes: WindowModes) {
         guard dragging == nil else { return }
         self.panels = panels
-        rails.forEach { $0.close() }; rails = []; layouts = [:]
+        layouts = [:]; railsInUse = []
+        // Strips that no longer overflow drop their tab windows after this pass.
+        defer {
+            for key in rails.keys where !railsInUse.contains(key) { rails.removeValue(forKey: key)?.windows.forEach { $0.close() } }
+        }
         do {
             let notes = try actions.store.notes(), settings = try actions.store.settings(), screens = Self.screens()
             for note in notes {
@@ -136,12 +142,23 @@ final class DockController: NSObject {
         layer.add(spring, forKey: "dockSnap")
     }
     private func makeRail(_ frame: NoteFrame, notes: [Note], key: String, modes: WindowModes) {
+        railsInUse.insert(key)
         let allocation = DockGeometry.tabs(ids: notes.map(\.id), frame: frame, page: pages[key] ?? 0)
-        func title(_ note: Note) -> String {
+        var titles: [NoteID: String] = [:]
+        for note in notes {
             let first = (try? actions.store.items(in: note.id))?.first?.text
             let text = WindowModes.collapsedTitle(note.title, firstItem: first)
-            return text.isEmpty ? "空便签" : text
+            titles[note.id] = text.isEmpty ? "空便签" : text
         }
+        func title(_ note: Note) -> String { titles[note.id] ?? "空便签" }
+        // Everything a tab window or its closures show; equal signature -> keep the windows.
+        let signature = ([String(describing: allocation), String(describing: modes.allTopmost)] + notes.map {
+            "\($0.id.rawValue)|\(title($0))|\($0.color.rawValue)|\($0.level.rawValue)"
+        }).joined(separator: "\n")
+        if rails[key]?.signature == signature { return }
+        rails.removeValue(forKey: key)?.windows.forEach { $0.close() }
+        var windows: [NSPanel] = []
+        defer { rails[key] = (signature, windows) }
         func choose(_ id: NoteID) {
             selected[key] = id; promoting = true
             changed(); promoting = false; panels[id]?.makeKeyAndOrderFront(nil)
@@ -165,7 +182,7 @@ final class DockController: NSObject {
                 self.pages[key] = min(max(0, (self.pages[key] ?? 0) + delta), allocation.pageCount - 1)
                 self.changed()
             }
-            tab.contentView = button; tab.orderFrontRegardless(); rails.append(tab)
+            tab.contentView = button; tab.orderFrontRegardless(); windows.append(tab)
         }
         for slot in allocation.slots {
             guard let note = notes.first(where: { $0.id == slot.id }) else { continue }

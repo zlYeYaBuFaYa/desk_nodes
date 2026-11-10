@@ -11,6 +11,10 @@ public final class Store {
     public init(url: URL, clock: @escaping () -> Date = Date.init) throws {
         self.clock = clock
         db = try SQLite(url: url)
+        // WAL keeps every commit durable (synchronous=FULL) with a single WAL fsync,
+        // instead of the rollback journal's several fsyncs per transaction.
+        try db.run("PRAGMA journal_mode=WAL")
+        try db.run("PRAGMA synchronous=FULL")
         try Schema.migrate(db)
     }
     internal init(staging: Void) throws {
@@ -82,7 +86,7 @@ public final class Store {
                 guard case .free = saved else { throw StoreError.invalid("free restore") }
                 try validate(saved, order: 0)
             }
-            guard try notes().contains(where: { $0.id == note.id }) else { throw StoreError.notFound }
+            guard try liveNote(note.id) else { throw StoreError.notFound }
             try db.run("UPDATE notes SET title=?,color=?,placement=?,level=?,position=?,collapsed=?,automatic_height=?,free_restore=?,updated=? WHERE id=?",
                        [text(note.title), .text(note.color.rawValue), .text(try encode(note.placement)),
                         .text(note.level.rawValue), .integer(Int64(note.order)), .number(note.collapsed ? 1 : 0), .number(note.automaticHeight ? 1 : 0),
@@ -93,7 +97,7 @@ public final class Store {
                                                order: Int = 0) throws -> Item {
         try transaction { _ in
             guard order >= 0 else { throw StoreError.invalid("order") }
-            guard try notes().contains(where: { $0.id == noteID }) else { throw StoreError.notFound }
+            guard try liveNote(noteID) else { throw StoreError.notFound }
             let now = try timestamp()
             let item = Item(id: ItemID(), noteID: noteID, text: text, completed: completed,
                             order: order, createdAt: now, updatedAt: now, deletedAt: nil)
@@ -106,8 +110,9 @@ public final class Store {
     public func update(_ item: Item) throws {
         try transaction { _ in
             guard item.order >= 0 else { throw StoreError.invalid("order") }
-            guard try notes().contains(where: { $0.id == item.noteID }),
-                  try items(in: item.noteID).contains(where: { $0.id == item.id }) else { throw StoreError.notFound }
+            guard try liveNote(item.noteID),
+                  try !db.query("SELECT 1 FROM items WHERE id=? AND note_id=? AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id)",
+                                [.text(item.id.rawValue.uuidString), .text(item.noteID.rawValue.uuidString)]).isEmpty else { throw StoreError.notFound }
             try db.run("UPDATE items SET text=?,completed=?,position=?,updated=? WHERE id=? AND note_id=?",
                        [.text(item.text), .number(item.completed ? 1 : 0), .integer(Int64(item.order)),
                         .date(try timestamp()), .text(item.id.rawValue.uuidString), .text(item.noteID.rawValue.uuidString)])
@@ -121,6 +126,23 @@ public final class Store {
             let now = try timestamp()
             try db.run("INSERT OR IGNORE INTO pending_deleted_items VALUES (?)", [.text(id.rawValue.uuidString)])
             try db.run("UPDATE items SET deleted=?,updated=? WHERE id=?", [.date(now), .date(now), .text(id.rawValue.uuidString)])
+        }
+    }
+    /// A live item that never held text leaves no trace: it is removed without undo,
+    /// deletion membership or a history tombstone. Rows already sealed in history are
+    /// retired silently instead, because snapshots keep referencing them.
+    public func discardBlankItem(_ id: ItemID) throws {
+        try transaction { _ in
+            let key = SQLValue.text(id.rawValue.uuidString)
+            guard let row = try db.query("SELECT text FROM items WHERE id=? AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id)", [key]).first else { throw StoreError.notFound }
+            guard (row[0] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StoreError.invalid("item is not blank") }
+            if try db.query("SELECT 1 FROM snapshot_items WHERE item_id=?", [key]).isEmpty {
+                try db.run("DELETE FROM pending_deleted_items WHERE item_id=?", [key])
+                try db.run("DELETE FROM items WHERE id=?", [key])
+            } else {
+                let now = try timestamp()
+                try db.run("UPDATE items SET deleted=?,updated=? WHERE id=?", [.date(now), .date(now), key])
+            }
         }
     }
     public func deleteNote(_ id: NoteID) throws {
@@ -310,6 +332,16 @@ public final class Store {
         } catch RolloverDeferral.editing {
             return .deferredEditing
         }
+    }
+    /// Consistent online copy (VACUUM INTO) of the whole database, outside any transaction.
+    public func writeCopy(to url: URL) throws {
+        try locked {
+            guard depth == 0 else { throw StoreError.invalid("copy during transaction") }
+            try db.run("VACUUM INTO ?", [.text(url.path)])
+        }
+    }
+    private func liveNote(_ id: NoteID) throws -> Bool {
+        try !db.query("SELECT 1 FROM notes WHERE id=? AND deleted IS NULL", [.text(id.rawValue.uuidString)]).isEmpty
     }
     private func timestamp() throws -> Date {
         let now = clock()

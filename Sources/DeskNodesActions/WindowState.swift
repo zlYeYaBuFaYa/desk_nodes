@@ -24,11 +24,14 @@ public struct NoteFrame: Equatable, Sendable {
 }
 
 /// Presentation overrides never rewrite a note's durable individual level.
+/// Clicking a desktop-level note lifts it to the ordinary layer only, so it can sit
+/// above the desktop while editing without floating over other applications.
 public struct WindowModes {
     public var allTopmost = false
     public init() {}
     public func effective(_ choice: WindowLevel, temporarilyRaised: Bool = false) -> WindowLevel {
-        allTopmost || (choice == .desktop && temporarilyRaised) ? .topmost : choice
+        if allTopmost { return .topmost }
+        return choice == .desktop && temporarilyRaised ? .ordinary : choice
     }
     public static func collapsedTitle(_ title: String?, firstItem: String?) -> String {
         if let title, !title.isEmpty { return title }

@@ -28,7 +28,9 @@ final class NotePanel: NSPanel, NSWindowDelegate {
         super.sendEvent(event)
     }
     override func resignKey() {
-        if let card = contentView as? NoteCardView, !card.hasMarkedComposition { card.flushBeforeFocusLoss() }
+        if let card = contentView as? NoteCardView, !card.hasMarkedComposition {
+            card.flushBeforeFocusLoss(); card.pruneBlankRowsAfterFocusLoss()
+        }
         super.resignKey(); temporarilyRaised = false; applyLevel()
     }
     var deletionUndo: (() -> Bool)?
@@ -96,6 +98,12 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private var activeMenu: NSMenu?
     private var tracking: NSTrackingArea?
     private var palette: NotePalette = .paper
+    /// Typing is persisted after a short pause instead of on every keystroke; every
+    /// flush point (focus loss, rollover, export, quit) commits the pending edits first.
+    static let saveDelay: TimeInterval = 0.4
+    private var pendingItems: Set<ItemID> = []
+    private var pendingTitle = false
+    private var saveWork: DispatchWorkItem?
     override var isFlipped: Bool { true }
     init(note: Note, actions: NoteActions, changed: @escaping () -> Void,
          undoDelete: @escaping () -> Bool, failure: @escaping (Error) -> Void, reveal: Bool = false) {
@@ -185,6 +193,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         list.frame = NSRect(x: 0, y: 0, width: scroll.contentSize.width,
                             height: max(scroll.contentSize.height, y))
     }
+    var firstEditor: NoteTextView? { orderedRows.first?.editor }
     private var isDocked: Bool { if case .dock = note.placement { return true }; return false }
     func preferredHeight(width: CGFloat) -> Double {
         Double((!reveal && isDocked ? 82 : 56) + orderedRows.reduce(CGFloat(0)) { $0 + $1.fittingHeight(width: width - 28) })
@@ -258,6 +267,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     /// No refresh callbacks inside the rollover transaction.
     func flushRolloverEdits() throws {
         guard !invalidated else { return }
+        try commitPendingSaves(notify: false)
         // Passive views are never authoritative. Only the live first responder can
         // contribute an unnotified committed edit, inside the rollover transaction.
         if window?.isKeyWindow == true, let editor = titleEditor.currentEditor() as? NSTextView,
@@ -281,6 +291,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     }
     func prepareForRemoval() {
         invalidated = true
+        saveWork?.cancel(); saveWork = nil; pendingItems = []; pendingTitle = false
         activeMenu?.cancelTracking()
         canMutate = { false }
         if titleEditor.currentEditor() != nil || orderedRows.contains(where: { window?.firstResponder === $0.editor }) {
@@ -354,15 +365,61 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     @objc private func collapse() { run { try actions.appearance(id, collapsed: !note.collapsed) } }
     @objc private func autoHeight() { run { try actions.appearance(id, automaticHeight: true) } }
     func run(_ body: () throws -> Void) { guard !invalidated, canMutate() else { return }; do { try body(); changed() } catch { failure(error) } }
-    func save(_ item: ItemID, text: String) { // No reload while typing/composing.
+    func save(_ item: ItemID, text _: String) { // No reload while typing/composing.
         guard !invalidated, let editor = rows[item]?.editor, !editor.hasMarkedText() else { return }
-        do { try actions.text(item, in: id, text); changed() } catch { failure(error) }
+        actions.noteTyping()
+        pendingItems.insert(item)
+        needsLayout = true // wrapped rows grow immediately; the window follows after the pause
+        scheduleSave()
+    }
+    private func scheduleSave() {
+        saveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            do { try self.commitPendingSaves(notify: true) } catch { self.failure(error) }
+        }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.saveDelay, execute: work)
+    }
+    /// Writes edits the user typed in this card. Rows still composing stay pending.
+    func commitPendingSaves(notify: Bool) throws {
+        saveWork?.cancel(); saveWork = nil
+        guard !invalidated, !pendingItems.isEmpty || pendingTitle else { return }
+        var wrote = false, composing = false
+        for item in pendingItems {
+            guard let editor = rows[item]?.editor else { pendingItems.remove(item); continue }
+            if editor.hasMarkedText() { composing = true; continue }
+            pendingItems.remove(item)
+            do { try actions.text(item, in: id, editor.string); wrote = true }
+            catch StoreError.notFound { continue } // archived or deleted meanwhile
+        }
+        if pendingTitle {
+            let editor = titleEditor.currentEditor() as? NSTextView
+            if editor?.hasMarkedText() == true { composing = true }
+            else {
+                pendingTitle = false
+                try actions.title(id, editor?.string ?? titleEditor.stringValue); wrote = true
+            }
+        }
+        if composing { scheduleSave() }
+        if wrote && notify { changed() }
+    }
+    /// Return leaves blank rows behind; once focus leaves the note they disappear silently.
+    func pruneBlankRowsAfterFocusLoss() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.invalidated, self.window?.isKeyWindow != true, self.canMutate(),
+                  self.orderedRows.contains(where: { $0.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { return }
+            self.run { try self.actions.pruneBlankItems(in: self.id) }
+        }
     }
     func toggle(_ item: ItemID) { run { try actions.toggle(item, in: id) } }
     func delete(_ item: ItemID) {
         guard canMutate() else { return }
         let previous = orderedRows.firstIndex(where: { $0.item.id == item }) ?? 0
-        run { try actions.deleteItem(item, in: id) }
+        let blank = rows[item]?.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
+        pendingItems.remove(item)
+        // Blank rows vanish without a toast; rows with content stay recoverable.
+        run { blank ? try actions.discardBlankItem(item, in: id) : try actions.deleteItem(item, in: id) }
         if !orderedRows.isEmpty {
             window?.makeFirstResponder(orderedRows[min(previous, orderedRows.count - 1)].editor)
         }
@@ -371,6 +428,27 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         var created: Item?
         run { created = try actions.add(in: id, after: item) }
         if let created, let editor = rows[created.id]?.editor { window?.makeFirstResponder(editor) }
+    }
+    /// Inserts pasted lines as new rows after `item` and focuses the last one.
+    func insert(lines: [String], after item: ItemID) {
+        var last: Item?
+        run {
+            var anchor = item
+            for line in lines { let created = try actions.add(in: id, after: anchor, text: line); anchor = created.id; last = created }
+        }
+        if let last, let editor = rows[last.id]?.editor {
+            window?.makeFirstResponder(editor)
+            editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+        }
+    }
+    func focus(from item: ItemID, offset: Int) {
+        guard let index = orderedRows.firstIndex(where: { $0.item.id == item }),
+              orderedRows.indices.contains(index + offset) else { return }
+        let editor = orderedRows[index + offset].editor
+        window?.makeFirstResponder(editor)
+        editor.setSelectedRange(NSRange(location: offset < 0 ? (editor.string as NSString).length : 0, length: 0))
+        editor.scrollRangeToVisible(editor.selectedRange())
+        orderedRows[index + offset].scrollToVisible(orderedRows[index + offset].bounds)
     }
     func move(_ item: ItemID, before target: ItemID) {
         run {
@@ -382,6 +460,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     }
     func undo() -> Bool { !invalidated && undoDelete() }
     func editingEnded() {
+        do { try commitPendingSaves(notify: false) } catch { failure(error) }
         // AppKit may notify before makeFirstResponder has finished. Never reenter
         // reconciliation while a disappearing row is relinquishing focus.
         DispatchQueue.main.async { [weak self] in
@@ -391,11 +470,14 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     }
     func controlTextDidChange(_ notification: Notification) {
         guard !invalidated, let editor = titleEditor.currentEditor() as? NSTextView, !editor.hasMarkedText() else { return }
-        do { try actions.title(id, editor.string); changed() } catch { failure(error) }
+        actions.noteTyping()
+        pendingTitle = true
+        scheduleSave()
     }
     func controlTextDidEndEditing(_ notification: Notification) {
         // Change notifications and the focus-loss flush own writes. An ended
         // field editor may already be passive and must never republish stale text.
+        do { try commitPendingSaves(notify: false) } catch { failure(error) }
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.invalidated else { return }
             self.changed()
@@ -439,6 +521,9 @@ private final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         editor.addRow = { [weak self] in guard let self else { return }; self.owner?.add(after: self.item.id) }
         editor.deleteEmptyRow = { [weak self] in guard let self else { return }; self.owner?.delete(self.item.id) }
         editor.deletionUndo = { [weak owner] in owner?.undo() ?? false }
+        editor.moveToRow = { [weak self] offset in guard let self else { return }; self.owner?.focus(from: self.item.id, offset: offset) }
+        editor.toggleCompletion = { [weak self] in guard let self else { return }; self.owner?.toggle(self.item.id) }
+        editor.pasteLines = { [weak self] lines in guard let self else { return }; self.owner?.insert(lines: lines, after: self.item.id) }
         remove.isHidden = true; handle.isHidden = true
         registerForDraggedTypes([Self.type])
     }
@@ -476,7 +561,8 @@ private final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     }
     func textDidEndEditing(_ notification: Notification) {
         guard let owner else { return }
-        owner.editingEnded() // refresh only; never write an inactive copy
+        // Commit this card's own typed edits (never a passive copy), then refresh.
+        owner.editingEnded()
     }
     func setCompleted(_ completed: Bool) {
         check.state = completed ? .on : .off

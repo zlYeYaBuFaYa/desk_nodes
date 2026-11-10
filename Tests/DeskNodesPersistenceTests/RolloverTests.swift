@@ -236,8 +236,8 @@ final class RolloverTests: XCTestCase {
             XCTAssertEqual(try reopened.rollover(using: utc), .unchanged)
             XCTAssertTrue(try raw.query("PRAGMA foreign_key_check").isEmpty)
             XCTAssertEqual(try raw.query("PRAGMA integrity_check")[0][0], "ok")
-            XCTAssertEqual(try raw.query("PRAGMA synchronous")[0][0], "2")
-            XCTAssertEqual(try raw.query("PRAGMA journal_mode")[0][0], "delete")
+            XCTAssertEqual(try reopened.db.query("PRAGMA synchronous")[0][0], "2")
+            XCTAssertEqual(try raw.query("PRAGMA journal_mode")[0][0], "wal")
         }
     }
 

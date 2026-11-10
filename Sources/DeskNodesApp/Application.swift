@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import DeskNodesPersistence
 import DeskNodesActions
 
@@ -24,7 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var docking: DockController?
     private var reveal: EdgeRevealController?
     private var toast: DeletionToast?
+    private var notice: NoticeToast?
     private var emptyWindow: NSPanel?
+    private let log = Logger(subsystem: "local.desknodes.native", category: "app")
     private var expiryTimer: Timer?
     private var rolloverTimer: Timer?
     private var rollingOver = false
@@ -65,9 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) }
                     try globalHotkey?.apply(Hotkey(actions.store.preferences().hotkey), persist: {})
                 } catch { report(error) }
-                do { try login.askOnFirstLaunch(store: actions.store) } catch { report(error) }
+                do { try login.askOnFirstLaunch(store: actions.store) } catch { report(error, modal: true) }
             }
-        } catch { report(error) }
+        } catch { report(error, modal: true) } // e.g. the database cannot be opened
     }
 
     private func installRolloverScheduler() {
@@ -105,8 +108,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return true
             }
             rolloverDeferred = result == .deferredEditing
-            if case .advanced = result { refresh(); auxiliary.reloadHistoryIfVisible() }
+            if case .advanced(let snapshot) = result {
+                refresh(); auxiliary.reloadHistoryIfVisible()
+                writeAutomaticBackup(day: snapshot.day)
+            }
         } catch { report(error) }
+    }
+    /// One rolling SQLite copy per closed day; failure never blocks the rollover itself.
+    private func writeAutomaticBackup(day: HistoryDay) {
+        guard let store = actions?.store else { return }
+        do { try AutomaticBackup.write(store, day: day, to: AutomaticBackup.directory()) }
+        catch { log.error("automatic backup failed: \(String(describing: error), privacy: .public)") }
     }
 
     private var hasMarkedComposition: Bool {
@@ -141,6 +153,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem(title: "DeskNodes", action: nil, keyEquivalent: "")
         let appMenu = NSMenu(title: "DeskNodes")
+        add("新建便签", to: appMenu, action: #selector(createNote(_:)), key: "n")
+        add("设置…", to: appMenu, action: #selector(showSettings(_:)), key: ",")
+        appMenu.addItem(.separator())
         add("退出 DeskNodes", to: appMenu, action: #selector(quit(_:)), key: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
@@ -169,13 +184,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !hasMarkedComposition else { return }
         guard let actions else { return }
         do {
-            let note = try actions.createNote()
-            if let visible = NSScreen.screens.first?.visibleFrame {
+            // New notes open on the display under the pointer, cascading from its top centre.
+            let mouse = NSEvent.mouseLocation
+            let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.screens.first
+            let mapped = DockController.screens()
+            let displayID = screen.flatMap { NSScreen.screens.firstIndex(of: $0) }.flatMap { mapped.indices.contains($0) ? mapped[$0].persistentID : nil }
+            var frame: NoteFrame?
+            if let visible = screen?.visibleFrame {
                 let offset = Double(panels.count % 6) * 24
-                try actions.finalGeometry(note.id, frame: NoteFrame(x: visible.midX - 120 + offset,
-                    y: visible.maxY - 180 - offset))
+                frame = NoteFrame(x: visible.midX - 120 + offset, y: visible.maxY - 180 - offset)
             }
-            refresh(); panels[note.id]?.makeKeyAndOrderFront(nil)
+            let note = try actions.createNote(frame: frame, displayID: displayID)
+            refresh()
+            // A global hotkey arrives while another app is active: take keyboard focus
+            // first, or the first keystrokes would still go to that app.
+            NSApp.activate(ignoringOtherApps: true)
+            if let panel = panels[note.id] {
+                panel.makeKeyAndOrderFront(nil)
+                if let editor = (panel.contentView as? NoteCardView)?.firstEditor { panel.makeFirstResponder(editor) }
+            }
         }
         catch { report(error) }
     }
@@ -203,8 +230,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 (panel.contentView as? NoteCardView)?.canMutate = { [weak self] in self?.hasMarkedComposition == false }
                 panels[note.id] = panel; try configure(panel, note: note); panel.showNote()
             }
-            emptyWindow?.close(); emptyWindow = nil
-            if notes.isEmpty {
+            // The empty state is created once and never takes focus; it stays out of the
+            // way while the last deletion can still be undone from the toast.
+            if !notes.isEmpty || actions.canUndoDeletion { emptyWindow?.close(); emptyWindow = nil }
+            else if emptyWindow == nil {
                 let panel = NotePanel(origin: NSPoint(x: visible.midX - 120, y: visible.midY))
                 panel.setContentSize(NSSize(width: 240, height: 100))
                 panel.backgroundColor = .windowBackgroundColor
@@ -213,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.isReleasedWhenClosed = false
                 let button = NSButton(title: "＋ 新建便签", target: self, action: #selector(createNote(_:)))
                 button.frame = NSRect(x: 50, y: 30, width: 140, height: 32)
-                panel.contentView?.addSubview(button); panel.makeKeyAndOrderFront(nil); emptyWindow = panel
+                panel.contentView?.addSubview(button); panel.orderFrontRegardless(); emptyWindow = panel
             }
             docking?.layout(panels: panels, modes: modes)
             reveal?.refresh(notes)
@@ -262,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 toast = DeletionToast { [weak self] in _ = self?.undoDeletion() }
                 toast?.orderFrontRegardless()
             }
+            toast?.update(count: actions.recoverableDeletionCount)
             if expiryTimer == nil {
                 let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
                     MainActor.assumeIsolated { self?.tickExpiry() }
@@ -273,7 +303,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toast?.dismiss(); toast = nil; expiryTimer?.invalidate(); expiryTimer = nil
         }
     }
-    private func tickExpiry() { actions?.expireDeletion(); updateToast() }
+    private func tickExpiry() {
+        let before = actions?.canUndoDeletion
+        actions?.expireDeletion(); updateToast()
+        // When the last deletion expires, the empty state may need to appear.
+        if before == true, actions?.canUndoDeletion == false { refresh() }
+    }
     @discardableResult private func undoDeletion() -> Bool {
         guard !hasMarkedComposition, let actions, actions.canUndoDeletion else { return false }
         do { let restored = try actions.undoDeletion(); refresh(); return restored }
@@ -291,10 +326,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let manager = (responder as? NSTextView)?.undoManager ?? NSApp.keyWindow?.undoManager
         if manager?.canUndo == true { manager?.undo() }
     }
-    private func report(_ error: Error) {
+    /// Background failures (timers, typing, edge polling) never block with a modal alert:
+    /// they are logged and shown in a short non-activating notice. Modal is reserved for
+    /// failures of an explicit one-time request.
+    private func report(_ error: Error, modal: Bool = false) {
+        let message = String(describing: error)
+        log.error("\(message, privacy: .public)")
+        guard modal else {
+            if notice == nil { notice = NoticeToast { [weak self] in self?.notice = nil } }
+            notice?.show("无法完成操作：\(message)")
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "无法完成操作"
-        alert.informativeText = String(describing: error)
+        alert.informativeText = message
         alert.runModal()
     }
     @objc private func showHistory(_ sender: Any?) { auxiliary.show(.history, store: actions?.store) }

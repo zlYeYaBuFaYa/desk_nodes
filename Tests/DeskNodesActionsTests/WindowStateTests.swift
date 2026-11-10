@@ -35,7 +35,7 @@ final class WindowStateTests: XCTestCase {
         XCTAssertEqual(choices.map { modes.effective($0) }, [.topmost, .topmost, .topmost])
         modes.allTopmost = false
         XCTAssertEqual(choices.map { modes.effective($0) }, choices)
-        XCTAssertEqual(modes.effective(.desktop, temporarilyRaised: true), .topmost)
+        XCTAssertEqual(modes.effective(.desktop, temporarilyRaised: true), .ordinary)
         XCTAssertEqual(modes.effective(.desktop), .desktop)
         XCTAssertEqual(modes.effective(.ordinary, temporarilyRaised: true), .ordinary)
     }

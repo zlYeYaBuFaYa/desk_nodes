@@ -75,7 +75,10 @@ internal final class SQLite {
             if result == SQLITE_DONE { return rows }
             guard result == SQLITE_ROW else { throw failure(result) }
             rows.append((0..<sqlite3_column_count(statement)).map { column in
-                guard sqlite3_column_type(statement, column) != SQLITE_NULL,
+                let type = sqlite3_column_type(statement, column)
+                // REAL columns hold timestamps: SQLite's own text rendering keeps only 15 digits.
+                if type == SQLITE_FLOAT { return String(sqlite3_column_double(statement, column)) }
+                guard type != SQLITE_NULL,
                       let bytes = sqlite3_column_text(statement, column) else { return nil }
                 return String(decoding: UnsafeBufferPointer(start: bytes,
                               count: Int(sqlite3_column_bytes(statement, column))), as: UTF8.self)

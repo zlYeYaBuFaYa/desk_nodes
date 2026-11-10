@@ -59,6 +59,8 @@ final class EdgeRevealController: NSObject {
     private let undoButton = NSButton(title: "撤销删除", target: nil, action: nil)
     private let heading = NSTextField(labelWithString: "DeskNodes")
     private var timer: Timer?
+    private var fastPolling = false
+    private var failing = false
     private var timing = RevealTiming()
     private var current: RevealTarget?
     private var generation = 0
@@ -86,11 +88,19 @@ final class EdgeRevealController: NSObject {
             guard let self, !self.hasMarkedComposition else { return }
             do { try self.flushEdits() } catch { self.failure(error) }
         }
-        // Public position polling, no event tap/global monitor/keyboard observation.
-        let timer = Timer(timeInterval: 0.025, repeats: true) { [weak self] _ in
+        // Public position polling only: no event tap, global monitor or keyboard observation.
+        // Idle sampling is slow; the 25ms cadence runs only while a dwell or the panel is active.
+        schedule(fast: false)
+    }
+    private func schedule(fast: Bool) {
+        guard timer == nil || fast != fastPolling else { return }
+        timer?.invalidate()
+        fastPolling = fast
+        // Idle 10 Hz bounds dwell start latency to 0.1s (0.25s dwell -> at most 0.35s).
+        let timer = Timer(timeInterval: fast ? 0.025 : 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
-        timer.tolerance = 0.005
+        timer.tolerance = fast ? 0.005 : 0.02
         RunLoop.main.add(timer, forMode: .common); self.timer = timer
     }
     func invalidateAfterImport() {
@@ -99,7 +109,9 @@ final class EdgeRevealController: NSObject {
         cards = [:]; ordered = []; panel.beforeFocusLoss = nil
         panel.undoManager?.removeAllActions(); panel.makeFirstResponder(nil); panel.orderOut(nil)
     }
-    func stop() { timer?.invalidate(); timer = nil }
+    func stop() {
+        timer?.invalidate(); timer = nil
+    }
     var hasMarkedComposition: Bool { cards.values.contains { $0.hasMarkedComposition } }
     func flushEdits() throws { for card in cards.values { try card.flushRolloverEdits() } }
     func refresh(_ notes: [Note]) {
@@ -136,6 +148,7 @@ final class EdgeRevealController: NSObject {
         list.frame = NSRect(x: 0, y: 0, width: scroll.contentSize.width, height: max(scroll.contentSize.height, y))
     }
     private func poll() {
+        guard timer != nil else { return } // stopped
         do {
             let screens = NSScreen.screens.enumerated().map { index, screen in
                 DockScreen(id: "display-\((screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue ?? String(index))", visible: NoteFrame(x: screen.frame.minX, y: screen.frame.minY,
@@ -150,27 +163,38 @@ final class EdgeRevealController: NSObject {
             }
             undoButton.isHidden = !actions.canUndoDeletion
             let point = NSEvent.mouseLocation
-            let target = RevealGeometry.target(x: point.x, y: point.y, screens: screens, side: preference.resolved(dock: dockOrientation))
+            // Dragging a scrollbar, selection or window against the edge is not a request to reveal.
+            let target = NSEvent.pressedMouseButtons != 0 && current == nil ? nil
+                : RevealGeometry.target(x: point.x, y: point.y, screens: screens, side: preference.resolved(dock: dockOrientation))
             if current != nil && topology != screens { topologyChanged = true }
             topology = screens
+            // Only a shown panel can hold a composition; skip the view walk while idle.
+            let composing = (current != nil || panel.isVisible) && hasMarkedComposition
             // Never hide a composing panel, even during display removal. Once
             // composition ends, close and require a fresh dwell on the new topology.
-            if topologyChanged && !hasMarkedComposition {
+            if topologyChanged && !composing {
                 timing.reset(); topologyChanged = false
             }
             let next = timing.sample(time: now, target: target,
-                inside: panel.isVisible && panel.frame.contains(point), editing: hasMarkedComposition || panel.attachedSheet != nil)
+                inside: panel.isVisible && panel.frame.contains(point), editing: composing || panel.attachedSheet != nil)
             if next != current {
                 if let next, let screen = screens.first(where: { $0.id == next.screen }) {
                     present(next, screen: screen)
-                } else if !hasMarkedComposition {
+                } else if !composing {
                     try flushEdits()
                     panel.makeFirstResponder(nil)
                     hide()
                 }
                 current = next
             }
-        } catch { stop(); failure(error) }
+            failing = false
+            schedule(fast: !timing.isIdle || current != nil || topologyChanged)
+        } catch {
+            // Transient (e.g. SQLITE_BUSY): keep sampling with the last good settings and
+            // report once per failure streak instead of disabling edge reveal for good.
+            if !failing { failing = true; failure(error) }
+            environmentRead = ProcessInfo.processInfo.systemUptime
+        }
     }
     private func present(_ target: RevealTarget, screen: DockScreen) {
         generation += 1

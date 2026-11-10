@@ -43,6 +43,8 @@ public struct RevealTiming {
     private var exited: Double?
     private var last: Double?
     public init() {}
+    /// Nothing pending or shown: the caller may stop sampling until the pointer moves.
+    public var isIdle: Bool { visible == nil && candidate == nil }
     public mutating func sample(time: Double, target: RevealTarget?, inside: Bool, editing: Bool) -> RevealTarget? {
         guard time.isFinite else { candidate = nil; entered = nil; exited = nil; last = nil; return visible }
         if let last, time < last { candidate = nil; entered = nil; exited = nil }

@@ -22,6 +22,8 @@ final class SettingsPresentation: ObservableObject {
     @Published var loginExplanation = ""
     @Published var dockExplanation = ""
     @Published var displays: [(String, String)] = []
+    @Published private(set) var recording = false
+    private var recorder: Any?
     init(actions: NoteActions, login: LoginService, changed: @escaping () -> Void,
          hotkey: @escaping (Hotkey, () throws -> Void) throws -> Void,
          export: @escaping () throws -> Data, importBackup: @escaping (ValidatedBackup) throws -> Void,
@@ -62,6 +64,35 @@ final class SettingsPresentation: ObservableObject {
             var updated = try actions.store.preferences(); updated.hotkey = parsed.canonical
             try hotkey(parsed) { try self.actions.store.update(updated) }
             preferences = updated; shortcut = updated.hotkey
+        }
+    }
+    /// Captures the next key press as the shortcut. Esc cancels; unsupported keys explain why.
+    func startRecording() {
+        guard !recording else { return }
+        recording = true; message = nil
+        recorder = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            if event.keyCode == 53 { self.stopRecording(); return nil } // Esc
+            guard let text = HotkeyKeyCodes.shortcut(keyCode: event.keyCode, modifiers: event.modifierFlags) else {
+                self.message = "只支持字母、数字或 Space，并需包含 Control 或 Command。"; return nil
+            }
+            self.stopRecording()
+            self.shortcut = text; self.saveHotkey()
+            if self.message != nil { self.shortcut = self.preferences.hotkey } // rejected: show the kept binding
+            return nil
+        }
+    }
+    func stopRecording() {
+        if let recorder { NSEvent.removeMonitor(recorder) }
+        recorder = nil; recording = false
+    }
+    var rolloverTime: Date {
+        get { Calendar.current.date(from: DateComponents(hour: settings.rolloverHour, minute: settings.rolloverMinute)) ?? Date() }
+        set {
+            let parts = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            guard let hour = parts.hour, let minute = parts.minute,
+                  hour != settings.rolloverHour || minute != settings.rolloverMinute else { return }
+            settings.rolloverHour = hour; settings.rolloverMinute = minute; saveSettings()
         }
     }
     func toggleLogin(_ value: Bool) {
@@ -124,15 +155,10 @@ struct SettingsView: View {
                     }
                     Divider()
                     row("每天跨天时间") {
-                        Picker("每天跨天时间", selection: Binding(get: { model.settings.rolloverHour }, set: {
-                            model.settings.rolloverHour = $0; model.saveSettings()
-                        })) {
-                            ForEach(0..<24, id: \.self) { Text(String(format: "%02d 时", $0)).tag($0) }
-                        }.labelsHidden().frame(width: 100)
-                        Picker("分钟", selection: Binding(get: { model.settings.rolloverMinute }, set: {
-                            model.settings.rolloverMinute = $0; model.saveSettings()
-                        })) { ForEach(0..<60, id: \.self) { Text(String(format: "%02d 分", $0)).tag($0) } }
-                            .labelsHidden().frame(width: 90)
+                        DatePicker("每天跨天时间", selection: Binding(get: { model.rolloverTime }, set: { model.rolloverTime = $0 }),
+                                   displayedComponents: .hourAndMinute)
+                            .labelsHidden().datePickerStyle(.field)
+                            .environment(\.locale, Locale(identifier: "en_GB")) // 24-hour field
                     }
                 }
                 Text(model.loginExplanation + " 跨天范围 00:00–23:59，默认 04:00。")
@@ -168,10 +194,14 @@ struct SettingsView: View {
                 Text(model.dockExplanation).font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("快捷键") {
                     row("新建便签") {
-                        TextField("Control+Option+N", text: $model.shortcut).frame(width: 210)
-                            .accessibilityLabel("新建便签快捷键，修饰键用加号连接")
-                            .onSubmit { model.saveHotkey() }
-                        Button("应用") { model.saveHotkey() }
+                        Text(model.recording ? "请按下新快捷键（Esc 取消）" : ShortcutText.symbols(model.shortcut))
+                            .font(.system(size: 13, weight: .medium)).monospaced()
+                            .foregroundStyle(model.recording ? .secondary : .primary)
+                            .frame(minWidth: 200, alignment: .trailing)
+                            .accessibilityLabel("新建便签快捷键：\(model.shortcut)")
+                        Button(model.recording ? "取消" : "录制…") {
+                            model.recording ? model.stopRecording() : model.startRecording()
+                        }
                     }
                 }
                 group("数据") {
@@ -185,5 +215,14 @@ struct SettingsView: View {
             .background(Color(nsColor: NoteTheme.dynamic("F4F3F0", "242321")))
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.reload() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in model.reload() }
+            .onDisappear { model.stopRecording() }
+    }
+}
+
+/// "Control+Option+N" -> "⌃⌥N" for display; storage keeps the readable canonical form.
+enum ShortcutText {
+    static func symbols(_ value: String) -> String {
+        let map = ["Control": "⌃", "Option": "⌥", "Shift": "⇧", "Command": "⌘"]
+        return value.split(separator: "+").map { map[String($0)] ?? String($0) }.joined()
     }
 }

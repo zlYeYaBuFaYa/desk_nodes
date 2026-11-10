@@ -7,7 +7,7 @@ var targets: [Target] = [
     .target(name: "DeskNodesCore"),
     .target(name: "DeskNodesActions", dependencies: ["DeskNodesPersistence"]),
     .testTarget(name: "DeskNodesActionsTests", dependencies: ["DeskNodesActions"]),
-    .systemLibrary(name: "CSQLite", pkgConfig: "sqlite3"),
+    .systemLibrary(name: "CSQLite"), // module map links sqlite3; SDK/system headers, no pkg-config
     .target(name: "DeskNodesPersistence", dependencies: ["DeskNodesCore", "CSQLite"]),
     .testTarget(name: "DeskNodesPersistenceTests", dependencies: ["DeskNodesPersistence", "CSQLite"]),
     .testTarget(name: "DeskNodesCoreTests", dependencies: ["DeskNodesCore"])

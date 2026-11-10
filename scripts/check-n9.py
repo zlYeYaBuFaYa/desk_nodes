@@ -21,7 +21,7 @@ for value in ['NSOpenPanel()', 'NSSavePanel()', 'Store.validateBackup', '.alertS
     check(value in settings if value != 'Data.write' else 'data.write(to: url, options: .atomic)' in settings)
 check(settings.index('Store.validateBackup') < settings.index('alert.messageText = "替换全部本机数据？"') < settings.index('try importBackup(backup)'))
 check('.onChange(' not in settings) # Reload/import must not trigger preference writes.
-check('0..<24' in settings and '0..<60' in settings)
+check('displayedComponents: .hourAndMinute' in settings) # full 00:00-23:59 range via one 24-hour time field
 check('无法读取 Dock 位置' in settings and '暂用主显示器' in settings)
 for value in ['RegisterEventHotKey(', 'UnregisterEventHotKey(', 'InstallEventHandler(', 'RemoveEventHandler(', 'SMAppService.mainApp.register()', 'SMAppService.mainApp.unregister()', 'shouldAskForLogin', 'alert.runModal() == .alertSecondButtonReturn']:
     check(value in services)
