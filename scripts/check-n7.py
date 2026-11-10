@@ -28,7 +28,9 @@ check('EditorSynchronization.flush' in card)
 check('titleEditor.currentEditor()' in card)
 check('hasMarkedText()' in card)
 check('!hasMarkedComposition, actions?.prefersDeletionUndo' in application)
-check('reveal?.refresh(notes)' in application)
+# Every reconciliation pass also refreshes the shared reveal copies (via NoteSurfaces).
+check('self?.reveal?.refresh(notes, items: items, changed: changed)' in application)
+check('refreshReveal(notes, items, changedIDs)' in (app / 'NoteSurfaces.swift').read_text())
 check('undoClicked() { _ = restoreDeletion() }' in reveal)
 check('restoreDeletion: { [weak self] in self?.undoDeletion() ?? false }' in application)
 for path in app.glob('*.swift'):

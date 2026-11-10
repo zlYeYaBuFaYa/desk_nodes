@@ -114,16 +114,19 @@ final class EdgeRevealController: NSObject {
     }
     var hasMarkedComposition: Bool { cards.values.contains { $0.hasMarkedComposition } }
     func flushEdits() throws { for card in cards.values { try card.flushRolloverEdits() } }
-    func refresh(_ notes: [Note]) {
+    /// `changed == nil` refreshes every card; otherwise untouched cards are only re-laid out.
+    func refresh(_ notes: [Note], items: [NoteID: [Item]]? = nil, changed changedIDs: Set<NoteID>? = nil) {
         let ids = Set(notes.map(\.id))
         for id in Array(cards.keys) where !ids.contains(id) {
             cards[id]?.prepareForRemoval(); cards.removeValue(forKey: id)?.removeFromSuperview()
         }
         ordered = notes.map(\.id)
         for note in notes {
-            if let card = cards[note.id] { card.refresh(note) }
-            else {
-                let card = NoteCardView(note: note, actions: actions, changed: changed, undoDelete: undo, failure: failure, reveal: true)
+            if let card = cards[note.id] {
+                if changedIDs?.contains(note.id) ?? true { card.refresh(note, items: items?[note.id] ?? (items == nil ? nil : [])) }
+            } else {
+                let card = NoteCardView(note: note, actions: actions, changed: changed, undoDelete: undo, failure: failure, reveal: true,
+                                        items: items?[note.id] ?? (items == nil ? nil : []))
                 card.canMutate = canMutate
                 cards[note.id] = card; list.addSubview(card)
             }

@@ -56,10 +56,12 @@ final class DockController: NSObject {
         }
     }
     private func key(_ edge: DockEdge, _ screen: DockScreen) -> String { edge.rawValue + ":" + screen.id }
-    func layout(panels: [NoteID: NotePanel], modes: WindowModes) {
+    /// `changed`: free panels to re-clamp (nil = all). `strips == false` keeps every strip,
+    /// its tab windows and cached slots as they are (no docked note was affected).
+    func layout(panels: [NoteID: NotePanel], modes: WindowModes, changed: Set<NoteID>? = nil, strips: Bool = true) {
         guard dragging == nil else { return }
         self.panels = panels
-        layouts = [:]; railsInUse = []
+        if strips { layouts = [:]; railsInUse = [] } else { railsInUse = Set(rails.keys) }
         // Strips that no longer overflow drop their tab windows after this pass.
         defer {
             for key in rails.keys where !railsInUse.contains(key) { rails.removeValue(forKey: key)?.windows.forEach { $0.close() } }
@@ -75,6 +77,7 @@ final class DockController: NSObject {
                 panel.dragCancel = { [weak self] in self?.cancel() }
                 panel.dragEnd = { [weak self] frame, point in self?.end(note.id, frame: frame, point: point) }
                 if !panel.docked {
+                    guard changed?.contains(note.id) ?? true else { continue }
                     if let expanded = panel.expandedFrame,
                        let screen = screens.first(where: { $0.id == note.placement.displayID }) ?? screens.first {
                         let projected = DockGeometry.clamp(expanded.presenting(collapsed: note.collapsed), to: screen)
@@ -86,7 +89,7 @@ final class DockController: NSObject {
                     if !panel.isVisible { panel.orderFrontRegardless() }; continue
                 }
             }
-            for screen in screens {
+            for screen in screens where strips {
                 for edge in [DockEdge.top, .left, .right] {
                     let group = notes.filter {
                         guard case .dock(let e, let id) = $0.placement else { return false }

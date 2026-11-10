@@ -63,6 +63,13 @@ public final class Store {
             try db.query("SELECT id,note_id,text,completed,position,created,updated,deleted,(SELECT day FROM item_archives WHERE item_id=items.id) FROM items WHERE note_id=? \(includeDeleted ? "" : "AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id)") ORDER BY position,id", [.text(noteID.rawValue.uuidString)]).map(decodeItem)
         }
     }
+    /// Every live, unarchived row grouped by note, in display order: one query for a whole refresh.
+    public func liveItemsByNote() throws -> [NoteID: [Item]] {
+        try locked {
+            let rows = try db.query("SELECT id,note_id,text,completed,position,created,updated,deleted,NULL FROM items WHERE deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id) ORDER BY note_id,position,id").map(decodeItem)
+            return Dictionary(grouping: rows, by: \.noteID)
+        }
+    }
     @discardableResult public func createNote(title: String? = nil, color: NotePalette = .paper,
                          placement: Placement = .dock(edge: .top, displayID: nil),
                          level: WindowLevel = .desktop, order: Int = 0) throws -> Note {

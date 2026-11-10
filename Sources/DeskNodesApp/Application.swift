@@ -17,10 +17,9 @@ struct DeskNodesApplication {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var modes = WindowModes()
     private var topmostMenuItem: NSMenuItem?
     private var statusItem: NSStatusItem?
-    private var panels: [NoteID: NotePanel] = [:]
+    private var surfaces: NoteSurfaces?
     private var actions: NoteActions?
     private var docking: DockController?
     private var reveal: EdgeRevealController?
@@ -48,9 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
-            if let actions {
-                docking = DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false }, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
-            }
+            if let actions { surfaces = makeSurfaces(actions); docking = makeDocking(actions) }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
             if let actions {
                 reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
@@ -62,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             installRolloverScheduler()
             catchUpDay()
             try actions?.reconcileScreens(DockController.screens())
-            refresh()
+            refresh(.all)
             if let actions {
                 // Registration errors must not prevent the first-launch consent question.
                 do {
@@ -102,9 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let calendar = try BusinessCalendar(timeZone: .current)
             let result = try actions.store.rollover(using: calendar) {
                 if self.hasMarkedComposition { return false }
-                for panel in self.panels.values {
-                    try (panel.contentView as? NoteCardView)?.flushRolloverEdits()
-                }
+                try self.surfaces?.flushEdits()
                 try self.reveal?.flushEdits()
                 return true
             }
@@ -123,9 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var hasMarkedComposition: Bool {
-        reveal?.hasMarkedComposition == true || panels.values.contains {
-            ($0.contentView as? NoteCardView)?.hasMarkedComposition == true
-        }
+        reveal?.hasMarkedComposition == true || surfaces?.hasMarkedComposition == true
     }
     private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
@@ -193,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let displayID = screen.flatMap { NSScreen.screens.firstIndex(of: $0) }.flatMap { mapped.indices.contains($0) ? mapped[$0].persistentID : nil }
             var frame: NoteFrame?
             if let visible = screen?.visibleFrame {
-                let offset = Double(panels.count % 6) * 24
+                let offset = Double((surfaces?.panels.count ?? 0) % 6) * 24
                 frame = NoteFrame(x: visible.midX - 120 + offset, y: visible.maxY - 180 - offset)
             }
             let note = try actions.createNote(frame: frame, displayID: displayID)
@@ -201,41 +194,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A global hotkey arrives while another app is active: take keyboard focus
             // first, or the first keystrokes would still go to that app.
             NSApp.activate(ignoringOtherApps: true)
-            if let panel = panels[note.id] {
+            if let panel = surfaces?.panels[note.id] {
                 panel.makeKeyAndOrderFront(nil)
                 if let editor = (panel.contentView as? NoteCardView)?.firstEditor { panel.makeFirstResponder(editor) }
             }
         }
         catch { report(error) }
     }
-    private func refresh() {
-        guard let actions else { return }
+    /// Reconciles windows with the store; see `NoteSurfaces` for what each scope touches.
+    private func refresh(_ scope: RefreshScope = .changes) {
+        guard let actions, let surfaces else { return }
         do {
-            let notes = try actions.store.notes()
-            let ids = Set(notes.map(\.id))
-            for id in Array(panels.keys) where !ids.contains(id) {
-                (panels[id]?.contentView as? NoteCardView)?.prepareForRemoval()
-                panels.removeValue(forKey: id)?.dismissNote()
-            }
-            let visible = NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
-            for (index, note) in notes.enumerated() {
-                if let panel = panels[note.id], let card = panel.contentView as? NoteCardView {
-                    card.refresh(note); try configure(panel, note: note); continue
-                }
-                let panel = NotePanel(origin: NSPoint(x: visible.midX - 120 + CGFloat(index % 5) * 24,
-                                                      y: visible.maxY - 300 - CGFloat(index % 5) * 24))
-                panel.deletionUndo = { [weak self] in self?.routeDeletionUndo() ?? false }
-                panel.contentView = NoteCardView(note: note, actions: actions,
-                    changed: { [weak self] in self?.refresh() },
-                    undoDelete: { [weak self] in self?.routeDeletionUndo() ?? false },
-                    failure: { [weak self] in self?.report($0) })
-                (panel.contentView as? NoteCardView)?.canMutate = { [weak self] in self?.hasMarkedComposition == false }
-                panels[note.id] = panel; try configure(panel, note: note); panel.showNote()
-            }
+            let notes = try surfaces.refresh(scope).notes
             // The empty state is created once and never takes focus; it stays out of the
             // way while the last deletion can still be undone from the toast.
             if !notes.isEmpty || actions.canUndoDeletion { emptyWindow?.close(); emptyWindow = nil }
             else if emptyWindow == nil {
+                let visible = NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
                 let panel = NotePanel(origin: NSPoint(x: visible.midX - 120, y: visible.midY))
                 panel.setContentSize(NSSize(width: 240, height: 100))
                 panel.backgroundColor = .windowBackgroundColor
@@ -246,45 +221,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.frame = NSRect(x: 50, y: 30, width: 140, height: 32)
                 panel.contentView?.addSubview(button); panel.orderFrontRegardless(); emptyWindow = panel
             }
-            docking?.layout(panels: panels, modes: modes)
-            reveal?.refresh(notes)
             updateToast()
         } catch { report(error) }
     }
-    private func configure(_ panel: NotePanel, note: Note) throws {
-        guard let actions else { return }
-        panel.choice = note.level; panel.modes = modes; panel.applyLevel()
-        var expanded: NoteFrame
-        switch note.placement {
-        case .free(_, let x, let y, let width, let height):
-            expanded = NoteFrame(x: x, y: y, width: width, height: height)
-        case .dock: return // DockController owns strip geometry; free geometry stays durable.
+    private func makeSurfaces(_ actions: NoteActions) -> NoteSurfaces {
+        let surfaces = NoteSurfaces(actions: actions, changed: { [weak self] in self?.refresh() },
+            undo: { [weak self] in self?.routeDeletionUndo() ?? false },
+            canMutate: { [weak self] in self?.hasMarkedComposition == false },
+            failure: { [weak self] in self?.report($0) })
+        surfaces.layoutDock = { [weak self] panels, modes, changed, strips in
+            self?.docking?.layout(panels: panels, modes: modes, changed: changed, strips: strips)
         }
-        if note.automaticHeight {
-            let availableHeight = DockGeometry.screen(note.placement.displayID, screens: DockController.screens())?.available.height ?? 480
-            let height = min(availableHeight, NoteFrame.automaticHeight(content: (panel.contentView as? NoteCardView)?.preferredHeight(width: expanded.width) ?? 120))
-            expanded.y += expanded.height - height; expanded.height = height
+        surfaces.refreshReveal = { [weak self] notes, items, changed in
+            self?.reveal?.refresh(notes, items: items, changed: changed)
         }
-        let changedCollapse = panel.frame.height == 32 ? !note.collapsed : note.collapsed
-        panel.present(expanded, collapsed: note.collapsed, animate: changedCollapse)
-        if case .free = note.placement {
-            let placement = Placement.free(displayID: {
-                if case .free(let display, _, _, _, _) = note.placement { return display }; return nil
-            }(), x: expanded.x, y: expanded.y, width: expanded.width, height: expanded.height)
-            if placement != note.placement, expanded.width >= 200, expanded.height >= 120 { try actions.finalGeometry(note.id, frame: expanded) }
-        }
+        return surfaces
+    }
+    private func makeDocking(_ actions: NoteActions) -> DockController {
+        // Tab selection, paging and drags are UI state the store diff cannot see.
+        DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false },
+                       changed: { [weak self] in self?.refresh(.layout) }, failure: { [weak self] in self?.report($0) })
     }
     @objc private func screensChanged() {
-        do { try actions?.reconcileScreens(DockController.screens()); refresh() } catch { report(error) }
+        do { try actions?.reconcileScreens(DockController.screens()); refresh(.all) } catch { report(error) }
     }
     @objc private func toggleTopmost(_ sender: Any?) {
-        modes.allTopmost.toggle()
+        guard let surfaces else { return }
+        var modes = surfaces.modes; modes.allTopmost.toggle()
         topmostMenuItem?.title = modes.allTopmost ? "全部恢复" : "全部置顶"
-        for panel in panels.values { panel.modes = modes; panel.applyLevel() }
-        docking?.layout(panels: panels, modes: modes)
+        surfaces.apply(modes)
     }
     func applicationDidResignActive(_ notification: Notification) {
-        for panel in panels.values { panel.temporarilyRaised = false; panel.applyLevel() }
+        surfaces?.lowerTransientRaises()
     }
     private func updateToast() {
         guard let actions else { return }
@@ -364,7 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try actions.restoreDeletedNote(id)
             // The display it lived on may be gone; bring it back on screen.
             try actions.reconcileScreens(DockController.screens())
-            refresh(); panels[id]?.orderFrontRegardless()
+            refresh(); surfaces?.panels[id]?.orderFrontRegardless()
         case .item(let id):
             try actions.restoreDeletedItem(id)
             refresh()
@@ -374,7 +342,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let actions else { return }
         if auxiliary.settings == nil {
             auxiliary.settings = SettingsPresentation(actions: actions, login: login,
-                changed: { [weak self] in self?.refresh(); self?.catchUpDay() },
+                changed: { [weak self] in self?.refresh(.layout); self?.catchUpDay() },
                 hotkey: { [weak self] key, persist in
                     guard let self else { throw StoreError.closed }
                     if self.globalHotkey == nil { self.globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) } }
@@ -383,7 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else { throw StoreError.closed }
                     return try actions.store.exportBackup {
                         guard !self.hasMarkedComposition else { return false }
-                        for panel in self.panels.values { try (panel.contentView as? NoteCardView)?.flushRolloverEdits() }
+                        try self.surfaces?.flushEdits()
                         try self.reveal?.flushEdits(); return true
                     }
                 }, importBackup: { [weak self] backup in
@@ -402,19 +370,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try actions.store.replace(with: backup, confirmed: true, prepareEditing: { !self.hasMarkedComposition })
         }
         // Invalidate even if imported IDs match. Relinquishing focus cannot flush old data.
-        for panel in panels.values { (panel.contentView as? NoteCardView)?.prepareForRemoval() }
+        for card in surfaces?.cards ?? [] { card.prepareForRemoval() }
         reveal?.invalidateAfterImport(); reveal = nil
         docking?.invalidateAfterImport()
-        for panel in panels.values { panel.undoManager?.removeAllActions(); panel.close() }
-        panels = [:]; actions.invalidateUndoAfterImport()
-        modes = WindowModes(); topmostMenuItem?.title = "全部置顶"
-        docking = DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false }, changed: { [weak self] in self?.refresh() }, failure: { [weak self] in self?.report($0) })
+        surfaces?.discardAll(); actions.invalidateUndoAfterImport()
+        topmostMenuItem?.title = "全部置顶"
+        docking = makeDocking(actions)
         reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
             undo: { [weak self] in self?.routeDeletionUndo() ?? false },
             restoreDeletion: { [weak self] in self?.undoDeletion() ?? false },
             canMutate: { [weak self] in self?.hasMarkedComposition == false }, failure: { [weak self] in self?.report($0) })
         rolloverDeferred = false
-        refresh(); auxiliary.reloadHistoryIfVisible()
+        refresh(.all); auxiliary.reloadHistoryIfVisible()
         // No autostart registration and no rollover/capture on import.
     }
     @objc private func quit(_ sender: Any?) { NSApp.terminate(sender) }
@@ -426,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return .terminateCancel
         }
         do {
-            for panel in panels.values { try (panel.contentView as? NoteCardView)?.flushRolloverEdits() }
+            try surfaces?.flushEdits()
             try reveal?.flushEdits()
             return .terminateNow
         } catch { report(error); return .terminateCancel }

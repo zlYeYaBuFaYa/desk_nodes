@@ -106,7 +106,8 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private var saveWork: DispatchWorkItem?
     override var isFlipped: Bool { true }
     init(note: Note, actions: NoteActions, changed: @escaping () -> Void,
-         undoDelete: @escaping () -> Bool, failure: @escaping (Error) -> Void, reveal: Bool = false) {
+         undoDelete: @escaping () -> Bool, failure: @escaping (Error) -> Void, reveal: Bool = false,
+         items: [Item]? = nil) {
         self.note = note
         self.reveal = reveal
         id = note.id; self.actions = actions; self.changed = changed
@@ -157,7 +158,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         scroll.drawsBackground = false; scroll.hasVerticalScroller = true
         scroll.documentView = list
         [header, titleEditor, collapsedLabel, count, scroll, tools, grip, pinIndicator, addButton].forEach { addSubview($0) }
-        refresh(note)
+        refresh(note, items: items)
     }
     required init?(coder: NSCoder) { fatalError() }
     override func layout() {
@@ -198,7 +199,8 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     func preferredHeight(width: CGFloat) -> Double {
         Double((!reveal && isDocked ? 82 : 56) + orderedRows.reduce(CGFloat(0)) { $0 + $1.fittingHeight(width: width - 28) })
     }
-    func refresh(_ note: Note) {
+    /// `preloaded` comes from a batched refresh; nil reads this note's rows itself.
+    func refresh(_ note: Note, items preloaded: [Item]? = nil) {
         guard !invalidated else { return }
         self.note = note
         let titleInput = titleEditor.currentEditor() as? NSTextView
@@ -212,7 +214,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         }
         palette = note.color
         do {
-            let items = try actions.store.items(in: id)
+            let items = try preloaded ?? actions.store.items(in: id)
             let ids = Set(items.map(\.id))
             for key in Array(rows.keys) where !ids.contains(key) {
                 if let row = rows[key] {
