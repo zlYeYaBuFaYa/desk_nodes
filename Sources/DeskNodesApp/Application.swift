@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
+        auxiliary.configureHistory = { [weak self] in self?.configureHistory($0) }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let symbol = NSImage(systemSymbolName: "note.text", accessibilityDescription: "DeskNodes")
         symbol?.isTemplate = true
@@ -136,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let submenu = NSMenu(); submenu.delegate = self; dockMenu.submenu = submenu; menu.addItem(dockMenu)
         menu.addItem(.separator())
         add("历史记录…", to: menu, action: #selector(showHistory(_:)))
+        add("最近删除…", to: menu, action: #selector(showRecentlyDeleted(_:)))
         add("设置…", to: menu, action: #selector(showSettings(_:)), key: ",")
         menu.addItem(.separator())
         add("退出 DeskNodes", to: menu, action: #selector(quit(_:)), key: "q")
@@ -344,6 +346,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
     @objc private func showHistory(_ sender: Any?) { auxiliary.show(.history, store: actions?.store) }
+    @objc private func showRecentlyDeleted(_ sender: Any?) {
+        auxiliary.show(.history, store: actions?.store, historyMode: .deleted)
+    }
+    private func configureHistory(_ history: HistoryPresentation) {
+        history.loadDeleted = { [weak self] in
+            guard let actions = self?.actions else { throw StoreError.closed }
+            return try actions.recentlyDeleted()
+        }
+        history.restoreDeleted = { [weak self] target in try self?.restoreDeleted(target) }
+    }
+    private func restoreDeleted(_ target: DeletedTarget) throws {
+        guard let actions else { throw StoreError.closed }
+        guard !hasMarkedComposition else { throw StoreError.invalid("请先完成输入法组词，再恢复") }
+        switch target {
+        case .note(let id):
+            try actions.restoreDeletedNote(id)
+            // The display it lived on may be gone; bring it back on screen.
+            try actions.reconcileScreens(DockController.screens())
+            refresh(); panels[id]?.orderFrontRegardless()
+        case .item(let id):
+            try actions.restoreDeletedItem(id)
+            refresh()
+        }
+    }
     @objc private func showSettings(_ sender: Any?) {
         guard let actions else { return }
         if auxiliary.settings == nil {

@@ -2,9 +2,19 @@ import AppKit
 import SwiftUI
 import DeskNodesPersistence
 
+enum HistoryMode: Hashable { case calendar, deleted }
+enum DeletedTarget: Equatable { case note(NoteID), item(ItemID) }
+
 /// Allocated only when History is requested; no scheduler or second database connection.
+/// The calendar stays a read-only view of sealed snapshots; the recently-deleted list is
+/// the only part that can change data, and it does so through injected app actions.
 @MainActor
 final class HistoryPresentation: ObservableObject {
+    @Published var mode: HistoryMode = .calendar { didSet { if mode == .deleted { reloadDeleted() } } }
+    @Published private(set) var deleted = RecentlyDeleted()
+    @Published private(set) var deletedFailure: String?
+    var loadDeleted: (() throws -> RecentlyDeleted)?
+    var restoreDeleted: ((DeletedTarget) throws -> Void)?
     @Published private(set) var month: HistoryMonth
     @Published var selected: HistoryDay
     @Published private(set) var snapshots: [DailySnapshot] = []
@@ -30,9 +40,20 @@ final class HistoryPresentation: ObservableObject {
         month = next; selected = next.first; reload()
     }
     var daily: DailySnapshot? { snapshots.first { $0.day == selected } }
+    func reloadDeleted() {
+        guard let loadDeleted else { return }
+        do { deleted = try loadDeleted(); deletedFailure = nil }
+        catch { deleted = RecentlyDeleted(); deletedFailure = "无法读取最近删除：\(error)" }
+    }
+    func restore(_ target: DeletedTarget) {
+        do { try restoreDeleted?(target); deletedFailure = nil }
+        catch StoreError.notFound { deletedFailure = nil } // already restored elsewhere (e.g. toast undo)
+        catch { deletedFailure = "无法恢复：\(error)" }
+        reloadDeleted(); reload()
+    }
 }
 
-private enum HistoryColors {
+enum HistoryColors {
     static let background = Color(nsColor: NoteTheme.dynamic("FBFAF8", "242321"))
     static let quiet = Color(nsColor: NoteTheme.dynamic("EFEDE8", "35332F"))
     static let selected = Color(nsColor: NoteTheme.dynamic("2F2C27", "EDEBE6"))
@@ -48,10 +69,27 @@ struct HistoryView: View {
     @ObservedObject var model: HistoryPresentation
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
     var body: some View {
-        HStack(spacing: 0) {
-            calendar.padding(.horizontal, 28).padding(.vertical, 24).frame(width: 400)
-            Divider()
-            detail.padding(.horizontal, 32).padding(.vertical, 24)
+        Group {
+            if model.mode == .calendar {
+                HStack(spacing: 0) {
+                    calendar.padding(.horizontal, 28).padding(.vertical, 24).frame(width: 400)
+                    Divider()
+                    detail.padding(.horizontal, 32).padding(.vertical, 24)
+                }
+            } else {
+                RecentlyDeletedView(model: model)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("视图", selection: $model.mode) {
+                    Text("日历").tag(HistoryMode.calendar)
+                    Text("最近删除").tag(HistoryMode.deleted)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            if model.mode == .deleted { model.reloadDeleted() }
         }
         .font(.system(size: 13)).monospacedDigit()
         .foregroundStyle(Color(nsColor: NoteTheme.primary))

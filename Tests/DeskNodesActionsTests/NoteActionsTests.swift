@@ -242,3 +242,21 @@ final class DeletionStackTests: XCTestCase {
         XCTAssertTrue(actions.canUndoDeletion)
     }
 }
+
+final class RecentlyDeletedActionTests: XCTestCase {
+    func testRestoringFromTheListRetiresTheMatchingToastUndo() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try Store(url: directory.appendingPathComponent("t.sqlite")); defer { try? store.close() }
+        let actions = NoteActions(store: store)
+        let a = try actions.createNote(), b = try actions.createNote()
+        let row = try actions.add(in: b.id, text: "行")
+        try actions.deleteItem(row.id, in: b.id); try actions.deleteNote(a.id)
+        try actions.restoreDeletedNote(a.id)
+        XCTAssertEqual(actions.recoverableDeletionCount, 1)
+        try actions.restoreDeletedItem(row.id)
+        XCTAssertFalse(actions.canUndoDeletion)
+        XCTAssertTrue(try actions.recentlyDeleted().isEmpty)
+    }
+}

@@ -44,3 +44,33 @@ final class EditingImprovementTests: XCTestCase {
         XCTAssertEqual(refreshes, 1, "one refresh per pause, not per keystroke")
     }
 }
+
+final class RecentlyDeletedPresentationTests: XCTestCase {
+    func testDeletionMetaUsesRelativeDayAndRemainingDays() {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = ISO8601DateFormatter().date(from: "2026-11-10T15:00:00Z")!
+        XCTAssertEqual(DeletedText.meta(now.addingTimeInterval(-3600), now: now, calendar: calendar), "删除于 今天 14:00 · 30 天后移出列表")
+        XCTAssertEqual(DeletedText.meta(now.addingTimeInterval(-86_400), now: now, calendar: calendar), "删除于 昨天 15:00 · 29 天后移出列表")
+        XCTAssertEqual(DeletedText.meta(now.addingTimeInterval(-40 * 86_400), now: now, calendar: calendar), "删除于 10月1日 15:00 · 1 天后移出列表")
+    }
+
+    @MainActor
+    func testRestoreThroughThePresentationReloadsTheList() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: url.path + suffix) } }
+        let store = try Store(url: url); defer { try? store.close() }
+        let actions = NoteActions(store: store), note = try actions.createNote()
+        try actions.deleteNote(note.id)
+        let model = HistoryPresentation(store: store, today: try HistoryDay("2026-11-10"))
+        model.loadDeleted = { try actions.recentlyDeleted() }
+        model.restoreDeleted = { if case .note(let id) = $0 { try actions.restoreDeletedNote(id) } }
+        model.mode = .deleted
+        XCTAssertEqual(model.deleted.notes.map(\.note.id), [note.id])
+        model.restore(.note(note.id))
+        XCTAssertTrue(model.deleted.isEmpty)
+        XCTAssertNil(model.deletedFailure)
+        model.restore(.note(note.id)) // already restored: quietly ignored
+        XCTAssertNil(model.deletedFailure)
+        XCTAssertEqual(try store.notes().map(\.id), [note.id])
+    }
+}

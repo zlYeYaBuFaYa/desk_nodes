@@ -25,4 +25,8 @@ open build/DeskNodes.app
 
 数据位于 `~/Library/Application Support/local.desknodes.native/DeskNodes.sqlite3`。设置 → 数据 → 导出… 生成完整原生 JSON；导入… 校验后要求确认替换全部数据。先备份，再导入；输入法组词期间拒绝导入／导出。成功导入会清理旧编辑器与撤销状态，保留导入的历史、归档、布局、设置、跨天检查点及删除记录。格式为 native backup v1 / schema 7，**不兼容旧 Tauri 备份**，没有自动迁移或云同步。
 
+每次跨天成功后会自动把整个数据库复制到同目录的 `Backups/DeskNodes-日期.sqlite3`，保留最近 7 份；恢复时先退出 DeskNodes，再用其中一份替换 `DeskNodes.sqlite3`（并删除同名的 `-wal`／`-shm` 文件）。
+
+删除的便签和事项可在菜单栏 → 最近删除…（或历史记录窗口顶部的「最近删除」）中 30 天内恢复。恢复只清除删除标记，不改写已封存的历史快照；事项恢复到原便签末尾，随便签一起删除的事项随便签恢复。
+
 N10 基于 `5e6443371a6181f63fe30cd41d8c6f023ea8410b`，保留权威 [需求与全部五组原型](docs/spec/macos-native/README.md) 和 [里程碑计划](docs/macos-native-plan.md)。此前 N1–N9 文档是历史记录。当前补丁由 Codex 编写，留给 supervisor 审查、测试及一次提交；未 commit、push 或 merge。可复现 Linux 检查入口：`/workspace/desknotes/logs/native-n10-checks.sh`，日志同目录。

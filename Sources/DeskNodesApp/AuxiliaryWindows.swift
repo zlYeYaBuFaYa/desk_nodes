@@ -14,17 +14,20 @@ final class AuxiliaryWindows {
 
     private var history: HistoryPresentation?
     var settings: SettingsPresentation?
+    /// Wires app-level actions (restore from 最近删除) into a newly allocated History model.
+    var configureHistory: ((HistoryPresentation) -> Void)?
 
     func reloadHistoryIfVisible() {
         if controllers[.history]?.window?.isVisible == true { history?.reload() }
     }
 
-    func show(_ destination: Destination, store: Store? = nil) {
+    func show(_ destination: Destination, store: Store? = nil, historyMode: HistoryMode? = nil) {
         if destination == .history, history == nil {
             guard let store else { return }
             do {
                 let today = try BusinessCalendar(timeZone: .current).day(at: Date(), settings: store.settings())
                 history = HistoryPresentation(store: store, today: today)
+                if let history { configureHistory?(history) }
             } catch {
                 let alert = NSAlert()
                 alert.messageText = "无法读取历史记录"
@@ -33,7 +36,9 @@ final class AuxiliaryWindows {
                 return
             }
         }
+        if destination == .history, let historyMode { history?.mode = historyMode }
         if destination == .history { history?.reload() }
+        if destination == .history, history?.mode == .deleted { history?.reloadDeleted() }
         if destination == .settings { settings?.reload() }
         let controller: NSWindowController
         if let existing = controllers[destination] {
@@ -46,7 +51,10 @@ final class AuxiliaryWindows {
             if destination == .history, let history {
                 window.collectionBehavior = [.fullScreenNone]
                 window.contentMinSize = NSSize(width: 900, height: 656)
-                window.contentViewController = NSHostingController(rootView: HistoryView(model: history))
+                let hosting = NSHostingController(rootView: HistoryView(model: history))
+                hosting.sceneBridgingOptions = [.toolbars] // 日历 | 最近删除 switch lives in the title bar
+                window.toolbarStyle = .unified
+                window.contentViewController = hosting
             } else if let settings {
                 window.collectionBehavior = [.fullScreenNone]
                 window.contentViewController = NSHostingController(rootView: SettingsView(model: settings))

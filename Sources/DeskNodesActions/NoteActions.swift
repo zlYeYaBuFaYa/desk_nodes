@@ -128,6 +128,18 @@ public final class NoteActions {
         }
         return true
     }
+    /// The "最近删除" list as of now (the injected clock).
+    public func recentlyDeleted() throws -> RecentlyDeleted { try store.recentlyDeleted(now: clock()) }
+    /// Restores from the recently-deleted list; a toast entry for the same deletion is retired
+    /// so a later Command-Z cannot fail on an already restored row.
+    public func restoreDeletedNote(_ id: NoteID) throws {
+        try store.restoreDeletedNote(id)
+        pending.removeAll { if case .note(let note, _) = $0.0 { return note.id == id }; return false }
+    }
+    public func restoreDeletedItem(_ id: ItemID) throws {
+        try store.restoreDeletedItem(id)
+        pending.removeAll { if case .item(let item) = $0.0 { return item.id == id }; return false }
+    }
     private func deletionTime() throws -> Date {
         let now = clock()
         guard now.timeIntervalSince1970.isFinite else { throw StoreError.invalid("clock") }

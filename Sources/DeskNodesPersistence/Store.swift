@@ -343,7 +343,7 @@ public final class Store {
     private func liveNote(_ id: NoteID) throws -> Bool {
         try !db.query("SELECT 1 FROM notes WHERE id=? AND deleted IS NULL", [.text(id.rawValue.uuidString)]).isEmpty
     }
-    private func timestamp() throws -> Date {
+    func timestamp() throws -> Date {
         let now = clock()
         guard now.timeIntervalSince1970.isFinite else { throw StoreError.invalid("clock") }
         return now
