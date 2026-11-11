@@ -33,7 +33,7 @@ final class BackupTests: XCTestCase {
         try db.rollover(using: calendar)
         now.addTimeInterval(86400 * 4)
         try db.rollover(using: calendar)
-        let tombstone = try db.createNote(title: "删除", color: .graphite, order: 1)
+        let tombstone = try db.createNote(title: "删除", color: .lavender, order: 1)
         _ = try db.createItem(in: tombstone.id, text: "墓碑", order: 2)
         try db.deleteNote(tombstone.id)
         let item = try db.createItem(in: note.id, text: "待记录删除", order: 88)
@@ -91,6 +91,17 @@ final class BackupTests: XCTestCase {
         }
         json["items"] = "wrong type"
         XCTAssertThrowsError(try Store.validateBackup(JSONSerialization.data(withJSONObject: json)))
+    }
+    func testRetiredGraphiteImportsAsPaper() throws {
+        let source = try store()
+        let note = try source.createNote(title: "旧色", color: .mint, order: 0)
+        let legacy = String(decoding: try source.exportBackup(), as: UTF8.self)
+            .replacingOccurrences(of: #""color"\s*:\s*"mint""#, with: #""color":"graphite""#, options: .regularExpression)
+        XCTAssertTrue(legacy.contains("graphite"))
+        let validated = try Store.validateBackup(Data(legacy.utf8))
+        let target = try store()
+        try target.replace(with: validated, confirmed: true)
+        XCTAssertEqual(try target.notes().first { $0.id == note.id }?.color, .paper)
     }
     func testIncompatibleEnvelopeAndSchemaVersions() throws {
         let db = try populated(), original = try contents(db)

@@ -35,10 +35,16 @@ check('undoClicked() { _ = restoreDeletion() }' in reveal)
 check('restoreDeletion: { [weak self] in self?.undoDeletion() ?? false }' in application)
 for path in app.glob('*.swift'):
     text = path.read_text()
-    if path.name != 'EdgeRevealController.swift':
+    # docs/design/desknodes-color-and-topmost.md: the toolbar, its stack hint and
+    # effectively topmost notes may also cover fullscreen apps.
+    if path.name not in ('EdgeRevealController.swift', 'Toolbar.swift', 'WindowChrome.swift'):
         check('.fullScreenAuxiliary' not in text)
     for forbidden in ['CGS', 'CGEventTapCreate', 'addGlobalMonitorForEvents', 'AXIsProcessTrusted', 'CGRequestListenEventAccess']:
         check(forbidden not in text)
-for name in ['NotePanel.swift', 'DockController.swift', 'DeletionToast.swift']:
+for name in ['WindowChrome.swift', 'DeletionToast.swift']:
     check('.fullScreenNone' in (app / name).read_text())
+chrome = (app / 'WindowChrome.swift').read_text()
+check('effective == .topmost ? .fullScreenAuxiliary : .fullScreenNone' in chrome)
+for name in ['NotePanel.swift', 'DockController.swift']:
+    check('applyNoteLevel' in (app / name).read_text() or 'applyLevel()' in (app / name).read_text())
 print(f'N7 source contracts: {checks} passed (not native API/runtime verification)')

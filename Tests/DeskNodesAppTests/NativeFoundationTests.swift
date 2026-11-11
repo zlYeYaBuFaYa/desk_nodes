@@ -161,6 +161,13 @@ final class NativeFoundationTests: XCTestCase {
         XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenNone))
         XCTAssertFalse(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        // Only an effectively topmost note joins another app's fullscreen space.
+        panel.modes.allTopmost = true; panel.applyLevel()
+        XCTAssertEqual(panel.collectionBehavior, [.canJoinAllSpaces, .fullScreenAuxiliary])
+        panel.modes.allTopmost = false; panel.choice = .topmost; panel.applyLevel()
+        XCTAssertEqual(panel.collectionBehavior, [.canJoinAllSpaces, .fullScreenAuxiliary])
+        panel.choice = .ordinary; panel.applyLevel()
+        XCTAssertEqual(panel.collectionBehavior, [.canJoinAllSpaces, .fullScreenNone])
         let expanded = NoteFrame(x: -500, y: -30, width: 300, height: 550)
         panel.present(expanded, collapsed: true, animate: false)
         XCTAssertEqual(panel.frame, NSRect(x: -500, y: 488, width: 300, height: 32))

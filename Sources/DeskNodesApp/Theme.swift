@@ -44,6 +44,12 @@ enum NoteTheme {
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor.white.withAlphaComponent(0.10) : NSColor.black.withAlphaComponent(0.08)
     }
+    // Stable, opaque toolbar colours keep its small labels legible on any wallpaper.
+    static let toolbarBackground = dynamic("F6F5F1", "272A2E")
+    static let toolbarInk = dynamic("24282D", "F2F4F6")
+    static let toolbarSecondary = dynamic("5C636B", "BDC4CC")
+    static let toolbarDisabled = dynamic("878D94", "858D97")
+    static let toolbarBorder = dynamic("D1D2CE", "50555C")
     static func background(_ palette: NotePalette) -> NSColor {
         dynamic(palette.lightHex, palette.darkHex)
     }

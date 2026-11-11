@@ -173,12 +173,7 @@ final class DockController: NSObject {
             let tab = NSPanel(contentRect: rect(frame), styleMask: [.borderless], backing: .buffered, defer: false)
             tab.isReleasedWhenClosed = false; tab.isOpaque = false; tab.backgroundColor = .clear
             tab.hasShadow = true; tab.hidesOnDeactivate = false
-            tab.collectionBehavior = [.canJoinAllSpaces, .fullScreenNone]
-            switch modes.effective(choice) {
-            case .desktop: tab.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
-            case .ordinary: tab.level = .normal
-            case .topmost: tab.level = .floating
-            }
+            tab.applyNoteLevel(modes.effective(choice))
             button.frame = NSRect(origin: .zero, size: rect(frame).size)
             button.isBordered = false; button.font = .systemFont(ofSize: 13, weight: .semibold)
             button.lineBreakMode = .byTruncatingTail; button.toolTip = button.title

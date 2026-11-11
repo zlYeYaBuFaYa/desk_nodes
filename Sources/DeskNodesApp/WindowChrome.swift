@@ -31,14 +31,21 @@ enum Motion {
     }
 }
 
-extension NotePanel {
-    func applyLevel() {
-        switch modes.effective(choice, temporarilyRaised: temporarilyRaised) {
+extension NSWindow {
+    /// Only a topmost note follows into another app's fullscreen space, where it floats
+    /// above that app; lower notes would sit hidden behind it, so they stay out.
+    func applyNoteLevel(_ effective: WindowLevel) {
+        switch effective {
         case .desktop: level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
         case .ordinary: level = .normal
         case .topmost: level = .floating
         }
+        collectionBehavior = [.canJoinAllSpaces, effective == .topmost ? .fullScreenAuxiliary : .fullScreenNone]
     }
+}
+
+extension NotePanel {
+    func applyLevel() { applyNoteLevel(modes.effective(choice, temporarilyRaised: temporarilyRaised)) }
     func present(_ expanded: NoteFrame, collapsed: Bool, animate: Bool) {
         expandedFrame = expanded
         let target = expanded.presenting(collapsed: collapsed)

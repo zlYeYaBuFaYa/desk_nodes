@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import DeskNodesCore
 import DeskNodesPersistence
 @testable import DeskNodesActions
 
@@ -32,6 +33,19 @@ final class NoteActionsTests: XCTestCase {
         XCTAssertEqual(try store.items(in: note.id).first?.text, "组合e\u{301}\0中文")
         XCTAssertEqual(try store.items(in: note.id).first?.completed, true)
     }
+    func testNewNotesTakeTheLeastUsedColour() throws {
+        var notes: [Note] = []
+        for _ in 0..<7 { now.addTimeInterval(1); notes.append(try actions.createNote()) }
+        XCTAssertEqual(notes.map(\.color), NotePalette.allCases)
+        try actions.deleteNote(notes[3].id)
+        now.addTimeInterval(1)
+        XCTAssertEqual(try actions.createNote().color, notes[3].color)
+        // A manual change counts: two mints now, so the next tie skips past mint.
+        try actions.appearance(notes[0].id, color: .mint)
+        now.addTimeInterval(1)
+        XCTAssertEqual(try actions.createNote().color, .paper)
+    }
+
     func testOptionalTitleAndInsertPositions() throws {
         let note = try actions.createNote()
         try actions.title(note.id, ""); XCTAssertNil(try store.notes().first?.title)

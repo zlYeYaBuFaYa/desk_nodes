@@ -59,7 +59,6 @@ final class NotePanel: NSPanel, NSWindowDelegate {
         title = "便签"
         isOpaque = false; backgroundColor = .clear; hasShadow = true
         isFloatingPanel = false; hidesOnDeactivate = false; isReleasedWhenClosed = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenNone]
         applyLevel()
     }
     /// Short ease-out slide and fade; the window closes when it ends.

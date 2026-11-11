@@ -1,4 +1,5 @@
 import Foundation
+import DeskNodesCore
 import DeskNodesPersistence
 
 public enum EditingCommand: Equatable { case native, addRow, deleteRow }
@@ -45,7 +46,9 @@ public final class NoteActions {
             let maximum = retained.map(\.order).max() ?? -1
             guard maximum < Int.max else { throw StoreError.invalid("note order exhausted") }
             let frame = try (frame ?? NoteFrame(x: 100, y: 100)).bounded()
-            let note = try store.createNote(placement: .free(frame, displayID: displayID), order: maximum + 1)
+            let color = NotePalette.next(inUse: retained.filter { $0.deletedAt == nil }.map(\.color),
+                                         latest: retained.max { ($0.createdAt, $0.order) < ($1.createdAt, $1.order) }?.color)
+            let note = try store.createNote(color: color, placement: .free(frame, displayID: displayID), order: maximum + 1)
             try store.createItem(in: note.id)
             return note
         }

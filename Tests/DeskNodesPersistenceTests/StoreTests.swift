@@ -98,7 +98,7 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(snapshot.notes.first?.items.last?.carriedTo, next)
         XCTAssertNil(snapshot.notes.first?.items.first?.carriedTo)
         XCTAssertEqual(snapshot.notes.first?.items[1].deletedAt, instant)
-        note.title = "later"; note.color = .graphite; note.order = 0; try db.update(note)
+        note.title = "later"; note.color = .lavender; note.order = 0; try db.update(note)
         item.text = "changed"; item.completed = true; item.order = 0; try db.update(item)
         try db.deleteNote(note.id)
         XCTAssertEqual(try db.capture(day: day()), snapshot)
@@ -113,6 +113,23 @@ final class StoreTests: XCTestCase {
         XCTAssertNotNil(deletedSnapshot.notes.first?.deletedAt)
         XCTAssertTrue(deletedSnapshot.notes[0].items.allSatisfy { $0.carriedTo == nil && $0.deletedAt != nil })
     }
+    func testRetiredGraphiteReadsAsPaperWithoutTouchingHistory() throws {
+        let db = try store()
+        let note = try db.createNote(title: "旧色", color: .mint, order: 0)
+        try db.close()
+        let raw = try SQLite(url: url)
+        try raw.run("UPDATE notes SET color='graphite'")
+        // A sealed day written by an older build: children first, then the header.
+        try raw.run("INSERT INTO snapshot_notes VALUES ('2026-11-01',?,NULL,'graphite',0,NULL)", [.text(note.id.rawValue.uuidString)])
+        try raw.run("INSERT INTO days VALUES ('2026-11-01',1)")
+        let reopened = try store()
+        XCTAssertEqual(try reopened.notes().first?.color, .paper)
+        XCTAssertEqual(try raw.query("SELECT color FROM notes")[0][0], "paper")
+        XCTAssertEqual(try reopened.snapshot(day: day("2026-11-01"))?.notes.first?.color, .paper)
+        XCTAssertEqual(try raw.query("SELECT color FROM snapshot_notes")[0][0], "graphite")
+        try raw.close(); try reopened.close()
+    }
+
     func testHistorySealedAtSQLLayer() throws {
         let db = try store()
         let note = try db.createNote()

@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 surfaces = makeSurfaces(actions)
                 desk = makeDesk(actions)
                 docking = makeDocking(actions)
+                desk?.applyTopmost()
             }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
             if let actions {
@@ -230,12 +231,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desk.refresh = { [weak self] scope in self?.refresh(scope) }
         desk.canMutate = { [weak self] in self?.hasMarkedComposition == false }
         desk.failure = { [weak self] in self?.report($0) }
+        desk.topmostChanged = { [weak self] on in self?.topmostMenuItem?.title = on ? "取消置顶" : "全部置顶" }
         desk.toolbar.perform = { [weak self] action in
             switch action {
             case .create: self?.createNote(nil)
             case .delete: self?.deleteSelected()
             case .arrange: self?.desk?.arrange()
             case .collapse: self?.desk?.toggleCollapse()
+            case .topmost: self?.desk?.toggleTopmost()
             case .settings: self?.showSettings(nil)
             }
         }
@@ -267,12 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desk?.screensChanged()
         do { try actions?.reconcileScreens(DockController.screens()); refresh(.all) } catch { report(error) }
     }
-    @objc private func toggleTopmost(_ sender: Any?) {
-        guard let surfaces else { return }
-        var modes = surfaces.modes; modes.allTopmost.toggle()
-        topmostMenuItem?.title = modes.allTopmost ? "全部恢复" : "全部置顶"
-        surfaces.apply(modes)
-    }
+    @objc private func toggleTopmost(_ sender: Any?) { desk?.toggleTopmost() }
     func applicationDidResignActive(_ notification: Notification) {
         surfaces?.lowerTransientRaises()
     }
@@ -395,8 +393,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reveal?.invalidateAfterImport(); reveal = nil
         docking?.invalidateAfterImport()
         surfaces?.discardAll(); actions.invalidateUndoAfterImport()
-        topmostMenuItem?.title = "全部置顶"
         docking = makeDocking(actions)
+        desk?.applyTopmost() // a Mac preference: import never changes it
         reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
             undo: { [weak self] in self?.routeDeletionUndo() ?? false },
             restoreDeletion: { [weak self] in self?.undoDeletion() ?? false },

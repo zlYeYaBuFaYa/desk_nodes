@@ -4,7 +4,7 @@ import DeskNodesActions
 import DeskNodesPersistence
 
 /// Owns the resident toolbar and the desktop-wide presentation: global collapse,
-/// "整理" and its overflow pages. It never edits note content; geometry changes go
+/// all-topmost, "整理" and its overflow pages. It never edits note content; geometry changes go
 /// through `NoteActions` in one transaction, and only at the end of a user action.
 @MainActor
 final class DesktopController {
@@ -26,6 +26,8 @@ final class DesktopController {
     var refresh: (RefreshScope) -> Void = { _ in }
     var canMutate: () -> Bool = { true }
     var failure: (Error) -> Void = { _ in }
+    /// Lets the status menu mirror the toolbar's 置顶 toggle.
+    var topmostChanged: (Bool) -> Void = { _ in }
 
     init(actions: NoteActions, defaults: PresentationDefaults) {
         self.actions = actions; self.defaults = defaults
@@ -57,6 +59,23 @@ final class DesktopController {
         }
     }
 
+    // MARK: Topmost
+
+    var topmost: Bool { defaults.topmost }
+    func toggleTopmost() {
+        defaults.topmost.toggle()
+        applyTopmost()
+        updateToolbar()
+    }
+    /// Pushes the saved toggle to the note windows; also after an import rebuilds them.
+    func applyTopmost() {
+        if let surfaces = surfaces() {
+            var modes = surfaces.modes; modes.allTopmost = defaults.topmost
+            surfaces.apply(modes)
+        }
+        topmostChanged(defaults.topmost)
+    }
+
     // MARK: Toolbar
 
     func start() {
@@ -86,7 +105,7 @@ final class DesktopController {
         let visible = selection.flatMap { surfaces()?.panels[$0] }.map { !$0.suppressed && $0.isVisible } ?? false
         let paged = toolbar.paged
         toolbar.update(Toolbar.State(count: notes.count, canDelete: state == .expanded && visible,
-                                     collapsed: state.targetsCollapsed, page: pageInfo))
+                                     collapsed: state.targetsCollapsed, topmost: defaults.topmost, page: pageInfo))
         // Only the pager row changes the toolbar's height; keep it on screen when it grows.
         if toolbar.paged != paged { placeToolbar(keepingPosition: true) }
     }

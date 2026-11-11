@@ -47,6 +47,10 @@ internal enum Schema {
                 try db.run("INSERT INTO native_preferences VALUES (1,?)", [.text(defaults)])
                 try db.run("PRAGMA user_version = 7")
             }
+            // 石墨 was retired without a schema bump, so backups keep importing across
+            // versions. The CHECK still admits it; no code writes it any more. Sealed
+            // history keeps its rows and reads graphite as paper instead.
+            try db.run("UPDATE notes SET color='paper' WHERE color='graphite'")
             guard try db.query("PRAGMA foreign_key_check").isEmpty else {
                 throw StoreError.corrupt("foreign keys")
             }

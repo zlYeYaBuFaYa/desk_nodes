@@ -265,7 +265,7 @@ public final class Store {
         try locked {
             guard let header = try db.query("SELECT captured FROM days WHERE day=?", [.text(day.rawValue)]).first else { return nil }
             let notes = try db.query("SELECT note_id,title,color,position,deleted FROM snapshot_notes WHERE day=? ORDER BY position,note_id", [.text(day.rawValue)]).map { row -> SnapshotNote in
-                guard let color = NotePalette(rawValue: row[2] ?? "") else { throw StoreError.corrupt("snapshot color") }
+                guard let color = NotePalette(stored: row[2] ?? "") else { throw StoreError.corrupt("snapshot color") }
                 let id: NoteID = try identity(row[0])
                 let items = try db.query("SELECT item_id,text,completed,position,deleted,carried_to FROM snapshot_items WHERE day=? AND note_id=? ORDER BY position,item_id", [.text(day.rawValue), .text(id.rawValue.uuidString)]).map { item in
                     SnapshotItem(id: try identity(item[0]), text: item[1] ?? "", completed: item[2] == "1",
@@ -379,7 +379,7 @@ public final class Store {
         return Date(timeIntervalSince1970: number)
     }
     private func decodeNote(_ row: [String?]) throws -> Note {
-        guard let color = NotePalette(rawValue: row[2] ?? ""), let level = WindowLevel(rawValue: row[4] ?? ""),
+        guard let color = NotePalette(stored: row[2] ?? ""), let level = WindowLevel(rawValue: row[4] ?? ""),
               let placement = row[3], let created = try date(row[7]), let updated = try date(row[8]) else { throw StoreError.corrupt("note") }
         return Note(id: try identity(row[0]), title: row[1], color: color,
                     placement: try JSONDecoder().decode(Placement.self, from: Data(placement.utf8)),

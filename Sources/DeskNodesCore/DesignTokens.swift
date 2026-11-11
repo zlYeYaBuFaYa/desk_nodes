@@ -1,6 +1,29 @@
 /// Platform independent design values. Hex strings are sRGB, without alpha.
+/// 石墨 (graphite) was retired; stored or imported graphite notes read as 宣纸.
 public enum NotePalette: String, CaseIterable, Codable, Sendable {
-    case paper, lemon, apricot, cherry, lavender, mist, mint, graphite
+    case paper, lemon, apricot, cherry, lavender, mist, mint
+
+    /// A stored or imported value, where retired graphite reads as paper.
+    public init?(stored raw: String) {
+        guard let palette = raw == "graphite" ? .paper : NotePalette(rawValue: raw) else { return nil }
+        self = palette
+    }
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let palette = NotePalette(stored: raw) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "unknown palette \(raw)"))
+        }
+        self = palette
+    }
+
+    /// Colour for a new note: the one used least by live notes; ties go to the first
+    /// in palette order after the most recently created note's colour.
+    public static func next(inUse: [NotePalette], latest: NotePalette?) -> NotePalette {
+        let counts = Dictionary(inUse.map { ($0, 1) }, uniquingKeysWith: +)
+        let start = latest.flatMap { allCases.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+        let order = (0..<allCases.count).map { allCases[(start + $0) % allCases.count] }
+        return order.min { counts[$0, default: 0] < counts[$1, default: 0] }!
+    }
 
     public var name: String {
         switch self {
@@ -11,7 +34,6 @@ public enum NotePalette: String, CaseIterable, Codable, Sendable {
         case .lavender: return "薰衣草"
         case .mist: return "雾蓝"
         case .mint: return "薄荷"
-        case .graphite: return "石墨"
         }
     }
 
@@ -24,7 +46,6 @@ public enum NotePalette: String, CaseIterable, Codable, Sendable {
         case .lavender: return "ECE6F5"
         case .mist: return "E3ECF5"
         case .mint: return "E2F0E8"
-        case .graphite: return "E8E8EA"
         }
     }
 
@@ -37,7 +58,6 @@ public enum NotePalette: String, CaseIterable, Codable, Sendable {
         case .lavender: return "2A2536"
         case .mist: return "1F2A36"
         case .mint: return "1E2E26"
-        case .graphite: return "2A2A2D"
         }
     }
 }
@@ -76,7 +96,7 @@ public enum ToolbarMetrics {
     public static let cornerRadius = 16.0
     public static let gripHeight = 24.0
     public static let buttonHeight = 52.0
-    public static let buttonCount = 5.0
+    public static let buttonCount = 6.0
     public static let footerHeight = 32.0
     /// Page switcher row, present only while an arrangement overflows.
     public static let pagerHeight = 28.0

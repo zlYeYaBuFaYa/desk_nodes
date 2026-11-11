@@ -117,17 +117,56 @@ final class DesktopRedesignTests: XCTestCase {
         defer { raw.removePersistentDomain(forName: suite) }
         let defaults = PresentationDefaults(raw)
         XCTAssertFalse(defaults.collapsed); XCTAssertNil(defaults.toolbar); XCTAssertTrue(defaults.pages.isEmpty)
+        XCTAssertFalse(defaults.topmost)
         let id = NoteID()
-        defaults.collapsed = true
+        defaults.collapsed = true; defaults.topmost = true
         defaults.toolbar = .init(x: 20, y: 860, display: "37D8832A-2D66-02CA-B9F7-8F30A301B230")
         defaults.pages = [id: (page: 1, pages: 3)]; defaults.currentPage = 2
         let reopened = PresentationDefaults(raw)
-        XCTAssertTrue(reopened.collapsed)
+        XCTAssertTrue(reopened.collapsed); XCTAssertTrue(reopened.topmost)
         XCTAssertEqual(reopened.toolbar, .init(x: 20, y: 860, display: "37D8832A-2D66-02CA-B9F7-8F30A301B230"))
         XCTAssertEqual(reopened.pages[id]?.page, 1); XCTAssertEqual(reopened.pages[id]?.pages, 3)
         XCTAssertEqual(reopened.currentPage, 2)
         // The JSON backup has no field for any of this.
         let backup = String(decoding: try store.exportBackup(), as: UTF8.self)
-        for key in ["collapsed", "toolbar", "arrange"] { XCTAssertFalse(backup.contains(key), key) }
+        for key in ["collapsed", "toolbar", "arrange", "desk."] { XCTAssertFalse(backup.contains(key), key) }
+    }
+
+    @MainActor func testTopmostToggleKeepsEachNotesOwnLevel() throws {
+        let suite = "local.desknodes.native.tests." + UUID().uuidString
+        let raw = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { raw.removePersistentDomain(forName: suite) }
+        let surfaces = NoteSurfaces(actions: actions, changed: {}, undo: { false }, canMutate: { true }, failure: { XCTFail("\($0)") })
+        let desk = DesktopController(actions: actions, defaults: PresentationDefaults(raw))
+        desk.surfaces = { surfaces }
+        var mirrored: [Bool] = []
+        desk.topmostChanged = { mirrored.append($0) }
+        let plain = try actions.createNote(), pinned = try actions.createNote()
+        try actions.appearance(pinned.id, level: .topmost)
+        try surfaces.refresh(.all)
+        defer { surfaces.discardAll() }
+        let button = desk.toolbar.panel.contentView!.subviews.compactMap { $0 as? ToolbarButton }[Toolbar.Action.topmost.rawValue]
+        desk.sync(try store.notes())
+        XCTAssertEqual(button.label, "置顶"); XCTAssertFalse(button.isOn)
+        XCTAssertEqual(surfaces.panels[plain.id]?.collectionBehavior.contains(.fullScreenNone), true)
+
+        desk.toggleTopmost()
+        XCTAssertEqual(button.label, "取消置顶"); XCTAssertTrue(button.isOn)
+        XCTAssertEqual(surfaces.panels[plain.id]?.level, .floating)
+        XCTAssertEqual(surfaces.panels[plain.id]?.collectionBehavior.contains(.fullScreenAuxiliary), true)
+        XCTAssertTrue(PresentationDefaults(raw).topmost)
+        // A note created while everything floats floats too, but keeps its own desktop level.
+        let late = try actions.createNote()
+        try surfaces.refresh(.all)
+        XCTAssertEqual(surfaces.panels[late.id]?.level, .floating)
+        XCTAssertEqual(try store.notes().first { $0.id == late.id }?.level, .desktop)
+
+        desk.toggleTopmost()
+        XCTAssertEqual(button.label, "置顶"); XCTAssertFalse(button.isOn)
+        XCTAssertEqual(surfaces.panels[plain.id]?.level.rawValue, Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        XCTAssertEqual(surfaces.panels[pinned.id]?.level, .floating)
+        XCTAssertEqual(try store.notes().map(\.level), [.desktop, .topmost, .desktop])
+        XCTAssertEqual(mirrored, [true, false])
+        XCTAssertTrue(desk.toolbar.panel.collectionBehavior.contains(.fullScreenAuxiliary))
     }
 }
