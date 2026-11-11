@@ -12,13 +12,13 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertEqual(NotePalette.allCases.map { [$0.name, $0.lightHex, $0.darkHex] }, expected)
     }
 
-    func testPrototypeSizingAndFutureCollapsedHeight() {
-        XCTAssertEqual(NoteMetrics.width, 240)
-        XCTAssertEqual(NoteMetrics.padding, 14)
-        XCTAssertEqual(NoteMetrics.cornerRadius, 12)
-        XCTAssertEqual(NoteMetrics.titleSize, 13)
-        XCTAssertEqual(NoteMetrics.itemSize, 13)
-        XCTAssertEqual(NoteMetrics.rowHeight, 26)
+    func testRedesignSizingAndCollapsedHeight() {
+        XCTAssertEqual(NoteMetrics.width, 288)
+        XCTAssertEqual(NoteMetrics.padding, 18)
+        XCTAssertEqual(NoteMetrics.cornerRadius, 13)
+        XCTAssertEqual(NoteMetrics.titleSize, 16)
+        XCTAssertEqual(NoteMetrics.itemSize, 14)
+        XCTAssertEqual(NoteMetrics.rowHeight, 32)
         XCTAssertEqual(NoteMetrics.collapsedHeight, 32)
         XCTAssertEqual(NoteMetrics.minimumWidth, 200)
         XCTAssertEqual(NoteMetrics.maximumHeight, 600)
@@ -26,7 +26,12 @@ final class DesignTokensTests: XCTestCase {
 
     func testReduceMotionRemovesInsertionMovement() {
         XCTAssertEqual(MotionPolicy.insertionDuration(reduceMotion: true), 0)
-        XCTAssertTrue((0.25...0.35).contains(MotionPolicy.insertionDuration(reduceMotion: false)))
+        XCTAssertTrue((0.16...0.22).contains(MotionPolicy.insertionDuration(reduceMotion: false)))
+    }
+
+    func testToolbarHeightOnlyGrowsForThePager() {
+        XCTAssertEqual(ToolbarMetrics.height(paged: true) - ToolbarMetrics.height(paged: false), ToolbarMetrics.pagerHeight)
+        XCTAssertGreaterThanOrEqual(ToolbarMetrics.buttonHeight, 44)
     }
 
     func testCompositionBlocksFutureStructuralCommands() {

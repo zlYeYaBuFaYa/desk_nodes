@@ -29,6 +29,12 @@ public final class NoteActions {
     public var canUndoDeletion: Bool { pending.contains { recoverable($0.1) } }
     /// Deletions still inside their window, newest last (for the toast count).
     public var recoverableDeletionCount: Int { pending.filter { recoverable($0.1) }.count }
+    /// Whether the newest recoverable deletion was a whole note (for the toast wording).
+    public var latestDeletionIsNote: Bool {
+        guard let latest = pending.last(where: { recoverable($0.1) }) else { return false }
+        if case .note = latest.0 { return true }
+        return false
+    }
     public func invalidateUndoAfterImport() { pending = []; prefersDeletionUndo = false }
     public func expireDeletion() { pending.removeAll { !recoverable($0.1) } }
     /// Typing makes Command-Z mean text undo again, before the debounced save lands.

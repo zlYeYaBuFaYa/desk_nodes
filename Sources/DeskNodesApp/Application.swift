@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import DeskNodesCore
 import DeskNodesPersistence
 import DeskNodesActions
 
@@ -25,7 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var reveal: EdgeRevealController?
     private var toast: DeletionToast?
     private var notice: NoticeToast?
-    private var emptyWindow: NSPanel?
+    /// The resident toolbar and desktop-wide presentation; it replaces the old empty-state window.
+    private var desk: DesktopController?
     private let log = Logger(subsystem: "local.desknodes.native", category: "app")
     private var expiryTimer: Timer?
     private var rolloverTimer: Timer?
@@ -47,7 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
-            if let actions { surfaces = makeSurfaces(actions); docking = makeDocking(actions) }
+            if let actions {
+                surfaces = makeSurfaces(actions)
+                desk = makeDesk(actions)
+                docking = makeDocking(actions)
+            }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
             if let actions {
                 reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
@@ -60,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             catchUpDay()
             try actions?.reconcileScreens(DockController.screens())
             refresh(.all)
+            desk?.start()
             if let actions {
                 // Registration errors must not prevent the first-launch consent question.
                 do {
@@ -124,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.autoenablesItems = false
         add("新建便签", to: menu, action: #selector(createNote(_:)))
+        add("显示工具条", to: menu, action: #selector(revealToolbar(_:)))
         let toggle = NSMenuItem(title: "全部置顶", action: #selector(toggleTopmost(_:)), keyEquivalent: "")
         toggle.target = self; menu.addItem(toggle); topmostMenuItem = toggle
         let dockMenu = NSMenuItem(title: "停靠", action: nil, keyEquivalent: "")
@@ -177,22 +185,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func createNote(_ sender: Any?) {
         guard !hasMarkedComposition else { return }
-        guard let actions else { return }
+        guard let actions, let desk else { return }
         do {
-            // New notes open on the display under the pointer, cascading from its top centre.
-            let mouse = NSEvent.mouseLocation
-            let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.screens.first
-            let mapped = DockController.screens()
-            let displayID = screen.flatMap { NSScreen.screens.firstIndex(of: $0) }.flatMap { mapped.indices.contains($0) ? mapped[$0].persistentID : nil }
-            var frame: NoteFrame?
-            if let visible = screen?.visibleFrame {
-                let offset = Double((surfaces?.panels.count ?? 0) % 6) * 24
-                frame = NoteFrame(x: visible.midX - 120 + offset, y: visible.maxY - 180 - offset)
-            }
+            // Creating while collapsed brings the existing notes back first.
+            desk.expand()
+            let height = NoteFrame.automaticHeight(content: NoteMetrics.headerHeight + NoteMetrics.rowHeight + NoteMetrics.footerHeight + 6)
+            let (frame, displayID) = desk.newNoteFrame(height: height)
             let note = try actions.createNote(frame: frame, displayID: displayID)
             refresh()
-            // A global hotkey arrives while another app is active: take keyboard focus
-            // first, or the first keystrokes would still go to that app.
+            surfaces?.select(note.id)
+            // A global hotkey or the non-activating toolbar arrives while another app is
+            // active: take keyboard focus first, or the first keystrokes would go there.
             NSApp.activate(ignoringOtherApps: true)
             if let panel = surfaces?.panels[note.id] {
                 panel.makeKeyAndOrderFront(nil)
@@ -201,28 +204,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         catch { report(error) }
     }
+    /// Toolbar "删除": only the selected, visible note. Typed text is committed first so
+    /// the undo toast restores it; a composition in progress is never discarded.
+    private func deleteSelected() {
+        guard let actions, let surfaces, let desk, desk.state == .expanded, let id = surfaces.selection,
+              let panel = surfaces.panels[id], !panel.suppressed else { return }
+        guard !hasMarkedComposition else { report(StoreError.invalid("请先完成输入法组词，再删除便签")); return }
+        (panel.contentView as? NoteCardView)?.flushBeforeFocusLoss()
+        do { try actions.deleteNote(id); refresh() } catch { report(error) }
+    }
+    @objc private func revealToolbar(_ sender: Any?) { desk?.revealToolbar() }
     /// Reconciles windows with the store; see `NoteSurfaces` for what each scope touches.
     private func refresh(_ scope: RefreshScope = .changes) {
-        guard let actions, let surfaces else { return }
+        guard let surfaces else { return }
         do {
             let notes = try surfaces.refresh(scope).notes
-            // The empty state is created once and never takes focus; it stays out of the
-            // way while the last deletion can still be undone from the toast.
-            if !notes.isEmpty || actions.canUndoDeletion { emptyWindow?.close(); emptyWindow = nil }
-            else if emptyWindow == nil {
-                let visible = NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
-                let panel = NotePanel(origin: NSPoint(x: visible.midX - 120, y: visible.midY))
-                panel.setContentSize(NSSize(width: 240, height: 100))
-                panel.backgroundColor = .windowBackgroundColor
-                panel.deletionUndo = { [weak self] in self?.routeDeletionUndo() ?? false }
-                panel.title = "还没有便签"
-                panel.isReleasedWhenClosed = false
-                let button = NSButton(title: "＋ 新建便签", target: self, action: #selector(createNote(_:)))
-                button.frame = NSRect(x: 50, y: 30, width: 140, height: 32)
-                panel.contentView?.addSubview(button); panel.orderFrontRegardless(); emptyWindow = panel
-            }
+            desk?.sync(notes)
             updateToast()
         } catch { report(error) }
+    }
+    private func makeDesk(_ actions: NoteActions) -> DesktopController {
+        let desk = DesktopController(actions: actions, defaults: .standard())
+        desk.surfaces = { [weak self] in self?.surfaces }
+        desk.docking = { [weak self] in self?.docking }
+        desk.refresh = { [weak self] scope in self?.refresh(scope) }
+        desk.canMutate = { [weak self] in self?.hasMarkedComposition == false }
+        desk.failure = { [weak self] in self?.report($0) }
+        desk.toolbar.perform = { [weak self] action in
+            switch action {
+            case .create: self?.createNote(nil)
+            case .delete: self?.deleteSelected()
+            case .arrange: self?.desk?.arrange()
+            case .collapse: self?.desk?.toggleCollapse()
+            case .settings: self?.showSettings(nil)
+            }
+        }
+        surfaces?.hidden = { [weak desk] in desk?.isHidden($0) ?? false }
+        surfaces?.selectionChanged = { [weak desk] in desk?.updateToolbar() }
+        return desk
     }
     private func makeSurfaces(_ actions: NoteActions) -> NoteSurfaces {
         let surfaces = NoteSurfaces(actions: actions, changed: { [weak self] in self?.refresh() },
@@ -239,10 +258,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private func makeDocking(_ actions: NoteActions) -> DockController {
         // Tab selection, paging and drags are UI state the store diff cannot see.
-        DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false },
+        let docking = DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false },
                        changed: { [weak self] in self?.refresh(.layout) }, failure: { [weak self] in self?.report($0) })
+        docking.suppressed = desk?.state.targetsCollapsed ?? false
+        return docking
     }
     @objc private func screensChanged() {
+        desk?.screensChanged()
         do { try actions?.reconcileScreens(DockController.screens()); refresh(.all) } catch { report(error) }
     }
     @objc private func toggleTopmost(_ sender: Any?) {
@@ -261,7 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 toast = DeletionToast { [weak self] in _ = self?.undoDeletion() }
                 toast?.orderFrontRegardless()
             }
-            toast?.update(count: actions.recoverableDeletionCount)
+            toast?.update(count: actions.recoverableDeletionCount, note: actions.latestDeletionIsNote)
             if expiryTimer == nil {
                 let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
                     MainActor.assumeIsolated { self?.tickExpiry() }
@@ -274,10 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     private func tickExpiry() {
-        let before = actions?.canUndoDeletion
         actions?.expireDeletion(); updateToast()
-        // When the last deletion expires, the empty state may need to appear.
-        if before == true, actions?.canUndoDeletion == false { refresh() }
     }
     @discardableResult private func undoDeletion() -> Bool {
         guard !hasMarkedComposition, let actions, actions.canUndoDeletion else { return false }
@@ -329,6 +348,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !hasMarkedComposition else { throw StoreError.invalid("请先完成输入法组词，再恢复") }
         switch target {
         case .note(let id):
+            // An explicit restore should be seen, so a collapsed desk opens first.
+            desk?.expand()
             try actions.restoreDeletedNote(id)
             // The display it lived on may be gone; bring it back on screen.
             try actions.reconcileScreens(DockController.screens())

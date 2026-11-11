@@ -118,10 +118,13 @@ public enum StoreError: Error, Equatable {
 
 public enum NativeStorage {
     /// Only explicit production callers use this path; test stores always supply their own URL.
+    /// Set only for verification runs, so manual checks never open the personal library.
+    public static let verificationDirectory = ProcessInfo.processInfo.environment["DESKNODES_DATA_DIR"].flatMap { $0.isEmpty ? nil : $0 }
     public static func databaseURL(fileManager: FileManager = .default) throws -> URL {
         let support = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                           appropriateFor: nil, create: true)
-        let directory = support.appendingPathComponent("local.desknodes.native", isDirectory: true)
+        let directory = verificationDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? support.appendingPathComponent("local.desknodes.native", isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true,
                                        attributes: [.posixPermissions: 0o700])
         return directory.appendingPathComponent("DeskNodes.sqlite3")

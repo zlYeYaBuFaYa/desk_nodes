@@ -48,6 +48,20 @@ final class NoteSurfaces {
     var refreshReveal: (_ notes: [Note], _ items: [NoteID: [Item]], _ changed: Set<NoteID>?) -> Void = { _, _, _ in }
     /// Screens used for automatic-height limits; injectable for tests.
     var screens: () -> [DockScreen] = { DockController.screens() }
+    /// Global collapse / inactive page. Consulted before a new panel is first shown;
+    /// existing panels are hidden and shown by the desktop controller itself.
+    var hidden: (NoteID) -> Bool = { _ in false }
+    /// The toolbar's deletion target. Independent of keyboard focus: clicking the
+    /// (non-activating) toolbar never clears it.
+    private(set) var selection: NoteID?
+    var selectionChanged: () -> Void = {}
+    func select(_ id: NoteID?) {
+        let id = id.flatMap { panels[$0] == nil ? nil : $0 }
+        guard id != selection else { return }
+        selection = id
+        for (key, panel) in panels { (panel.contentView as? NoteCardView)?.isSelected = key == id }
+        selectionChanged()
+    }
 
     init(actions: NoteActions, changed: @escaping () -> Void, undo: @escaping () -> Bool,
          canMutate: @escaping () -> Bool, failure: @escaping (Error) -> Void) {
@@ -71,24 +85,30 @@ final class NoteSurfaces {
             (panels[id]?.contentView as? NoteCardView)?.prepareForRemoval()
             panels.removeValue(forKey: id)?.dismissNote()
             rendered[id] = nil; pass.removed.insert(id)
+            if selection == id { selection = nil; selectionChanged() }
         }
         let visible = NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
         for (index, note) in notes.enumerated() {
-            let state = Rendered(note: note, items: items[note.id] ?? [])
+            var state = Rendered(note: note, items: items[note.id] ?? [])
             let previous = rendered[note.id]
             if let panel = panels[note.id], let card = panel.contentView as? NoteCardView {
                 guard scope == .all || previous != state else { continue }
-                card.refresh(note, items: state.items); try configure(panel, note: note)
+                card.refresh(note, items: state.items)
+                state = Rendered(note: try configure(panel, note: note), items: state.items)
                 pass.updated.insert(note.id)
             } else {
                 let panel = NotePanel(origin: NSPoint(x: visible.midX - 120 + CGFloat(index % 5) * 24,
                                                       y: visible.maxY - 300 - CGFloat(index % 5) * 24))
                 panel.deletionUndo = undo
+                let id = note.id
+                panel.pressed = { [weak self] in self?.select(id) }
+                panel.suppressed = hidden(id)
                 let card = NoteCardView(note: note, actions: actions, changed: changed,
                                         undoDelete: undo, failure: failure, items: state.items)
                 card.canMutate = canMutate
                 panel.contentView = card
-                panels[note.id] = panel; try configure(panel, note: note); panel.showNote()
+                panels[note.id] = panel
+                state = Rendered(note: try configure(panel, note: note), items: state.items); panel.showNote()
                 pass.created.insert(note.id)
             }
             // Recorded only after the panel applied it, so a failed pass is retried next time.
@@ -102,10 +122,12 @@ final class NoteSurfaces {
         return (notes, pass)
     }
 
-    private func configure(_ panel: NotePanel, note: Note) throws {
+    /// Returns the note as stored afterwards: fitting an automatic height to the content
+    /// writes geometry, and recording that row keeps the next refresh from seeing a change.
+    private func configure(_ panel: NotePanel, note: Note) throws -> Note {
         panel.choice = note.level; panel.modes = modes; panel.applyLevel()
         guard case .free(let display, let x, let y, let width, let height) = note.placement else {
-            return // DockController owns strip geometry; free geometry stays durable.
+            return note // DockController owns strip geometry; free geometry stays durable.
         }
         var expanded = NoteFrame(x: x, y: y, width: width, height: height)
         if note.automaticHeight {
@@ -118,7 +140,9 @@ final class NoteSurfaces {
         let placement = Placement.free(expanded, displayID: display)
         if placement != note.placement, expanded.width >= 200, expanded.height >= 120 {
             try actions.finalGeometry(note.id, frame: expanded)
+            return try actions.store.notes().first { $0.id == note.id } ?? note
         }
+        return note
     }
 
     /// All-topmost / restore: levels only, no data read.
@@ -132,8 +156,8 @@ final class NoteSurfaces {
     }
     /// Import replaces every identity: cards must already be invalidated by the caller.
     func discardAll() {
-        for panel in panels.values { panel.undoManager?.removeAllActions(); panel.close() }
-        panels = [:]; rendered = [:]; modes = WindowModes()
+        for panel in panels.values { panel.undoManager?.removeAllActions(); panel.pressed = nil; panel.close() }
+        panels = [:]; rendered = [:]; modes = WindowModes(); selection = nil
     }
 }
 

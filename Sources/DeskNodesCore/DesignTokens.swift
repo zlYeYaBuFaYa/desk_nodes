@@ -43,15 +43,24 @@ public enum NotePalette: String, CaseIterable, Codable, Sendable {
 }
 
 public enum NoteMetrics {
-    public static let width = 240.0
-    public static let padding = 14.0
-    public static let cornerRadius = 12.0
-    public static let titleSize = 13.0
-    public static let itemSize = 13.0
-    public static let rowHeight = 26.0
+    public static let width = 288.0
+    public static let padding = 18.0
+    public static let cornerRadius = 13.0
+    public static let titleSize = 16.0
+    public static let itemSize = 14.0
+    public static let secondarySize = 12.0
+    /// A single-line item row; wrapped lines inside it use the tighter `lineHeight`.
+    public static let rowHeight = 32.0
+    public static let lineHeight = 22.0
+    public static var rowPadding: Double { (rowHeight - lineHeight) / 2 }
     public static let checkboxSize = 16.0
-    public static let checkboxGap = 9.0
-    // Reserved for N4; no collapse or resizing behavior in N1.
+    public static let checkboxGap = 11.0
+    /// Grip row plus title row; the item list starts below it.
+    public static let headerHeight = 50.0
+    /// Hairline plus the "添加事项" row.
+    public static let footerHeight = 44.0
+    /// Hover-only delete/reorder controls at the end of an item row.
+    public static let rowTrailing = 30.0
     public static let collapsedHeight = 32.0
     public static let collapsedCornerRadius = 10.0
     public static let minimumWidth = 200.0
@@ -59,6 +68,30 @@ public enum NoteMetrics {
     public static let maximumWidth = 400.0
     public static let maximumHeight = 600.0
     public static let scrollHeight = 480.0
+}
+
+/// The resident vertical toolbar. Its size never changes with the collapse state.
+public enum ToolbarMetrics {
+    public static let width = 64.0
+    public static let cornerRadius = 16.0
+    public static let gripHeight = 24.0
+    public static let buttonHeight = 52.0
+    public static let buttonCount = 5.0
+    public static let footerHeight = 32.0
+    /// Page switcher row, present only while an arrangement overflows.
+    public static let pagerHeight = 28.0
+    public static let inset = 6.0
+    /// Distance kept from the screen edge on first launch.
+    public static let screenMargin = 20.0
+    public static func height(paged: Bool) -> Double {
+        inset * 2 + gripHeight + buttonHeight * buttonCount + footerHeight + (paged ? pagerHeight : 0)
+    }
+}
+
+/// "整理" spacing, in points.
+public enum ArrangeMetrics {
+    public static let gap = 18.0
+    public static let margin = 22.0
 }
 
 public enum NoteInk {
@@ -71,8 +104,14 @@ public enum NoteInk {
 }
 
 public enum MotionPolicy {
+    public static let insertion = 0.20
+    public static let deletion = 0.18
+    public static let arrangement = 0.26
+    public static let gathering = 0.28
+    /// Reduce Motion keeps only a very short cross-fade for spatial transitions.
+    public static let reducedFade = 0.12
     public static func insertionDuration(reduceMotion: Bool) -> Double {
-        reduceMotion ? 0 : 0.30
+        reduceMotion ? 0 : insertion
     }
 }
 

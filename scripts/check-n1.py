@@ -29,8 +29,9 @@ check('exactly sixteen palette hex literals', len(re.findall(r'return "[A-F0-9]{
 proto = read('docs/spec/macos-native/prototypes/html/03-note-states-menu.html')
 for hex_value in ('1F1F1F', 'EDEBE6', '5F5A52', 'B3ADA2', '6F6A61', 'A39D92'):
     check(f'prototype 03 ink {hex_value}', f'#{hex_value}' in proto and f'"{hex_value}"' in tokens)
-for key, value in [('width', 240), ('padding', 14), ('cornerRadius', 12), ('titleSize', 13),
-                   ('itemSize', 13), ('rowHeight', 26), ('collapsedHeight', 32)]:
+# Card metrics follow docs/design/desknodes-desktop-redesign-prompt.md §9, which supersedes N1's.
+for key, value in [('width', 288), ('padding', 18), ('cornerRadius', 13), ('titleSize', 16),
+                   ('itemSize', 14), ('rowHeight', 32), ('collapsedHeight', 32)]:
     check(f'metric {key}', f'let {key} = {value}.0' in tokens)
 
 with (ROOT / 'Resources/Info.plist').open('rb') as stream:

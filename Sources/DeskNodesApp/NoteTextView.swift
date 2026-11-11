@@ -4,7 +4,7 @@ import DeskNodesActions
 
 /// AppKit owns the input context, selection, undo, and marked range throughout editing.
 /// Persistence observes edits without replacing text storage. Structural commands alone create/remove rows.
-final class NoteTextView: NSTextView {
+final class NoteTextView: NSTextView, NSLayoutManagerDelegate {
     private let textUndo = UndoManager()
     override var undoManager: UndoManager? { textUndo }
     var hasUncommittedComposition: Bool { hasMarkedText() }
@@ -82,13 +82,44 @@ final class NoteTextView: NSTextView {
         return caret.minY == edge.minY
     }
 
-    init(text: String) {
+    /// TextKit puts the slack of a fixed line height above the glyphs, so text would sit
+    /// on the bottom of each row. Centred rows put every line's glyph box (system font
+    /// ascender to descender, which also bounds CJK fallback ideographs) in the middle of
+    /// the line, so the completion circle can align with the first line by geometry alone.
+    static func centredBaseline(lineHeight: CGFloat, font: NSFont) -> CGFloat {
+        (lineHeight + font.ascender + font.descender) / 2
+    }
+    func layoutManager(_ layoutManager: NSLayoutManager, shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>,
+                       lineFragmentUsedRect: UnsafeMutablePointer<NSRect>, baselineOffset: UnsafeMutablePointer<CGFloat>,
+                       in textContainer: NSTextContainer, forGlyphRange glyphRange: NSRange) -> Bool {
+        baselineOffset.pointee = Self.centredBaseline(lineHeight: lineFragmentRect.pointee.height,
+                                                      font: font ?? .systemFont(ofSize: NoteMetrics.itemSize))
+        return true
+    }
+
+    /// Item rows only; a title's field editor is styled by its NSTextField.
+    private let centredLines: Bool
+    /// Replacing the whole text must keep the fixed line height. Without this, text set
+    /// programmatically has natural 17pt lines while typed text has 32pt lines, which is
+    /// exactly how rows ended up misaligned with their completion circles.
+    override var string: String {
+        get { super.string }
+        set { super.string = newValue; applyLineStyle() }
+    }
+    private func applyLineStyle() {
+        guard centredLines, let storage = textStorage, !hasMarkedText() else { return }
+        storage.setAttributes(typingAttributes, range: NSRange(location: 0, length: storage.length))
+    }
+
+    init(text: String, centredLines: Bool = false) {
+        self.centredLines = centredLines
         let storage = NSTextStorage()
         let layout = NSLayoutManager()
         let container = NSTextContainer(containerSize: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
         storage.addLayoutManager(layout)
         layout.addTextContainer(container)
         super.init(frame: .zero, textContainer: container)
+        if centredLines { layout.delegate = self }
         string = text
         isRichText = false
         importsGraphics = false
@@ -97,21 +128,24 @@ final class NoteTextView: NSTextView {
         font = .systemFont(ofSize: NoteMetrics.itemSize)
         textColor = NoteTheme.primary
         insertionPointColor = NoteTheme.primary
-        textContainerInset = .zero
+        // Item rows pad each side so one line fills a 32pt row and wrapped lines stay close.
+        textContainerInset = NSSize(width: 0, height: centredLines ? NoteMetrics.rowPadding : 0)
         textContainer?.lineFragmentPadding = 0
         textContainer?.widthTracksTextView = true
         isHorizontallyResizable = false
         isVerticallyResizable = true
         autoresizingMask = [.width]
-        minSize = NSSize(width: 0, height: 26)
+        minSize = NSSize(width: 0, height: NoteMetrics.rowHeight)
         maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticDashSubstitutionEnabled = false
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = NoteMetrics.rowHeight
-        paragraph.maximumLineHeight = NoteMetrics.rowHeight
+        let line = centredLines ? NoteMetrics.lineHeight : NoteMetrics.rowHeight
+        paragraph.minimumLineHeight = line
+        paragraph.maximumLineHeight = line
         defaultParagraphStyle = paragraph
         typingAttributes = [.font: font!, .foregroundColor: NoteTheme.primary, .paragraphStyle: paragraph]
+        applyLineStyle()
         setAccessibilityLabel("事项")
     }
 

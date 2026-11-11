@@ -24,6 +24,8 @@ final class DockController: NSObject {
     private var layouts: [String: DockLayout] = [:]
     private var pages: [String: Int] = [:]
     private var controls: [(DockEdge, String?)] = []
+    /// Global collapse: strips keep their geometry but their overflow tab windows close.
+    var suppressed = false
     init(actions: NoteActions, canMutate: @escaping () -> Bool = { true }, changed: @escaping () -> Void, failure: @escaping (Error) -> Void) {
         self.canMutate = canMutate
         self.actions = actions; self.changed = changed; self.failure = failure
@@ -145,6 +147,7 @@ final class DockController: NSObject {
         layer.add(spring, forKey: "dockSnap")
     }
     private func makeRail(_ frame: NoteFrame, notes: [Note], key: String, modes: WindowModes) {
+        guard !suppressed else { return } // not in use: the pass closes this strip's tabs
         railsInUse.insert(key)
         let allocation = DockGeometry.tabs(ids: notes.map(\.id), frame: frame, page: pages[key] ?? 0)
         var titles: [NoteID: String] = [:]
@@ -211,9 +214,8 @@ final class DockController: NSObject {
         guard let panel = panels[id] else { return }
         if panel.docked { dragOrigin = NoteFrame(x: panel.frame.minX, y: panel.frame.minY, width: panel.frame.width, height: panel.frame.height) }
         else { dragOrigin = nil }
-        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            panel.contentView?.layer?.setAffineTransform(CGAffineTransform(scaleX: 1.04, y: 1.04))
-        }
+        // No scaling while dragging: a scaled editor layer blurs text and misplaces the caret.
+        guard panel.docked else { return }
         panel.contentView?.layer?.shadowColor = NSColor.black.cgColor
         panel.contentView?.layer?.shadowOpacity = 0.28; panel.contentView?.layer?.shadowRadius = 24
         panel.contentView?.layer?.masksToBounds = false
@@ -221,8 +223,10 @@ final class DockController: NSObject {
     private func destination(_ id: NoteID, frame: NoteFrame, point: NSPoint) throws -> (DockEdge, DockScreen, String?)? {
         let screens = Self.screens(), settings = try actions.store.settings()
         guard let note = try actions.store.notes().first(where: { $0.id == id }) else { return nil }
-        if case .dock(let edge, let display) = note.placement,
-           let screen = DockGeometry.screen(display, screens: screens, preferred: settings.displayID) {
+        // Free notes stay free wherever they are dropped; docking is an explicit menu
+        // choice. Notes already in a strip can still be reordered or moved between strips.
+        guard case .dock(let edge, let display) = note.placement else { return nil }
+        if let screen = DockGeometry.screen(display, screens: screens, preferred: settings.displayID) {
             let x = edge == .left ? frame.x : frame.x + frame.width
             let y = frame.y + frame.height
             if DockGeometry.retains(edge: edge, x: edge == .top ? point.x : x, y: edge == .top ? y : point.y, screen: screen) { return (edge, screen, display) }
@@ -304,7 +308,7 @@ final class DockController: NSObject {
                 if panels[id]?.docked == true, let saved = note?.freeRestore?.freeFrame {
                     free.width = saved.width; free.height = saved.height
                     free.y = frame.y + frame.height - free.height
-                } else if panels[id]?.docked == true { free.width = 240 }
+                } else if panels[id]?.docked == true { free.width = NoteMetrics.width }
                 try actions.detach(id, frame: DockGeometry.clamp(free, to: screen), displayID: screen.persistentID)
             }
         } catch { failure(error) }
