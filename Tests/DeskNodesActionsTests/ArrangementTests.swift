@@ -93,7 +93,7 @@ final class ArrangementTests: XCTestCase {
 
     func testToolbarDefaultClampAndDisplayRecovery() {
         let height = ToolbarMetrics.height(paged: false)
-        let initial = Arrangement.defaultToolbar(on: main, height: height)
+        let initial = ToolbarGeometry.resolve(nil, orientation: .vertical, paged: false, screens: [main])!.target
         XCTAssertEqual(initial.x, ToolbarMetrics.screenMargin)
         XCTAssertEqual(initial.y + initial.height, main.visible.height - ToolbarMetrics.screenMargin)
         let off = NoteFrame(x: 5000, y: -900, width: 64, height: height)
@@ -102,9 +102,10 @@ final class ArrangementTests: XCTestCase {
         let tiny = DockScreen(id: "tiny", visible: NoteFrame(x: 0, y: 0, width: 400, height: 200))
         let short = Arrangement.clampToolbar(off, to: tiny)
         XCTAssertEqual(short.y + short.height, 200, "the grip stays reachable on a short display")
-        // A saved display that is gone yields nil, so the caller re-homes on the primary.
-        XCTAssertNil(Arrangement.toolbarScreen(initial, displayID: "unplugged", screens: [main]))
-        XCTAssertEqual(Arrangement.toolbarScreen(initial, displayID: nil, screens: [main, side])?.id, "main")
+        // A saved display that is gone re-homes on the primary.
+        let rehomed = ToolbarGeometry.resolve(.free(centerX: 2000, centerY: 300, display: "unplugged"), orientation: .vertical,
+                                              paged: false, screens: [main, side])!
+        XCTAssertEqual(rehomed.screen.id, "main"); XCTAssertEqual(rehomed.target.x, 1440 - 64)
     }
 
     func testStackHintPrefersTheRightSide() {

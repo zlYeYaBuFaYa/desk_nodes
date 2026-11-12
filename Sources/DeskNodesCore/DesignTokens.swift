@@ -90,21 +90,48 @@ public enum NoteMetrics {
     public static let scrollHeight = 480.0
 }
 
-/// The resident vertical toolbar. Its size never changes with the collapse state.
+/// The resident toolbar: a capsule laid out vertically or horizontally, which can shrink
+/// to a round entry while it is snapped to a display edge. All values are points.
 public enum ToolbarMetrics {
+    /// The capsule's short side, in either orientation.
     public static let width = 64.0
-    public static let cornerRadius = 16.0
+    /// Half the short side: the ends are full semicircles.
+    public static let cornerRadius = 32.0
+    public static let circleDiameter = 48.0
+    /// Extra room at each end so the grip, count and pager stay clear of the end caps.
+    public static let endCap = 10.0
     public static let gripHeight = 24.0
+    /// A button's extent along the long axis: taller rows vertically, wider cells horizontally.
     public static let buttonHeight = 52.0
+    public static let buttonWidth = 60.0
     public static let buttonCount = 6.0
     public static let footerHeight = 32.0
-    /// Page switcher row, present only while an arrangement overflows.
+    public static let footerWidth = 68.0
+    /// Page switcher, present only while an arrangement overflows.
     public static let pagerHeight = 28.0
+    public static let pagerWidth = 64.0
     public static let inset = 6.0
     /// Distance kept from the screen edge on first launch.
     public static let screenMargin = 20.0
-    public static func height(paged: Bool) -> Double {
-        inset * 2 + gripHeight + buttonHeight * buttonCount + footerHeight + (paged ? pagerHeight : 0)
+    /// Release within this distance of an outer display edge snaps to it.
+    public static let snapDistance = 24.0
+    /// Gap kept between a snapped toolbar (either shape) and its edge.
+    public static let edgeGap = 8.0
+    /// Pointer travel that turns a press on the round entry into a drag.
+    public static let dragThreshold = 4.0
+    /// Dwell on the round entry before it expands, so passing pointers do not open it.
+    public static let hoverIntent = 0.14
+    /// A hover-opened toolbar that is left without a click shrinks after this, not the full delay.
+    public static let hoverGrace = 1.5
+    public static let autoShrinkChoices = [0, 10, 15, 30]
+    public static let defaultAutoShrink = 15
+    /// Long side of the vertical layout.
+    public static func height(paged: Bool) -> Double { length(horizontal: false, paged: paged) }
+    public static func length(horizontal: Bool, paged: Bool) -> Double {
+        let ends = (inset + endCap) * 2 + gripHeight
+        return horizontal
+            ? ends + buttonWidth * buttonCount + footerWidth + (paged ? pagerWidth : 0)
+            : ends + buttonHeight * buttonCount + footerHeight + (paged ? pagerHeight : 0)
     }
 }
 
@@ -128,6 +155,9 @@ public enum MotionPolicy {
     public static let deletion = 0.18
     public static let arrangement = 0.26
     public static let gathering = 0.28
+    /// Toolbar snap, and the round entry's full expand or shrink.
+    public static let toolbarSnap = 0.20
+    public static let toolbarMorph = 0.26
     /// Reduce Motion keeps only a very short cross-fade for spatial transitions.
     public static let reducedFade = 0.12
     public static func insertionDuration(reduceMotion: Bool) -> Double {

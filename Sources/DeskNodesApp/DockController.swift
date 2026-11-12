@@ -26,6 +26,13 @@ final class DockController: NSObject {
     private var controls: [(DockEdge, String?)] = []
     /// Global collapse: strips keep their geometry but their overflow tab windows close.
     var suppressed = false
+    /// The toolbar's full expanded frame and its display; strips there keep clear of it.
+    var toolbar: () -> (display: String, frame: NoteFrame)? = { nil }
+    private func region(_ edge: DockEdge, occupied: Set<DockEdge>, screen: DockScreen) -> DockScreen {
+        let base = DockGeometry.region(edge: edge, occupied: occupied, screen: screen)
+        guard let toolbar = toolbar(), toolbar.display == screen.id else { return base }
+        return DockGeometry.region(base, edge: edge, avoiding: toolbar.frame)
+    }
     init(actions: NoteActions, canMutate: @escaping () -> Bool = { true }, changed: @escaping () -> Void, failure: @escaping (Error) -> Void) {
         self.canMutate = canMutate
         self.actions = actions; self.changed = changed; self.failure = failure
@@ -105,7 +112,7 @@ final class DockController: NSObject {
                               DockGeometry.screen(d, screens: screens, preferred: settings.displayID)?.id == screen.id else { return nil }
                         return e
                     })
-                    let region = DockGeometry.region(edge: edge, occupied: occupied, screen: screen)
+                    let region = region(edge, occupied: occupied, screen: screen)
                     let compact = Set(group.filter(\.collapsed).map(\.id))
                     let base = DockGeometry.layout(ids: group.map(\.id), edge: edge, screen: region, heights: heights, collapsed: compact)
                     if let chosen = selected[k], !base.overflow.contains(chosen) { selected[k] = nil }
@@ -261,7 +268,7 @@ final class DockController: NSObject {
                       DockGeometry.screen(d, screens: Self.screens(), preferred: preferred)?.id == screen.id else { return nil }
                 return e
             }).union([edge])
-            let region = DockGeometry.region(edge: edge, occupied: occupied, screen: screen)
+            let region = region(edge, occupied: occupied, screen: screen)
             let heights = Dictionary(uniqueKeysWithValues: ids.map { ($0, (panels[$0]?.contentView as? NoteCardView)?.preferredHeight(width: 240) ?? 120) })
             let result = DockGeometry.layout(ids: ids, edge: edge, screen: region, heights: heights,
                 collapsed: Set(all.filter(\.collapsed).map(\.id)))

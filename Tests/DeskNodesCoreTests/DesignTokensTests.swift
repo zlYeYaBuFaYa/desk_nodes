@@ -52,6 +52,9 @@ final class DesignTokensTests: XCTestCase {
 
     func testToolbarHeightOnlyGrowsForThePager() {
         XCTAssertEqual(ToolbarMetrics.height(paged: true) - ToolbarMetrics.height(paged: false), ToolbarMetrics.pagerHeight)
+        XCTAssertEqual(ToolbarMetrics.length(horizontal: true, paged: true) - ToolbarMetrics.length(horizontal: true, paged: false), ToolbarMetrics.pagerWidth)
+        XCTAssertEqual(ToolbarMetrics.cornerRadius, ToolbarMetrics.width / 2, "a true capsule")
+        XCTAssertGreaterThanOrEqual(ToolbarMetrics.buttonWidth, 44)
         XCTAssertGreaterThanOrEqual(ToolbarMetrics.buttonHeight, 44)
         XCTAssertEqual(ToolbarMetrics.buttonCount, 6) // 新建 删除 整理 收起 置顶 设置
     }

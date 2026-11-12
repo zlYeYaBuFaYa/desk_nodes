@@ -17,6 +17,8 @@ final class AuxiliaryWindows {
     /// Wires app-level actions (restore from 最近删除) into a newly allocated History model.
     var configureHistory: ((HistoryPresentation) -> Void)?
 
+    func isVisible(_ destination: Destination) -> Bool { controllers[destination]?.window?.isVisible == true }
+
     func reloadHistoryIfVisible() {
         if controllers[.history]?.window?.isVisible == true { history?.reload() }
     }

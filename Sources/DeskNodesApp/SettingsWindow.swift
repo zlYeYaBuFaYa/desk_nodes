@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import ServiceManagement
+import DeskNodesCore
 import DeskNodesPersistence
 import DeskNodesActions
 
@@ -14,6 +15,11 @@ final class SettingsPresentation: ObservableObject {
     let export: () throws -> Data
     let importBackup: (ValidatedBackup) throws -> Void
     let canImport: () -> Bool
+    /// Toolbar layout and idle shrink; Mac display preferences, not part of the backup.
+    let toolbar: (ToolbarOrientation, Int) -> Void
+    let toolbarCurrent: () -> (ToolbarOrientation, Int)
+    @Published var toolbarOrientation = ToolbarOrientation.vertical
+    @Published var toolbarShrink = ToolbarMetrics.defaultAutoShrink
     @Published var settings = Settings()
     @Published var preferences = NativePreferences()
     @Published var shortcut = "Control+Option+N"
@@ -27,12 +33,16 @@ final class SettingsPresentation: ObservableObject {
     init(actions: NoteActions, login: LoginService, changed: @escaping () -> Void,
          hotkey: @escaping (Hotkey, () throws -> Void) throws -> Void,
          export: @escaping () throws -> Data, importBackup: @escaping (ValidatedBackup) throws -> Void,
-         canImport: @escaping () -> Bool = { true }) {
+         canImport: @escaping () -> Bool = { true },
+         toolbar: @escaping (ToolbarOrientation, Int) -> Void = { _, _ in },
+         toolbarCurrent: @escaping () -> (ToolbarOrientation, Int) = { (.vertical, ToolbarMetrics.defaultAutoShrink) }) {
         self.actions = actions; self.login = login; self.changed = changed
         self.hotkey = hotkey; self.export = export; self.importBackup = importBackup; self.canImport = canImport
+        self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent
         reload()
     }
     func reload() {
+        (toolbarOrientation, toolbarShrink) = toolbarCurrent()
         do {
             settings = try actions.store.settings(); preferences = try actions.store.preferences()
             shortcut = preferences.hotkey
@@ -58,6 +68,7 @@ final class SettingsPresentation: ObservableObject {
         }
         reload()
     }
+    func saveToolbar() { toolbar(toolbarOrientation, toolbarShrink) }
     func saveHotkey() {
         perform {
             let parsed = try Hotkey(shortcut)
@@ -192,6 +203,25 @@ struct SettingsView: View {
                     }
                 }
                 Text(model.dockExplanation).font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
+                group("工具条") {
+                    row("排列方向") {
+                        Picker("排列方向", selection: Binding(get: { model.toolbarOrientation }, set: {
+                            model.toolbarOrientation = $0; model.saveToolbar()
+                        })) {
+                            Text("竖向").tag(ToolbarOrientation.vertical); Text("横向").tag(ToolbarOrientation.horizontal)
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 160)
+                    }
+                    Divider()
+                    row("吸边后自动收缩") {
+                        Picker("吸边后自动收缩", selection: Binding(get: { model.toolbarShrink }, set: {
+                            model.toolbarShrink = $0; model.saveToolbar()
+                        })) {
+                            Text("关闭").tag(0); Text("10 秒").tag(10); Text("15 秒").tag(15); Text("30 秒").tag(30)
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                    }
+                }
+                Text("把工具条拖到屏幕边缘即可吸附；吸附后闲置到时，会缩成圆形入口，鼠标停在入口上即可展开。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("快捷键") {
                     row("新建便签") {
                         Text(model.recording ? "请按下新快捷键（Esc 取消）" : ShortcutText.symbols(model.shortcut))

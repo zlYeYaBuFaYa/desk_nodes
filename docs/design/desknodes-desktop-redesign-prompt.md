@@ -4,6 +4,8 @@
 
 视觉参考：[已确认的效果图](./desknodes-desktop-concept.png)。
 
+后续补充：[工具条交互方案](./desknodes-toolbar-interaction.md)规定胶囊圆角、横竖排列、磁吸与闲置收缩，涉及这些内容时以补充方案为准。
+
 ---
 
 ## 你的角色与任务

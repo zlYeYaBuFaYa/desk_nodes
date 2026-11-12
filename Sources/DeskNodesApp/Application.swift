@@ -244,6 +244,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         surfaces?.hidden = { [weak desk] in desk?.isHidden($0) ?? false }
         surfaces?.selectionChanged = { [weak desk] in desk?.updateToolbar() }
+        // An open settings window holds the toolbar open.
+        desk.toolbar.busy = { [weak self] in self?.auxiliary.isVisible(.settings) ?? false }
         return desk
     }
     private func makeSurfaces(_ actions: NoteActions) -> NoteSurfaces {
@@ -264,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let docking = DockController(actions: actions, canMutate: { [weak self] in self?.hasMarkedComposition == false },
                        changed: { [weak self] in self?.refresh(.layout) }, failure: { [weak self] in self?.report($0) })
         docking.suppressed = desk?.state.targetsCollapsed ?? false
+        docking.toolbar = { [weak self] in self?.desk?.toolbarReservation }
         return docking
     }
     @objc private func screensChanged() {
@@ -376,7 +379,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }, importBackup: { [weak self] backup in
                     guard let self else { throw StoreError.closed }
                     try self.importBackup(backup)
-                }, canImport: { [weak self] in self?.hasMarkedComposition == false })
+                }, canImport: { [weak self] in self?.hasMarkedComposition == false },
+                toolbar: { [weak self] orientation, seconds in
+                    self?.desk?.setToolbarOrientation(orientation); self?.desk?.setToolbarAutoShrink(seconds)
+                }, toolbarCurrent: { [weak self] in
+                    (self?.desk?.toolbar.orientation ?? .vertical, self?.desk?.toolbar.autoShrink ?? ToolbarMetrics.defaultAutoShrink)
+                })
         }
         auxiliary.show(.settings)
     }

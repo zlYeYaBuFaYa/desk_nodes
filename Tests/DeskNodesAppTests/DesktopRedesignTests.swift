@@ -127,6 +127,18 @@ final class DesktopRedesignTests: XCTestCase {
         XCTAssertEqual(reopened.toolbar, .init(x: 20, y: 860, display: "37D8832A-2D66-02CA-B9F7-8F30A301B230"))
         XCTAssertEqual(reopened.pages[id]?.page, 1); XCTAssertEqual(reopened.pages[id]?.pages, 3)
         XCTAssertEqual(reopened.currentPage, 2)
+        XCTAssertNil(reopened.toolbarAnchor)
+        XCTAssertEqual(reopened.toolbarOrientation, .vertical)
+        XCTAssertEqual(reopened.toolbarAutoShrink, ToolbarMetrics.defaultAutoShrink)
+        defaults.toolbarAnchor = .snapped(.right, ratio: 0.25, display: "37D8832A-2D66-02CA-B9F7-8F30A301B230")
+        defaults.toolbarOrientation = .horizontal; defaults.toolbarAutoShrink = 0
+        XCTAssertEqual(PresentationDefaults(raw).toolbarAnchor, .snapped(.right, ratio: 0.25, display: "37D8832A-2D66-02CA-B9F7-8F30A301B230"))
+        XCTAssertEqual(PresentationDefaults(raw).toolbarOrientation, .horizontal)
+        XCTAssertEqual(PresentationDefaults(raw).toolbarAutoShrink, 0)
+        defaults.toolbarAnchor = .free(centerX: 52, centerY: 660, display: nil)
+        XCTAssertEqual(PresentationDefaults(raw).toolbarAnchor, .free(centerX: 52, centerY: 660, display: nil))
+        raw.set(7, forKey: "toolbar.autoShrink") // not an offered choice
+        XCTAssertEqual(PresentationDefaults(raw).toolbarAutoShrink, ToolbarMetrics.defaultAutoShrink)
         // The JSON backup has no field for any of this.
         let backup = String(decoding: try store.exportBackup(), as: UTF8.self)
         for key in ["collapsed", "toolbar", "arrange", "desk."] { XCTAssertFalse(backup.contains(key), key) }
@@ -145,7 +157,8 @@ final class DesktopRedesignTests: XCTestCase {
         try actions.appearance(pinned.id, level: .topmost)
         try surfaces.refresh(.all)
         defer { surfaces.discardAll() }
-        let button = desk.toolbar.panel.contentView!.subviews.compactMap { $0 as? ToolbarButton }[Toolbar.Action.topmost.rawValue]
+        let button = desk.toolbar.buttons[Toolbar.Action.topmost.rawValue]
+        defer { desk.toolbar.invalidate() }
         desk.sync(try store.notes())
         XCTAssertEqual(button.label, "置顶"); XCTAssertFalse(button.isOn)
         XCTAssertEqual(surfaces.panels[plain.id]?.collectionBehavior.contains(.fullScreenNone), true)

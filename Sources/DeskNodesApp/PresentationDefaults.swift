@@ -1,4 +1,5 @@
 import Foundation
+import DeskNodesCore
 import DeskNodesActions
 import DeskNodesPersistence
 
@@ -42,6 +43,43 @@ final class PresentationDefaults {
             if let display = newValue.display { value["display"] = display }
             defaults.set(value, forKey: "toolbar.place")
         }
+    }
+    /// Free or snapped rest place. Before it exists, the legacy `toolbar` record is read as
+    /// a free position; it is never promoted to snapped by distance alone.
+    var toolbarAnchor: ToolbarAnchor? {
+        get {
+            guard let value = defaults.dictionary(forKey: "toolbar.anchor"), let mode = value["mode"] as? String else { return nil }
+            let display = value["display"] as? String
+            if mode == "free" {
+                guard let x = value["x"] as? Double, let y = value["y"] as? Double, x.isFinite, y.isFinite else { return nil }
+                return .free(centerX: x, centerY: y, display: display)
+            }
+            guard let edge = ToolbarEdge(rawValue: mode), let ratio = value["ratio"] as? Double, ratio.isFinite else { return nil }
+            return .snapped(edge, ratio: min(max(ratio, 0), 1), display: display)
+        }
+        set {
+            var value: [String: Any]
+            switch newValue {
+            case nil: defaults.removeObject(forKey: "toolbar.anchor"); return
+            case .free(let x, let y, _): value = ["mode": "free", "x": x, "y": y]
+            case .snapped(let edge, let ratio, _): value = ["mode": edge.rawValue, "ratio": ratio]
+            }
+            if let display = newValue?.display { value["display"] = display }
+            defaults.set(value, forKey: "toolbar.anchor")
+        }
+    }
+    var toolbarOrientation: ToolbarOrientation {
+        get { defaults.string(forKey: "toolbar.orientation").flatMap(ToolbarOrientation.init(rawValue:)) ?? .vertical }
+        set { defaults.set(newValue.rawValue, forKey: "toolbar.orientation") }
+    }
+    /// Seconds before a snapped, idle toolbar shrinks to its entry; 0 turns it off.
+    var toolbarAutoShrink: Int {
+        get {
+            guard let value = defaults.object(forKey: "toolbar.autoShrink") as? Int,
+                  ToolbarMetrics.autoShrinkChoices.contains(value) else { return ToolbarMetrics.defaultAutoShrink }
+            return value
+        }
+        set { defaults.set(newValue, forKey: "toolbar.autoShrink") }
     }
     /// Page of each note from the last overflowing arrangement, and its display's page
     /// count. Notes created later are not listed and are always visible.

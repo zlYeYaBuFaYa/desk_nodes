@@ -28,13 +28,22 @@ final class DesktopController {
     var failure: (Error) -> Void = { _ in }
     /// Lets the status menu mirror the toolbar's 置顶 toggle.
     var topmostChanged: (Bool) -> Void = { _ in }
+    /// The display the toolbar last resolved on, kept when the pointer leaves every display.
+    private var toolbarDisplay: String?
+    /// The reservation docked strips last saw; a change relays them out.
+    private var reserved: NoteFrame?
+    /// The hint is mid-fade with the toolbar's controls; a settled capsule leaves it alone.
+    private var hintFollows = false
 
     init(actions: NoteActions, defaults: PresentationDefaults) {
         self.actions = actions; self.defaults = defaults
         state = DeskPresentation(collapsed: defaults.collapsed)
         pages = defaults.pages
-        toolbar.moved = { [weak self] frame in self?.toolbarMoved(frame) }
+        toolbar.released = { [weak self] visible, round, pointer in self?.toolbarReleased(visible, round: round, pointer: pointer) }
+        toolbar.presented = { [weak self] visible, controls in self?.toolbarPresented(visible, controls: controls) }
         toolbar.turnPage = { [weak self] delta in self?.turnPage(delta) }
+        toolbar.autoShrink = defaults.toolbarAutoShrink
+        toolbar.setOrientation(defaults.toolbarOrientation)
         hint.expand = { [weak self] in self?.expand() }
     }
 
@@ -78,9 +87,11 @@ final class DesktopController {
 
     // MARK: Toolbar
 
+    /// Launch shows the whole toolbar where it was, never the round entry; idle timing
+    /// takes over from there.
     func start() {
         placeToolbar()
-        toolbar.panel.orderFrontRegardless()
+        toolbar.show()
         if state.targetsCollapsed { showHint() }
     }
     /// Called after every refresh with the live notes.
@@ -106,49 +117,82 @@ final class DesktopController {
         let paged = toolbar.paged
         toolbar.update(Toolbar.State(count: notes.count, canDelete: state == .expanded && visible,
                                      collapsed: state.targetsCollapsed, topmost: defaults.topmost, page: pageInfo))
-        // Only the pager row changes the toolbar's height; keep it on screen when it grows.
-        if toolbar.paged != paged { placeToolbar(keepingPosition: true) }
+        // Only the pager changes the toolbar's length; re-solve from the same anchor.
+        if toolbar.paged != paged { placeToolbar() }
     }
-    /// Restores the saved position, or the first-launch spot when its display is gone.
-    func placeToolbar(keepingPosition: Bool = false) {
+    /// Resolves the saved anchor on the current displays. Upgrading from a plain saved
+    /// position keeps it as a free place; it is never treated as snapped by distance alone.
+    func placeToolbar(animated: Bool = false) {
         let screens = DockController.screens()
-        guard let primary = screens.first else { return }
-        let height = Double(toolbar.panel.frame.height)
-        var frame: NoteFrame
-        if keepingPosition {
-            let f = toolbar.panel.frame
-            frame = NoteFrame(x: f.minX, y: f.minY, width: f.width, height: f.height)
-        } else if let saved = defaults.toolbar {
-            frame = NoteFrame(x: saved.x, y: saved.y - height, width: ToolbarMetrics.width, height: height)
-            if Arrangement.toolbarScreen(frame, displayID: saved.display, screens: screens) == nil {
-                frame = Arrangement.defaultToolbar(on: primary, height: height)
-            }
-        } else { frame = Arrangement.defaultToolbar(on: primary, height: height) }
-        let screen = toolbarScreen(frame, screens: screens) ?? primary
-        let clamped = Arrangement.clampToolbar(frame, to: screen)
-        let rect = NSRect(x: clamped.x, y: clamped.y, width: clamped.width, height: clamped.height)
-        if rect != toolbar.panel.frame { toolbar.panel.setFrame(rect, display: true) }
-        if hint.isVisible { positionHint() }
+        if defaults.toolbarAnchor == nil, let legacy = defaults.toolbar {
+            let height = ToolbarMetrics.height(paged: false)
+            defaults.toolbarAnchor = .free(centerX: legacy.x + ToolbarMetrics.width / 2, centerY: legacy.y - height / 2, display: legacy.display)
+        }
+        guard let frames = ToolbarGeometry.resolve(defaults.toolbarAnchor, orientation: defaults.toolbarOrientation,
+                                                   paged: toolbar.paged, screens: screens) else { return }
+        toolbarDisplay = frames.screen.id
+        toolbar.place(Toolbar.Frames(frames), animated: animated)
+        reservationChanged()
     }
-    /// Menu bar recovery: back onto a connected display and in front.
+    /// Menu bar recovery: back onto a connected display, fully expanded and in front.
     func revealToolbar() {
         placeToolbar()
         toolbar.panel.orderFrontRegardless()
+        toolbar.expand()
         if state.targetsCollapsed { showHint() }
     }
     func screensChanged() { placeToolbar() }
+    func setToolbarOrientation(_ orientation: ToolbarOrientation) {
+        guard orientation != defaults.toolbarOrientation else { return }
+        defaults.toolbarOrientation = orientation
+        toolbar.setOrientation(orientation)
+        placeToolbar(animated: true)
+    }
+    func setToolbarAutoShrink(_ seconds: Int) {
+        defaults.toolbarAutoShrink = seconds
+        toolbar.autoShrink = defaults.toolbarAutoShrink
+    }
     private func toolbarScreen(_ frame: NoteFrame, screens: [DockScreen]) -> DockScreen? {
-        screens.first { DockGeometry.contains($0.visible, x: frame.x + frame.width / 2, y: frame.y + frame.height / 2) }
+        screens.first { $0.id == toolbarDisplay }
+            ?? screens.first { DockGeometry.contains($0.visible, x: frame.x + frame.width / 2, y: frame.y + frame.height / 2) }
     }
+    /// The full expanded frame, even while the toolbar is shrunk to its entry: new notes,
+    /// "整理" and docked strips keep clear of it.
     private var toolbarFrame: NoteFrame {
-        let f = toolbar.panel.frame
-        return NoteFrame(x: f.minX, y: f.minY, width: f.width, height: f.height)
+        NoteFrame(toolbar.frames?.target ?? toolbar.panel.frame)
     }
-    private func toolbarMoved(_ frame: NSRect) {
-        let note = NoteFrame(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height)
-        let screen = toolbarScreen(note, screens: DockController.screens())
-        defaults.toolbar = .init(x: frame.minX, y: frame.maxY, display: screen?.persistentID)
-        if hint.isVisible { positionHint() }
+    /// What docked strips avoid on the toolbar's display.
+    var toolbarReservation: (display: String, frame: NoteFrame)? {
+        guard toolbar.frames != nil, let display = toolbarDisplay else { return nil }
+        return (display, toolbarFrame)
+    }
+    /// Placement can be re-solved from inside a refresh (the pager appearing), so strips
+    /// relay out on the next turn rather than re-entering it.
+    private func reservationChanged() {
+        guard toolbarFrame != reserved else { return }
+        reserved = toolbarFrame
+        DispatchQueue.main.async { [weak self] in self?.refresh(.layout) }
+    }
+    private func toolbarReleased(_ visible: NSRect, round: Bool, pointer: NSPoint) -> Toolbar.Frames? {
+        guard let (anchor, frames) = ToolbarGeometry.release(NoteFrame(visible), round: round, pointer: (pointer.x, pointer.y),
+                                                             last: toolbarDisplay, previous: defaults.toolbarAnchor?.edge,
+                                                             orientation: defaults.toolbarOrientation, paged: toolbar.paged,
+                                                             screens: DockController.screens()) else { return nil }
+        defaults.toolbarAnchor = anchor
+        toolbarDisplay = frames.screen.id
+        let resolved = Toolbar.Frames(frames)
+        DispatchQueue.main.async { [weak self] in self?.reservationChanged() } // after the toolbar holds `resolved`
+        return resolved
+    }
+    /// The stack hint shows with the controls: hidden on the round entry, fading in and out
+    /// with the controls during a transition, and following the capsule.
+    private func toolbarPresented(_ visible: NSRect, controls: CGFloat) {
+        guard state.targetsCollapsed, hint.parent != nil else { return }
+        if controls > 0 { positionHint() }
+        guard controls < 1 || hintFollows else { return }
+        hintFollows = controls < 1
+        hint.alphaValue = controls
+        hint.ignoresMouseEvents = controls < 1
     }
 
     // MARK: Stack hint
@@ -156,8 +200,11 @@ final class DesktopController {
     private func positionHint() {
         let screens = DockController.screens()
         guard let screen = toolbarScreen(toolbarFrame, screens: screens) ?? screens.first else { return }
-        let f = Arrangement.stackHint(beside: toolbarFrame, width: StackHint.size.width, height: StackHint.size.height, screen: screen)
-        hint.setFrame(NSRect(x: f.x, y: f.y, width: f.width, height: f.height), display: true)
+        // Beside the capsule as it is on screen, which may be mid-snap.
+        let beside = toolbar.isRound ? toolbarFrame : NoteFrame(toolbar.visibleFrame)
+        let f = Arrangement.stackHint(beside: beside, width: StackHint.size.width, height: StackHint.size.height, screen: screen)
+        let rect = NSRect(x: f.x, y: f.y, width: f.width, height: f.height)
+        if hint.frame != rect { hint.setFrame(rect, display: true) }
     }
     private func showHint() {
         guard !notes.isEmpty || surfaces()?.panels.isEmpty == false else { return }
@@ -165,13 +212,19 @@ final class DesktopController {
         positionHint()
         if hint.parent == nil { toolbar.panel.addChildWindow(hint, ordered: .above) }
         hint.alphaValue = 0; hint.orderFrontRegardless()
+        // On the round entry the badge stands in; the hint returns with the controls.
+        guard toolbar.shape == .expanded else { hint.ignoresMouseEvents = true; return }
+        hint.ignoresMouseEvents = false
         Motion.windows([(hint, hint.frame, 1)], duration: MotionPolicy.gathering) {}
     }
     private func hideHint() {
+        hintFollows = false
         if hint.parent != nil { toolbar.panel.removeChildWindow(hint) }
         hint.orderOut(nil)
     }
+    /// Where gathered notes go and come from: the stack hint, or the round entry while shrunk.
     private var hintCenter: NSPoint {
+        if toolbar.shape != .expanded { return NSPoint(x: toolbar.visibleFrame.midX, y: toolbar.visibleFrame.midY) }
         if !hint.isVisible { positionHint() }
         return NSPoint(x: hint.frame.midX, y: hint.frame.midY)
     }
@@ -313,5 +366,17 @@ final class DesktopController {
         }
         let frame = Arrangement.placement(width: NoteMetrics.width, height: height, screen: screen, toolbar: toolbarFrame, occupied: occupied)
         return (frame, screen.persistentID)
+    }
+}
+
+extension NoteFrame {
+    init(_ rect: NSRect) { self.init(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height) }
+}
+extension NSRect {
+    init(_ frame: NoteFrame) { self.init(x: frame.x, y: frame.y, width: frame.width, height: frame.height) }
+}
+extension Toolbar.Frames {
+    init(_ frames: ToolbarFrames) {
+        self.init(target: NSRect(frames.target), circle: frames.circle.map(NSRect.init), edge: frames.edge)
     }
 }

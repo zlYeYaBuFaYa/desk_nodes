@@ -45,19 +45,17 @@ public enum Arrangement {
         public let pages: Int
     }
 
-    /// The display area minus the screen margin and, on the toolbar's display, the
-    /// toolbar's whole column, so no card can ever sit underneath it.
+    /// The display area minus the screen margin and, on the toolbar's display, the largest
+    /// part clear of the toolbar's full expanded frame (beside a column, below or above a
+    /// row), so no card can ever sit underneath it, even while it is shrunk to its entry.
     public static func area(_ screen: DockScreen, avoiding toolbar: NoteFrame?) -> NoteFrame {
-        let margin = ArrangeMetrics.margin, gap = ArrangeMetrics.gap
+        let margin = ArrangeMetrics.margin
         let v = screen.visible
-        var left = v.x + min(margin, v.width / 2), right = v.x + v.width - min(margin, v.width / 2)
+        let left = v.x + min(margin, v.width / 2), right = v.x + v.width - min(margin, v.width / 2)
         let bottom = v.y + min(margin, v.height / 2), top = v.y + v.height - min(margin, v.height / 2)
-        if let t = toolbar, t.x < right, t.x + t.width > left, t.y < top, t.y + t.height > bottom {
-            // Keep the wider side of the display; ties keep the right side (toolbar on the left).
-            if t.x - left > right - (t.x + t.width) { right = min(right, t.x - gap) }
-            else { left = max(left, t.x + t.width + gap) }
-        }
-        return NoteFrame(x: left, y: bottom, width: max(1, right - left), height: max(1, top - bottom))
+        let inner = NoteFrame(x: left, y: bottom, width: max(1, right - left), height: max(1, top - bottom))
+        guard let toolbar else { return inner }
+        return largestFree(inner, avoiding: toolbar, gap: ArrangeMetrics.gap)
     }
 
     /// Left to right, top aligned rows; the next row starts below the row's tallest card.
@@ -127,11 +125,6 @@ public enum Arrangement {
         return NoteFrame(x: x, y: a.y + a.height - height - offset, width: width, height: height)
     }
 
-    /// First launch: the primary display's left edge, below the menu bar, with a margin.
-    public static func defaultToolbar(on screen: DockScreen, height: Double) -> NoteFrame {
-        let v = screen.visible, m = ToolbarMetrics.screenMargin
-        return clampToolbar(NoteFrame(x: v.x + m, y: v.y + v.height - m - height, width: ToolbarMetrics.width, height: height), to: screen)
-    }
     /// The whole toolbar stays inside one display's visible area, so its grip and every
     /// action are reachable. Too-short displays keep the grip (the top) visible.
     public static func clampToolbar(_ frame: NoteFrame, to screen: DockScreen) -> NoteFrame {
@@ -140,12 +133,6 @@ public enum Arrangement {
         let top = v.y + v.height - frame.height
         let y = frame.height > v.height ? top : min(max(frame.y, v.y), top)
         return NoteFrame(x: x, y: y, width: frame.width, height: frame.height)
-    }
-    /// The display that should host a toolbar frame: its saved display if connected, else
-    /// the one under its centre; nil means it must be placed afresh on the primary display.
-    public static func toolbarScreen(_ frame: NoteFrame, displayID: String?, screens: [DockScreen]) -> DockScreen? {
-        if let displayID { return screens.first { $0.id == displayID } }
-        return screens.first { DockGeometry.contains($0.visible, x: frame.x + frame.width / 2, y: frame.y + frame.height / 2) }
     }
 
     /// The collapsed stack sits beside the toolbar: right when it fits, otherwise left.
