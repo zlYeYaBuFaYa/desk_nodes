@@ -40,6 +40,9 @@ final class DesktopController {
         state = DeskPresentation(collapsed: defaults.collapsed)
         pages = defaults.pages
         toolbar.released = { [weak self] visible, round, pointer in self?.toolbarReleased(visible, round: round, pointer: pointer) }
+        toolbar.snapPreview = { [weak self] visible, round, pointer in
+            self?.release(visible, round: round, pointer: pointer).flatMap { $0.1.edge == nil ? nil : NSRect($0.1.target) }
+        }
         toolbar.presented = { [weak self] visible, controls in self?.toolbarPresented(visible, controls: controls) }
         toolbar.turnPage = { [weak self] delta in self?.turnPage(delta) }
         toolbar.autoShrink = defaults.toolbarAutoShrink
@@ -173,11 +176,13 @@ final class DesktopController {
         reserved = toolbarFrame
         DispatchQueue.main.async { [weak self] in self?.refresh(.layout) }
     }
+    private func release(_ visible: NSRect, round: Bool, pointer: NSPoint) -> (ToolbarAnchor, ToolbarFrames)? {
+        ToolbarGeometry.release(NoteFrame(visible), round: round, pointer: (pointer.x, pointer.y),
+                                last: toolbarDisplay, previous: defaults.toolbarAnchor?.edge,
+                                orientation: defaults.toolbarOrientation, paged: toolbar.paged, screens: DockController.screens())
+    }
     private func toolbarReleased(_ visible: NSRect, round: Bool, pointer: NSPoint) -> Toolbar.Frames? {
-        guard let (anchor, frames) = ToolbarGeometry.release(NoteFrame(visible), round: round, pointer: (pointer.x, pointer.y),
-                                                             last: toolbarDisplay, previous: defaults.toolbarAnchor?.edge,
-                                                             orientation: defaults.toolbarOrientation, paged: toolbar.paged,
-                                                             screens: DockController.screens()) else { return nil }
+        guard let (anchor, frames) = release(visible, round: round, pointer: pointer) else { return nil }
         defaults.toolbarAnchor = anchor
         toolbarDisplay = frames.screen.id
         let resolved = Toolbar.Frames(frames)

@@ -50,6 +50,9 @@ final class Toolbar {
     var turnPage: (Int) -> Void = { _ in }
     /// A drag ended with `visible` on screen; the owner stores and returns the new rest frames.
     var released: (_ visible: NSRect, _ round: Bool, _ pointer: NSPoint) -> Frames? = { _, _, _ in nil }
+    /// While dragging: where a release now would snap the capsule, or nil when it would stay free.
+    var snapPreview: (_ visible: NSRect, _ round: Bool, _ pointer: NSPoint) -> NSRect? = { _, _, _ in nil }
+    private let preview = SnapPreview()
     /// Each drawn frame: the visible shape and how visible the controls are (0–1).
     var presented: (_ visible: NSRect, _ controls: CGFloat) -> Void = { _, _ in }
     /// Idle blockers owned elsewhere, such as a visible settings window.
@@ -77,6 +80,9 @@ final class Toolbar {
     /// A press on the grip or the entry; it owns the pointer until release.
     private var gesture = false
     private var idleTimer: Timer?
+    /// Looks at the pointer while it rests on the toolbar, so the wait never hinges on an
+    /// exit event that may not come (a window can move out from under a still pointer).
+    private var pointerCheck: Timer?
     private var intentTimer: Timer?
     /// Opened by hovering and not used yet: leaving shrinks it after a short grace.
     private var hoverOpened = false
@@ -200,7 +206,7 @@ final class Toolbar {
         start(.collapse(from: shell, to: circle, target: frames.target, icon: iconAlpha, controls: controlsAlpha))
     }
     private func start(_ transition: Transition) {
-        idleTimer?.invalidate(); idleTimer = nil
+        cancelIdle()
         animation = transition
         if link == nil {
             let link = root.displayLink(target: linkTarget, selector: #selector(FrameLink.step(_:)))
@@ -273,7 +279,7 @@ final class Toolbar {
     /// Tracking-area callback: entering, moving in or leaving the toolbar's window.
     func pointerChanged() {
         if contains(NSEvent.mouseLocation) {
-            idleTimer?.invalidate(); idleTimer = nil
+            reconsiderIdle()
             if shape == .collapsing && !gesture { expand() }
             else if shape == .round && intentTimer == nil { armIntent(ToolbarMetrics.hoverIntent) }
         } else {
@@ -298,7 +304,7 @@ final class Toolbar {
     private func cancelIntent() { intentTimer?.invalidate(); intentTimer = nil }
     private func interacted() {
         hoverOpened = false
-        idleTimer?.invalidate(); idleTimer = nil
+        cancelIdle()
     }
 
     /// One press on the grip (`activate == false`) or on the entry and its transition.
@@ -306,7 +312,7 @@ final class Toolbar {
     /// drags the visible shape, and the release never reaches a button that appeared under it.
     func track(activate: Bool) {
         gesture = true
-        cancelIntent(); idleTimer?.invalidate(); idleTimer = nil
+        cancelIntent(); cancelIdle()
         animation = nil; link?.invalidate(); link = nil
         render()
         let start = NSEvent.mouseLocation, origin = shell.origin
@@ -325,9 +331,11 @@ final class Toolbar {
                     moved.origin = NSPoint(x: clamped.x, y: clamped.y)
                 }
                 if moved != shell { shell = moved; render() }
+                preview.show(snapPreview(shell, shape != .expanded, point), below: panel)
             }
             if next.type == .leftMouseUp { break }
         }
+        preview.orderOut(nil)
         if dragging { NSCursor.pop() }
         gesture = false
         if dragging, let frames = released(shell, shape != .expanded, NSEvent.mouseLocation) { self.frames = frames }
@@ -336,14 +344,33 @@ final class Toolbar {
 
     // MARK: Idle shrink
 
-    private var idleAllowed: Bool {
+    /// Every condition but the pointer's position.
+    private var idleEligible: Bool {
         shape == .expanded && animation == nil && !gesture && frames?.edge != nil && autoShrink > 0
-            && panel.isVisible && !contains(NSEvent.mouseLocation) && !busy()
-            && !NSWorkspace.shared.isVoiceOverEnabled
+            && panel.isVisible && !busy() && !NSWorkspace.shared.isVoiceOverEnabled
+    }
+    private var idleAllowed: Bool { idleEligible && !contains(NSEvent.mouseLocation) }
+    private func cancelIdle() {
+        idleTimer?.invalidate(); idleTimer = nil
+        pointerCheck?.invalidate(); pointerCheck = nil
     }
     /// Starts a full wait when every condition holds and none is running; cancels otherwise.
+    /// With only the pointer in the way, it checks the pointer again every half second.
     func reconsiderIdle() {
-        guard idleAllowed else { idleTimer?.invalidate(); idleTimer = nil; return }
+        guard idleEligible else { cancelIdle(); return }
+        if contains(NSEvent.mouseLocation) {
+            idleTimer?.invalidate(); idleTimer = nil
+            guard pointerCheck == nil else { return }
+            pointerCheck = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, !self.idleEligible || !self.contains(NSEvent.mouseLocation) else { return }
+                    self.pointerCheck?.invalidate(); self.pointerCheck = nil
+                    self.reconsiderIdle()
+                }
+            }
+            return
+        }
+        pointerCheck?.invalidate(); pointerCheck = nil
         guard idleTimer == nil else { return }
         let delay = hoverOpened ? ToolbarMetrics.hoverGrace : TimeInterval(autoShrink)
         idleTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
@@ -356,7 +383,7 @@ final class Toolbar {
         }
     }
     func restartIdle() {
-        idleTimer?.invalidate(); idleTimer = nil
+        cancelIdle()
         reconsiderIdle()
     }
     private func observe() {
@@ -369,7 +396,7 @@ final class Toolbar {
         }
         // Sleep cancels the wait; waking starts over rather than shrinking for time spent asleep.
         observers.append((workspace, workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.idleTimer?.invalidate(); self?.idleTimer = nil; self?.cancelIntent() }
+            MainActor.assumeIsolated { self?.cancelIdle(); self?.cancelIntent() }
         }))
         observers.append((workspace, workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.restartIdle() }
@@ -383,7 +410,7 @@ final class Toolbar {
     func invalidate() {
         for (center, token) in observers { center.removeObserver(token) }
         observers = []; voiceOver = nil
-        idleTimer?.invalidate(); idleTimer = nil; cancelIntent(); stopAnimation()
+        cancelIdle(); cancelIntent(); stopAnimation(); preview.orderOut(nil)
     }
 }
 
@@ -464,6 +491,36 @@ private struct Transition {
         if icon < 1 { iconTrack.segments.append((pre + max(0, shell - fadeIn), fadeIn * Double(1 - icon), icon, 1)) }
         return Transition(from: from, to: to, shellStart: pre, shellDuration: shell, icon: iconTrack, controls: controlsTrack,
                           window: from.union(to))
+    }
+}
+
+/// Outline of where a release would snap, shown under the dragged toolbar so the user can
+/// tell "on the edge" from "near it" before letting go.
+final class SnapPreview: NSPanel {
+    private let outline = SnapOutline()
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        isReleasedWhenClosed = false; isOpaque = false; backgroundColor = .clear; hasShadow = false
+        ignoresMouseEvents = true; hidesOnDeactivate = false; level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        contentView = outline
+        setAccessibilityElement(false)
+    }
+    override var canBecomeKey: Bool { false }
+    func show(_ frame: NSRect?, below toolbar: NSWindow) {
+        guard let frame else { orderOut(nil); return }
+        if self.frame != frame { setFrame(frame, display: true) }
+        if !isVisible { order(.below, relativeTo: toolbar.windowNumber) }
+    }
+}
+
+private final class SnapOutline: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 1, dy: 1), radius = min(rect.width, rect.height) / 2
+        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        NoteTheme.accent.withAlphaComponent(0.14).setFill(); path.fill()
+        path.lineWidth = 1.5; path.setLineDash([5, 4], count: 2, phase: 0)
+        NoteTheme.accent.withAlphaComponent(0.8).setStroke(); path.stroke()
     }
 }
 

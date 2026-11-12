@@ -113,8 +113,9 @@ public enum ToolbarMetrics {
     public static let inset = 6.0
     /// Distance kept from the screen edge on first launch.
     public static let screenMargin = 20.0
-    /// Release within this distance of an outer display edge snaps to it.
-    public static let snapDistance = 24.0
+    /// Release within this distance of an outer display edge snaps to it. Generous on
+    /// purpose: a drag "to the edge" often stops well short, and a preview shows the result.
+    public static let snapDistance = 81.0
     /// Gap kept between a snapped toolbar (either shape) and its edge.
     public static let edgeGap = 8.0
     /// Pointer travel that turns a press on the round entry into a drag.

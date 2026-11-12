@@ -62,7 +62,9 @@ final class ToolbarGeometryTests: XCTestCase {
     func testSnapPicksTheNearestOuterEdgeAndIgnoresSeams() {
         let nearLeft = NoteFrame(x: 20, y: 300, width: 64, height: 400)
         XCTAssertEqual(ToolbarGeometry.snapEdge(nearLeft, screen: main, screens: [main], orientation: .vertical, paged: false, previous: nil), .left)
-        let far = NoteFrame(x: 40, y: 300, width: 64, height: 400)
+        let edge = NoteFrame(x: ToolbarMetrics.snapDistance, y: 300, width: 64, height: 400)
+        XCTAssertEqual(ToolbarGeometry.snapEdge(edge, screen: main, screens: [main], orientation: .vertical, paged: false, previous: nil), .left)
+        let far = NoteFrame(x: ToolbarMetrics.snapDistance + 1, y: 300, width: 64, height: 400)
         XCTAssertNil(ToolbarGeometry.snapEdge(far, screen: main, screens: [main], orientation: .vertical, paged: false, previous: nil))
         // The right edge of `main` continues into `side`: a seam, not an edge.
         let atSeam = NoteFrame(x: 1440 - 70, y: 300, width: 64, height: 400)
