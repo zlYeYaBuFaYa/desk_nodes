@@ -38,6 +38,9 @@ public struct Item: Equatable, Codable, Sendable {
     public let noteID: NoteID
     public var text: String
     public var completed: Bool
+    /// Struck out: dropped, not done. Kept visible with a line through it; never both
+    /// struck and completed.
+    public var struck: Bool = false
     public var order: Int
     /// Rollover archival is separate from user deletion; retained content is read-only.
     public internal(set) var archivedDay: HistoryDay? = nil
@@ -90,9 +93,34 @@ public struct SnapshotItem: Equatable, Codable, Sendable {
     public let id: ItemID
     public let text: String
     public let completed: Bool
+    public var struck: Bool = false
     public let order: Int
     public let deletedAt: Date?
     public let carriedTo: HistoryDay?
+}
+// Backups written before schema 8 have no `struck`; a missing key reads as not struck.
+extension Item {
+    private enum CodingKeys: String, CodingKey { case id, noteID, text, completed, struck, order, archivedDay, createdAt, updatedAt, deletedAt }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(ItemID.self, forKey: .id); noteID = try c.decode(NoteID.self, forKey: .noteID)
+        text = try c.decode(String.self, forKey: .text); completed = try c.decode(Bool.self, forKey: .completed)
+        struck = try c.decodeIfPresent(Bool.self, forKey: .struck) ?? false
+        order = try c.decode(Int.self, forKey: .order); archivedDay = try c.decodeIfPresent(HistoryDay.self, forKey: .archivedDay)
+        createdAt = try c.decode(Date.self, forKey: .createdAt); updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+    }
+}
+extension SnapshotItem {
+    private enum CodingKeys: String, CodingKey { case id, text, completed, struck, order, deletedAt, carriedTo }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(ItemID.self, forKey: .id); text = try c.decode(String.self, forKey: .text)
+        completed = try c.decode(Bool.self, forKey: .completed)
+        struck = try c.decodeIfPresent(Bool.self, forKey: .struck) ?? false
+        order = try c.decode(Int.self, forKey: .order); deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+        carriedTo = try c.decodeIfPresent(HistoryDay.self, forKey: .carriedTo)
+    }
 }
 public struct SnapshotNote: Equatable, Codable, Sendable {
     public let id: NoteID

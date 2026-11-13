@@ -70,9 +70,9 @@ struct RecentlyDeletedView: View {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: item.completed ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 11)).foregroundStyle(.secondary).padding(.top, 2)
-                            .accessibilityLabel(item.completed ? "已完成" : "未完成")
-                        Text(item.text).lineLimit(1).foregroundStyle(item.completed ? .secondary : .primary)
-                            .strikethrough(item.completed)
+                            .accessibilityLabel(item.completed ? "已完成" : item.struck ? "已划掉" : "未完成")
+                        Text(item.text).lineLimit(1).foregroundStyle(item.completed || item.struck ? .secondary : .primary)
+                            .strikethrough(item.struck)
                     }
                 }
                 if entry.items.count > 4 {

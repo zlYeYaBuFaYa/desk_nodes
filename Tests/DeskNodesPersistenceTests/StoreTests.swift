@@ -160,7 +160,7 @@ final class StoreTests: XCTestCase {
         try db.capture(day: day())
         try db.close()
         let check = try SQLite(url: url)
-        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "7")
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "8")
     }
     func testMigrationFromNativeV2AddsAutoHeightWithoutChangingHistory() throws {
         let raw = try SQLite(url: url)
@@ -184,7 +184,7 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(try db.snapshot(day: day())?.notes.first?.color, .mist)
         try db.close()
         let check = try SQLite(url: url)
-        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "7")
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "8")
     }
     func testNativeV3MigrationAddsFreeRestorePreservingManualTombstoneAndHistory() throws {
         let db = try store()
@@ -197,6 +197,7 @@ final class StoreTests: XCTestCase {
         let raw = try SQLite(url: url)
         for table in ["item_archives", "pending_deleted_items", "pending_deleted_notes", "rollover_state"] { try raw.run("DROP TABLE \(table)") }
         try raw.run("ALTER TABLE notes DROP COLUMN free_restore")
+        try raw.run("ALTER TABLE items DROP COLUMN struck"); try raw.run("ALTER TABLE snapshot_items DROP COLUMN struck")
         try raw.run("DROP TABLE native_preferences")
         try raw.run("ALTER TABLE settings DROP COLUMN edge_preference")
         try raw.run("PRAGMA user_version = 3"); try raw.close()
@@ -206,7 +207,7 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(try migrated.snapshot(day: day()), history)
         try migrated.close()
         let check = try SQLite(url: url)
-        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "7")
+        XCTAssertEqual(try check.query("PRAGMA user_version")[0][0], "8")
     }
     func testInvalidFreeRestoreRejectedAtomically() throws {
         let db = try store()

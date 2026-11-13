@@ -108,7 +108,7 @@ final class BackupTests: XCTestCase {
         for version in [-1, 0, 2, 100] {
             var value = original; value.version = version; XCTAssertThrowsError(try validate(value))
         }
-        for schema in [0, 6, 8] {
+        for schema in [0, 6, 9] {
             var value = original; value.schema = schema; XCTAssertThrowsError(try validate(value))
         }
     }
@@ -247,7 +247,9 @@ final class BackupTests: XCTestCase {
         let db = try store("v6"), note = try db.createNote(title: "保留")
         let snap = try db.capture(day: HistoryDay("2026-01-01")); try db.close()
         let raw = try SQLite(url: directory.appendingPathComponent("v6"))
-        try raw.run("DROP TABLE native_preferences"); try raw.run("PRAGMA user_version=6")
+        try raw.run("DROP TABLE native_preferences")
+        try raw.run("ALTER TABLE items DROP COLUMN struck"); try raw.run("ALTER TABLE snapshot_items DROP COLUMN struck")
+        try raw.run("PRAGMA user_version=6")
         let migrated = try store("v6")
         XCTAssertEqual(try migrated.preferences(), NativePreferences())
         XCTAssertEqual(try migrated.notes()[0].id, note.id); XCTAssertEqual(try migrated.snapshot(day: snap.day), snap)

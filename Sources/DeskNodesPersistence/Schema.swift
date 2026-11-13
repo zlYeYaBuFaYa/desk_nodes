@@ -1,7 +1,7 @@
 import Foundation
 
 internal enum Schema {
-    static let version = 7
+    static let version = 8
     // Application ID 'DSKN': reject unrelated databases, even if user_version coincides.
     static let applicationID = 0x44534B4E
     static func migrate(_ db: SQLite) throws {
@@ -46,6 +46,12 @@ internal enum Schema {
                 let defaults = String(decoding: try JSONEncoder().encode(NativePreferences()), as: UTF8.self)
                 try db.run("INSERT INTO native_preferences VALUES (1,?)", [.text(defaults)])
                 try db.run("PRAGMA user_version = 7")
+            }
+            if version < 8 {
+                // Adding a column fires no UPDATE trigger, so sealed history stays sealed.
+                try db.run("ALTER TABLE items ADD COLUMN struck INTEGER NOT NULL DEFAULT 0 CHECK(struck IN (0,1))")
+                try db.run("ALTER TABLE snapshot_items ADD COLUMN struck INTEGER NOT NULL DEFAULT 0 CHECK(struck IN (0,1))")
+                try db.run("PRAGMA user_version = 8")
             }
             // 石墨 was retired without a schema bump, so backups keep importing across
             // versions. The CHECK still admits it; no code writes it any more. Sealed

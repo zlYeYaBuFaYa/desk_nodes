@@ -79,13 +79,13 @@ extension Store {
                     [.text(note.id.rawValue.uuidString), stage.text(note.title), .text(note.color.rawValue), .text(try stage.encode(note.placement)), .text(note.level.rawValue), .integer(Int64(note.order)), .integer(note.collapsed ? 1 : 0), .date(note.createdAt), .date(note.updatedAt), .date(note.deletedAt), .integer(note.automaticHeight ? 1 : 0), stage.text(try note.freeRestore.map(stage.encode))])
             }
             for item in value.items {
-                try stage.db.run("INSERT INTO items VALUES (?,?,?,?,?,?,?,?)", [.text(item.id.rawValue.uuidString), .text(item.noteID.rawValue.uuidString), .text(item.text), .integer(item.completed ? 1 : 0), .integer(Int64(item.order)), .date(item.createdAt), .date(item.updatedAt), .date(item.deletedAt)])
+                try stage.db.run("INSERT INTO items (id,note_id,text,completed,position,created,updated,deleted,struck) VALUES (?,?,?,?,?,?,?,?,?)", [.text(item.id.rawValue.uuidString), .text(item.noteID.rawValue.uuidString), .text(item.text), .integer(item.completed ? 1 : 0), .integer(Int64(item.order)), .date(item.createdAt), .date(item.updatedAt), .date(item.deletedAt), .integer(item.struck ? 1 : 0)])
             }
             for day in value.history {
                 for note in day.notes {
                     try stage.db.run("INSERT INTO snapshot_notes VALUES (?,?,?,?,?,?)", [.text(day.day.rawValue), .text(note.id.rawValue.uuidString), stage.text(note.title), .text(note.color.rawValue), .integer(Int64(note.order)), .date(note.deletedAt)])
                     for item in note.items {
-                        try stage.db.run("INSERT INTO snapshot_items VALUES (?,?,?,?,?,?,?,?)", [.text(day.day.rawValue), .text(note.id.rawValue.uuidString), .text(item.id.rawValue.uuidString), .text(item.text), .integer(item.completed ? 1 : 0), .integer(Int64(item.order)), .date(item.deletedAt), stage.text(item.carriedTo?.rawValue)])
+                        try stage.db.run("INSERT INTO snapshot_items (day,note_id,item_id,text,completed,position,deleted,carried_to,struck) VALUES (?,?,?,?,?,?,?,?,?)", [.text(day.day.rawValue), .text(note.id.rawValue.uuidString), .text(item.id.rawValue.uuidString), .text(item.text), .integer(item.completed ? 1 : 0), .integer(Int64(item.order)), .date(item.deletedAt), stage.text(item.carriedTo?.rawValue), .integer(item.struck ? 1 : 0)])
                     }
                 }
                 try stage.db.run("INSERT INTO days VALUES (?,?)", [.text(day.day.rawValue), .date(day.capturedAt)])
@@ -129,7 +129,7 @@ extension Store {
 
 private extension NativeBackup {
     func validate() throws {
-        guard format == "local.desknodes.native.backup", version == 1, schema == Schema.version else { throw StoreError.invalid("不兼容的原生备份版本") }
+        guard format == "local.desknodes.native.backup", version == 1, (7...Schema.version).contains(schema) else { throw StoreError.invalid("不兼容的原生备份版本") }
         func require(_ condition: Bool, _ message: String) throws { if !condition { throw StoreError.invalid(message) } }
         func date(_ value: Date?) throws { if let value { try require(value.timeIntervalSince1970.isFinite, "timestamp") } }
         func placement(_ value: Placement) throws {
@@ -146,6 +146,7 @@ private extension NativeBackup {
             try date(note.createdAt); try date(note.updatedAt); try date(note.deletedAt)
         }
         for item in items {
+            try require(!(item.completed && item.struck), "completed and struck")
             try require(noteMap[item.noteID] != nil && item.order >= 0, "item parent/order")
             try require(noteMap[item.noteID]?.deletedAt == nil || item.deletedAt != nil || item.archivedDay != nil, "live child of deleted note")
             try date(item.createdAt); try date(item.updatedAt); try date(item.deletedAt)
@@ -159,14 +160,14 @@ private extension NativeBackup {
                 for item in note.items {
                     try require(seen.insert(item.id).inserted && itemMap[item.id]?.noteID == note.id && item.order >= 0, "snapshot item reference/order")
                     try date(item.deletedAt)
-                    if let carry = item.carriedTo { try require(carry > snapshot.day && !item.completed && item.deletedAt == nil && note.deletedAt == nil, "carry") }
+                    if let carry = item.carriedTo { try require(carry > snapshot.day && !item.completed && !item.struck && item.deletedAt == nil && note.deletedAt == nil, "carry") }
                 }
             }
         }
         for item in items {
             if let day = item.archivedDay {
                 let archived = history.first { $0.day == day }?.notes.first { $0.id == item.noteID }?.items.first { $0.id == item.id }
-                try require(item.completed && item.deletedAt == nil && archived?.completed == true && archived?.deletedAt == nil && archived?.text == item.text && archived?.order == item.order, "archive reference/content")
+                try require((item.completed || item.struck) && item.deletedAt == nil && archived?.completed == item.completed && archived?.struck == item.struck && archived?.deletedAt == nil && archived?.text == item.text && archived?.order == item.order, "archive reference/content")
             }
         }
         if let checkpoint {

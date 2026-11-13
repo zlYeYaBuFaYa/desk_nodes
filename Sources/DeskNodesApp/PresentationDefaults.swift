@@ -81,6 +81,18 @@ final class PresentationDefaults {
         }
         set { defaults.set(newValue, forKey: "toolbar.autoShrink") }
     }
+    /// Size of a newly created note; a nil height follows the content.
+    var newNoteSize: (width: Double, height: Double?) {
+        get {
+            let width = defaults.double(forKey: "note.newWidth"), height = defaults.double(forKey: "note.newHeight")
+            return (NoteMetrics.newWidthChoices.contains(width) ? width : NoteMetrics.width,
+                    height > 0 && NoteMetrics.newHeightChoices.contains(height) ? height : nil)
+        }
+        set {
+            defaults.set(newValue.width, forKey: "note.newWidth")
+            defaults.set(newValue.height ?? 0, forKey: "note.newHeight")
+        }
+    }
     /// Page of each note from the last overflowing arrangement, and its display's page
     /// count. Notes created later are not listed and are always visible.
     var pages: [NoteID: (page: Int, pages: Int)] {

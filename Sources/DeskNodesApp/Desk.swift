@@ -115,10 +115,8 @@ final class DesktopController {
         updateToolbar()
     }
     func updateToolbar() {
-        let selection = surfaces()?.selection
-        let visible = selection.flatMap { surfaces()?.panels[$0] }.map { !$0.suppressed && $0.isVisible } ?? false
         let paged = toolbar.paged
-        toolbar.update(Toolbar.State(count: notes.count, canDelete: state == .expanded && visible,
+        toolbar.update(Toolbar.State(count: notes.count,
                                      collapsed: state.targetsCollapsed, topmost: defaults.topmost, page: pageInfo))
         // Only the pager changes the toolbar's length; re-solve from the same anchor.
         if toolbar.paged != paged { placeToolbar() }
@@ -358,10 +356,10 @@ final class DesktopController {
     // MARK: New notes
 
     /// Next to the toolbar, avoiding visible notes. Expands first when collapsed.
-    func newNoteFrame(height: Double) -> (NoteFrame, String?) {
+    func newNoteFrame(width: Double = NoteMetrics.width, height: Double) -> (NoteFrame, String?) {
         let screens = DockController.screens()
         guard let screen = toolbarScreen(toolbarFrame, screens: screens) ?? screens.first else {
-            return (NoteFrame(x: 100, y: 100, width: NoteMetrics.width, height: height), nil)
+            return (NoteFrame(x: 100, y: 100, width: width, height: height), nil)
         }
         let panels = surfaces()?.panels ?? [:]
         let occupied = panels.values.compactMap { panel -> NoteFrame? in
@@ -369,7 +367,7 @@ final class DesktopController {
             let f = panel.restingFrame ?? panel.frame
             return NoteFrame(x: f.minX, y: f.minY, width: f.width, height: f.height)
         }
-        let frame = Arrangement.placement(width: NoteMetrics.width, height: height, screen: screen, toolbar: toolbarFrame, occupied: occupied)
+        let frame = Arrangement.placement(width: width, height: height, screen: screen, toolbar: toolbarFrame, occupied: occupied)
         return (frame, screen.persistentID)
     }
 }

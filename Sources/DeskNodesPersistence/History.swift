@@ -40,13 +40,14 @@ public struct HistoryMonth: Equatable, Sendable {
     }
 }
 
-/// Every recorded item occurrence is in the denominator, including tombstones.
+/// Every recorded item occurrence is in the denominator, including tombstones, except
+/// struck-out items, which were dropped rather than left undone.
 /// Completion is only the frozen flag: deletion, carry and archive never imply completion.
 public struct HistoryCompletion: Equatable, Sendable {
     public let completed: Int
     public let total: Int
     public init(notes: [SnapshotNote]) {
-        let items = notes.flatMap(\.items)
+        let items = notes.flatMap(\.items).filter { !$0.struck }
         total = items.count
         completed = items.filter(\.completed).count
     }

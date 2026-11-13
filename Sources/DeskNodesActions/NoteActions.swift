@@ -40,7 +40,8 @@ public final class NoteActions {
     public func expireDeletion() { pending.removeAll { !recoverable($0.1) } }
     /// Typing makes Command-Z mean text undo again, before the debounced save lands.
     public func noteTyping() { prefersDeletionUndo = false }
-    @discardableResult public func createNote(frame: NoteFrame? = nil, displayID: String? = nil) throws -> Note {
+    /// `automaticHeight: false` keeps the frame's height instead of following the content.
+    @discardableResult public func createNote(frame: NoteFrame? = nil, displayID: String? = nil, automaticHeight: Bool = true) throws -> Note {
         try store.transaction { store in
             let retained = try store.notes(includeDeleted: true)
             let maximum = retained.map(\.order).max() ?? -1
@@ -48,7 +49,8 @@ public final class NoteActions {
             let frame = try (frame ?? NoteFrame(x: 100, y: 100)).bounded()
             let color = NotePalette.next(inUse: retained.filter { $0.deletedAt == nil }.map(\.color),
                                          latest: retained.max { ($0.createdAt, $0.order) < ($1.createdAt, $1.order) }?.color)
-            let note = try store.createNote(color: color, placement: .free(frame, displayID: displayID), order: maximum + 1)
+            var note = try store.createNote(color: color, placement: .free(frame, displayID: displayID), order: maximum + 1)
+            if !automaticHeight { note.automaticHeight = false; try store.update(note) }
             try store.createItem(in: note.id)
             return note
         }
@@ -64,7 +66,12 @@ public final class NoteActions {
         prefersDeletionUndo = false
     }
     public func toggle(_ id: ItemID, in note: NoteID) throws {
-        var item = try find(id, in: note); item.completed.toggle(); try store.update(item)
+        var item = try find(id, in: note); item.completed.toggle(); item.struck = false; try store.update(item)
+    }
+    /// Strikes out (or restores) an item that will not be done. It stays in the note,
+    /// leaves the progress count, and is archived at rollover like a completed one.
+    public func strike(_ id: ItemID, in note: NoteID) throws {
+        var item = try find(id, in: note); item.struck.toggle(); item.completed = false; try store.update(item)
     }
     @discardableResult public func add(in note: NoteID, after id: ItemID? = nil, text: String = "") throws -> Item {
         try store.transaction { store in

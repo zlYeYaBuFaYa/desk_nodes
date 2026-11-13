@@ -18,6 +18,11 @@ final class SettingsPresentation: ObservableObject {
     /// Toolbar layout and idle shrink; Mac display preferences, not part of the backup.
     let toolbar: (ToolbarOrientation, Int) -> Void
     let toolbarCurrent: () -> (ToolbarOrientation, Int)
+    /// New-note size is a Mac display preference too.
+    let presentation: PresentationDefaults
+    @Published var noteWidth = NoteMetrics.width
+    /// 0 follows the content.
+    @Published var noteHeight = 0.0
     @Published var toolbarOrientation = ToolbarOrientation.vertical
     @Published var toolbarShrink = ToolbarMetrics.defaultAutoShrink
     @Published var settings = Settings()
@@ -35,14 +40,17 @@ final class SettingsPresentation: ObservableObject {
          export: @escaping () throws -> Data, importBackup: @escaping (ValidatedBackup) throws -> Void,
          canImport: @escaping () -> Bool = { true },
          toolbar: @escaping (ToolbarOrientation, Int) -> Void = { _, _ in },
-         toolbarCurrent: @escaping () -> (ToolbarOrientation, Int) = { (.vertical, ToolbarMetrics.defaultAutoShrink) }) {
+         toolbarCurrent: @escaping () -> (ToolbarOrientation, Int) = { (.vertical, ToolbarMetrics.defaultAutoShrink) },
+         presentation: PresentationDefaults? = nil) {
         self.actions = actions; self.login = login; self.changed = changed
         self.hotkey = hotkey; self.export = export; self.importBackup = importBackup; self.canImport = canImport
-        self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent
+        self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent; self.presentation = presentation ?? .standard()
         reload()
     }
     func reload() {
         (toolbarOrientation, toolbarShrink) = toolbarCurrent()
+        let size = presentation.newNoteSize
+        noteWidth = size.width; noteHeight = size.height ?? 0
         do {
             settings = try actions.store.settings(); preferences = try actions.store.preferences()
             shortcut = preferences.hotkey
@@ -69,6 +77,8 @@ final class SettingsPresentation: ObservableObject {
         reload()
     }
     func saveToolbar() { toolbar(toolbarOrientation, toolbarShrink) }
+    func saveNoteSize() { presentation.newNoteSize = (noteWidth, noteHeight > 0 ? noteHeight : nil) }
+    func quit() { NSApp.terminate(nil) }
     func saveHotkey() {
         perform {
             let parsed = try Hotkey(shortcut)
@@ -222,6 +232,25 @@ struct SettingsView: View {
                 }
                 Text("把工具条拖到屏幕边缘即可吸附；吸附后闲置到时，会缩成圆形入口，鼠标停在入口上即可展开。")
                     .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
+                group("新建便签") {
+                    row("宽度") {
+                        Picker("宽度", selection: Binding(get: { model.noteWidth }, set: {
+                            model.noteWidth = $0; model.saveNoteSize()
+                        })) {
+                            ForEach(NoteMetrics.newWidthChoices, id: \.self) { Text("\(Int($0))").tag($0) }
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                    }
+                    Divider()
+                    row("高度") {
+                        Picker("高度", selection: Binding(get: { model.noteHeight }, set: {
+                            model.noteHeight = $0; model.saveNoteSize()
+                        })) {
+                            ForEach(NoteMetrics.newHeightChoices, id: \.self) { Text($0 == 0 ? "随内容" : "\(Int($0))").tag($0) }
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                    }
+                }
+                Text("只影响之后新建的便签，单位为点。「随内容」会随事项增多自动变高；固定高度可在便签菜单里改回「随内容调整高度」。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("快捷键") {
                     row("新建便签") {
                         Text(model.recording ? "请按下新快捷键（Esc 取消）" : ShortcutText.symbols(model.shortcut))
@@ -240,6 +269,10 @@ struct SettingsView: View {
                     }
                 }
                 if let message = model.message { Text(message).foregroundStyle(.red).textSelection(.enabled) }
+                HStack {
+                    Spacer()
+                    Button("退出 DeskNodes") { model.quit() }.keyboardShortcut("q", modifiers: .command)
+                }
             }.padding(.horizontal, 40).padding(.vertical, 20)
         }.font(.system(size: 13)).frame(minWidth: 760, minHeight: 576)
             .background(Color(nsColor: NoteTheme.dynamic("F4F3F0", "242321")))

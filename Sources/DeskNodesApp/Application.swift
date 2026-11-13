@@ -190,9 +190,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             // Creating while collapsed brings the existing notes back first.
             desk.expand()
-            let height = NoteFrame.automaticHeight(content: NoteMetrics.headerHeight + NoteMetrics.rowHeight + NoteMetrics.footerHeight + 6)
-            let (frame, displayID) = desk.newNoteFrame(height: height)
-            let note = try actions.createNote(frame: frame, displayID: displayID)
+            let size = PresentationDefaults.standard().newNoteSize
+            let height = size.height ?? NoteFrame.automaticHeight(content: NoteMetrics.headerHeight + NoteMetrics.rowHeight + NoteMetrics.footerHeight + 6)
+            let (frame, displayID) = desk.newNoteFrame(width: size.width, height: height)
+            let note = try actions.createNote(frame: frame, displayID: displayID, automaticHeight: size.height == nil)
             refresh()
             surfaces?.select(note.id)
             // A global hotkey or the non-activating toolbar arrives while another app is
@@ -204,15 +205,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         catch { report(error) }
-    }
-    /// Toolbar "删除": only the selected, visible note. Typed text is committed first so
-    /// the undo toast restores it; a composition in progress is never discarded.
-    private func deleteSelected() {
-        guard let actions, let surfaces, let desk, desk.state == .expanded, let id = surfaces.selection,
-              let panel = surfaces.panels[id], !panel.suppressed else { return }
-        guard !hasMarkedComposition else { report(StoreError.invalid("请先完成输入法组词，再删除便签")); return }
-        (panel.contentView as? NoteCardView)?.flushBeforeFocusLoss()
-        do { try actions.deleteNote(id); refresh() } catch { report(error) }
     }
     @objc private func revealToolbar(_ sender: Any?) { desk?.revealToolbar() }
     /// Reconciles windows with the store; see `NoteSurfaces` for what each scope touches.
@@ -235,7 +227,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desk.toolbar.perform = { [weak self] action in
             switch action {
             case .create: self?.createNote(nil)
-            case .delete: self?.deleteSelected()
             case .arrange: self?.desk?.arrange()
             case .collapse: self?.desk?.toggleCollapse()
             case .topmost: self?.desk?.toggleTopmost()

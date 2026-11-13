@@ -18,6 +18,24 @@ final class NoteActionsTests: XCTestCase {
     override func tearDownWithError() throws {
         try store.close(); try FileManager.default.removeItem(at: directory)
     }
+    func testStrikeAndCompleteAreExclusive() throws {
+        let note = try actions.createNote()
+        let item = try XCTUnwrap(store.items(in: note.id).first)
+        try actions.strike(item.id, in: note.id)
+        XCTAssertEqual(try store.items(in: note.id).first.map { [$0.struck, $0.completed] }, [true, false])
+        try actions.toggle(item.id, in: note.id)
+        XCTAssertEqual(try store.items(in: note.id).first.map { [$0.struck, $0.completed] }, [false, true])
+        try actions.strike(item.id, in: note.id)
+        XCTAssertEqual(try store.items(in: note.id).first.map { [$0.struck, $0.completed] }, [true, false])
+        try actions.strike(item.id, in: note.id)
+        XCTAssertEqual(try store.items(in: note.id).first.map { [$0.struck, $0.completed] }, [false, false])
+    }
+    func testFixedHeightNewNote() throws {
+        let note = try actions.createNote(frame: NoteFrame(x: 0, y: 0, width: 340, height: 300), automaticHeight: false)
+        XCTAssertFalse(note.automaticHeight)
+        XCTAssertEqual(try store.notes().first?.automaticHeight, false)
+        XCTAssertTrue(try actions.createNote().automaticHeight)
+    }
     func testCRUDBindingAndReopen() throws {
         let note = try actions.createNote()
         XCTAssertNil(note.title)

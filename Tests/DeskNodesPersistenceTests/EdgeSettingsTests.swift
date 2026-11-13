@@ -13,6 +13,7 @@ final class EdgeSettingsTests: XCTestCase {
         let raw = try SQLite(url: url)
         try raw.run("DROP TABLE native_preferences")
         try raw.run("ALTER TABLE settings DROP COLUMN edge_preference")
+        try raw.run("ALTER TABLE items DROP COLUMN struck"); try raw.run("ALTER TABLE snapshot_items DROP COLUMN struck")
         try raw.run("PRAGMA user_version = 5"); try raw.close()
         let migrated = try Store(url: url)
         XCTAssertEqual(try migrated.settings().edgePreference, .automatic)

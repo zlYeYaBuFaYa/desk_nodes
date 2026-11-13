@@ -60,13 +60,13 @@ public final class Store {
     /// includeDeleted exposes all retained rows, including archives (inspect archivedDay).
     public func items(in noteID: NoteID, includeDeleted: Bool = false) throws -> [Item] {
         try locked {
-            try db.query("SELECT id,note_id,text,completed,position,created,updated,deleted,(SELECT day FROM item_archives WHERE item_id=items.id) FROM items WHERE note_id=? \(includeDeleted ? "" : "AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id)") ORDER BY position,id", [.text(noteID.rawValue.uuidString)]).map(decodeItem)
+            try db.query("SELECT id,note_id,text,completed,position,created,updated,deleted,(SELECT day FROM item_archives WHERE item_id=items.id),struck FROM items WHERE note_id=? \(includeDeleted ? "" : "AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id)") ORDER BY position,id", [.text(noteID.rawValue.uuidString)]).map(decodeItem)
         }
     }
     /// Every live, unarchived row grouped by note, in display order: one query for a whole refresh.
     public func liveItemsByNote() throws -> [NoteID: [Item]] {
         try locked {
-            let rows = try db.query("SELECT id,note_id,text,completed,position,created,updated,deleted,NULL FROM items WHERE deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id) ORDER BY note_id,position,id").map(decodeItem)
+            let rows = try db.query("SELECT id,note_id,text,completed,position,created,updated,deleted,NULL,struck FROM items WHERE deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id) ORDER BY note_id,position,id").map(decodeItem)
             return Dictionary(grouping: rows, by: \.noteID)
         }
     }
@@ -108,7 +108,7 @@ public final class Store {
             let now = try timestamp()
             let item = Item(id: ItemID(), noteID: noteID, text: text, completed: completed,
                             order: order, createdAt: now, updatedAt: now, deletedAt: nil)
-            try db.run("INSERT INTO items VALUES (?,?,?,?,?,?,?,NULL)",
+            try db.run("INSERT INTO items (id,note_id,text,completed,position,created,updated,deleted) VALUES (?,?,?,?,?,?,?,NULL)",
                        [.text(item.id.rawValue.uuidString), .text(noteID.rawValue.uuidString), .text(text),
                         .number(completed ? 1 : 0), .integer(Int64(order)), .date(now), .date(now)])
             return item
@@ -120,8 +120,9 @@ public final class Store {
             guard try liveNote(item.noteID),
                   try !db.query("SELECT 1 FROM items WHERE id=? AND note_id=? AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id)",
                                 [.text(item.id.rawValue.uuidString), .text(item.noteID.rawValue.uuidString)]).isEmpty else { throw StoreError.notFound }
-            try db.run("UPDATE items SET text=?,completed=?,position=?,updated=? WHERE id=? AND note_id=?",
-                       [.text(item.text), .number(item.completed ? 1 : 0), .integer(Int64(item.order)),
+            guard !(item.completed && item.struck) else { throw StoreError.invalid("completed and struck") }
+            try db.run("UPDATE items SET text=?,completed=?,struck=?,position=?,updated=? WHERE id=? AND note_id=?",
+                       [.text(item.text), .number(item.completed ? 1 : 0), .number(item.struck ? 1 : 0), .integer(Int64(item.order)),
                         .date(try timestamp()), .text(item.id.rawValue.uuidString), .text(item.noteID.rawValue.uuidString)])
         }
     }
@@ -171,7 +172,7 @@ public final class Store {
                   try notes().contains(where: { $0.id == original.noteID }),
                   let retained = try items(in: original.noteID, includeDeleted: true).first(where: { $0.id == original.id }),
                   retained.deletedAt != nil, retained.archivedDay == nil,
-                  retained.text == original.text, retained.completed == original.completed,
+                  retained.text == original.text, retained.completed == original.completed, retained.struck == original.struck,
                   retained.order == original.order, retained.createdAt == original.createdAt else {
                 throw StoreError.invalid("restore item conflict")
             }
@@ -249,11 +250,11 @@ public final class Store {
                            [.text(day.rawValue), .text(note.id.rawValue.uuidString), text(note.title),
                             .text(note.color.rawValue), .integer(Int64(note.order)), .date(note.deletedAt)])
                 for item in children {
-                    let carried = item.archivedDay == nil && !item.completed && item.deletedAt == nil && note.deletedAt == nil ? target : nil
-                    try db.run("INSERT INTO snapshot_items VALUES (?,?,?,?,?,?,?,?)",
+                    let carried = item.archivedDay == nil && !item.completed && !item.struck && item.deletedAt == nil && note.deletedAt == nil ? target : nil
+                    try db.run("INSERT INTO snapshot_items (day,note_id,item_id,text,completed,position,deleted,carried_to,struck) VALUES (?,?,?,?,?,?,?,?,?)",
                                [.text(day.rawValue), .text(note.id.rawValue.uuidString), .text(item.id.rawValue.uuidString),
                                 .text(item.text), .number(item.completed ? 1 : 0), .integer(Int64(item.order)),
-                                .date(item.deletedAt), text(carried?.rawValue)])
+                                .date(item.deletedAt), text(carried?.rawValue), .number(item.struck ? 1 : 0)])
                 }
             }
             try db.run("INSERT INTO days VALUES (?,?)", [.text(day.rawValue), .date(now)])
@@ -267,8 +268,8 @@ public final class Store {
             let notes = try db.query("SELECT note_id,title,color,position,deleted FROM snapshot_notes WHERE day=? ORDER BY position,note_id", [.text(day.rawValue)]).map { row -> SnapshotNote in
                 guard let color = NotePalette(stored: row[2] ?? "") else { throw StoreError.corrupt("snapshot color") }
                 let id: NoteID = try identity(row[0])
-                let items = try db.query("SELECT item_id,text,completed,position,deleted,carried_to FROM snapshot_items WHERE day=? AND note_id=? ORDER BY position,item_id", [.text(day.rawValue), .text(id.rawValue.uuidString)]).map { item in
-                    SnapshotItem(id: try identity(item[0]), text: item[1] ?? "", completed: item[2] == "1",
+                let items = try db.query("SELECT item_id,text,completed,position,deleted,carried_to,struck FROM snapshot_items WHERE day=? AND note_id=? ORDER BY position,item_id", [.text(day.rawValue), .text(id.rawValue.uuidString)]).map { item in
+                    SnapshotItem(id: try identity(item[0]), text: item[1] ?? "", completed: item[2] == "1", struck: item[6] == "1",
                                  order: try integer(item[3]), deletedAt: try date(item[4]),
                                  carriedTo: try item[5].map(HistoryDay.init))
                 }
@@ -330,7 +331,7 @@ public final class Store {
                 // Throwing from this hook rolls back its repository writes as well.
                 guard try prepareEditing() else { throw RolloverDeferral.editing }
                 let final = try capture(day: state.activeDay, target: today, dailyMembership: true)
-                try db.run("INSERT INTO item_archives SELECT id,? FROM items WHERE completed=1 AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id) AND EXISTS (SELECT 1 FROM notes WHERE notes.id=items.note_id AND notes.deleted IS NULL)", [.text(state.activeDay.rawValue)])
+                try db.run("INSERT INTO item_archives SELECT id,? FROM items WHERE (completed=1 OR struck=1) AND deleted IS NULL AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id) AND EXISTS (SELECT 1 FROM notes WHERE notes.id=items.note_id AND notes.deleted IS NULL)", [.text(state.activeDay.rawValue)])
                 try db.run("DELETE FROM pending_deleted_items")
                 try db.run("DELETE FROM pending_deleted_notes")
                 try db.run("UPDATE rollover_state SET active_day=?,high_water=? WHERE id=1", [.text(today.rawValue), .date(now)])
@@ -389,6 +390,6 @@ public final class Store {
     private func decodeItem(_ row: [String?]) throws -> Item {
         guard let created = try date(row[5]), let updated = try date(row[6]) else { throw StoreError.corrupt("item") }
         return Item(id: try identity(row[0]), noteID: try identity(row[1]), text: row[2] ?? "", completed: row[3] == "1",
-                    order: try integer(row[4]), archivedDay: try row[8].map(HistoryDay.init), createdAt: created, updatedAt: updated, deletedAt: try date(row[7]))
+                    struck: row[9] == "1", order: try integer(row[4]), archivedDay: try row[8].map(HistoryDay.init), createdAt: created, updatedAt: updated, deletedAt: try date(row[7]))
     }
 }

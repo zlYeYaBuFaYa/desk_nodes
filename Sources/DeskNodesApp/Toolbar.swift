@@ -35,7 +35,7 @@ final class ToolbarPanel: NSPanel {
 /// controls' opacity. Interrupting a transition simply starts the next one from that state.
 @MainActor
 final class Toolbar {
-    enum Action: Int { case create, delete, arrange, collapse, topmost, settings }
+    enum Action: Int { case create, arrange, collapse, topmost, settings }
     enum Shape: Equatable { case expanded, collapsing, round, expanding }
     /// Resolved rest frames in screen points. `circle` exists only while snapped.
     struct Frames: Equatable {
@@ -109,13 +109,12 @@ final class Toolbar {
 
     struct State: Equatable {
         var count = 0
-        var canDelete = false
         var collapsed = false
         var topmost = false
         /// (current, total) while an arrangement overflows.
         var page: (Int, Int)? = nil
         static func == (a: Self, b: Self) -> Bool {
-            a.count == b.count && a.canDelete == b.canDelete && a.collapsed == b.collapsed && a.topmost == b.topmost
+            a.count == b.count && a.collapsed == b.collapsed && a.topmost == b.topmost
                 && a.page?.0 == b.page?.0 && a.page?.1 == b.page?.1
         }
     }
@@ -126,7 +125,6 @@ final class Toolbar {
         guard new != state else { return }
         state = new
         let view = root.content, empty = new.count == 0
-        view.buttons[Action.delete.rawValue].isEnabled = new.canDelete
         view.buttons[Action.arrange.rawValue].isEnabled = !empty
         let collapse = view.buttons[Action.collapse.rawValue]
         collapse.isEnabled = !empty
@@ -636,7 +634,6 @@ final class ToolbarView: NSView {
     let grip = ToolbarGrip()
     let buttons: [ToolbarButton] = [
         ToolbarButton(symbol: "plus", label: "新建", help: "新建便签"),
-        ToolbarButton(symbol: "trash", label: "删除", help: "删除选中的便签", destructive: true),
         ToolbarButton(symbol: "square.grid.2x2", label: "整理", help: "把便签按屏幕从左到右排整齐"),
         ToolbarButton(symbol: "arrow.down.right.and.arrow.up.left", label: "收起", help: "把全部便签收拢到工具条旁"),
         ToolbarButton(symbol: "pin", label: "置顶", help: "全部便签显示在其他应用上方，包括全屏应用"),
@@ -744,14 +741,13 @@ final class ToolbarButton: NSControl {
     var help: String { didSet { toolTip = help; setAccessibilityHelp(help) } }
     /// A toggle that is on keeps a tinted plate, like a pressed-in key.
     var isOn = false { didSet { needsDisplay = true; setAccessibilityValue(isOn ? "开" : "关") } }
-    private let destructive: Bool
     private var hovering = false { didSet { needsDisplay = true } }
     private var pressing = false { didSet { needsDisplay = true } }
     private var tracking: NSTrackingArea?
     override var isFlipped: Bool { true }
     override var isEnabled: Bool { didSet { needsDisplay = true; setAccessibilityEnabled(isEnabled) } }
-    init(symbol: String, label: String, help: String, destructive: Bool = false) {
-        self.symbol = symbol; self.label = label; self.help = help; self.destructive = destructive
+    init(symbol: String, label: String, help: String) {
+        self.symbol = symbol; self.label = label; self.help = help
         super.init(frame: .zero)
         toolTip = help
         setAccessibilityElement(true); setAccessibilityRole(.button)
@@ -791,8 +787,7 @@ final class ToolbarButton: NSControl {
         } else if isEnabled && (pressing || hovering) {
             NoteTheme.toolbarInk.withAlphaComponent(pressing ? 0.12 : 0.06).setFill(); plate.fill()
         }
-        let ink: NSColor = !isEnabled ? NoteTheme.toolbarDisabled
-            : destructive && hovering ? NSColor.systemRed : NoteTheme.toolbarInk
+        let ink: NSColor = isEnabled ? NoteTheme.toolbarInk : NoteTheme.toolbarDisabled
         let configuration = NSImage.SymbolConfiguration(pointSize: 17, weight: .medium).applying(.init(paletteColors: [ink]))
         if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(configuration) {
             let size = image.size

@@ -15,6 +15,7 @@ final class NoteTextView: NSTextView, NSLayoutManagerDelegate {
     /// Arrow keys on the first/last visual line move to the neighbouring row.
     var moveToRow: ((_ offset: Int) -> Void)?
     var toggleCompletion: (() -> Void)?
+    var toggleStrike: (() -> Void)?
     /// Receives the 2nd...nth pasted lines; the first line is inserted natively (undoable).
     var pasteLines: (([String]) -> Void)?
     // keyDown sees the marked range BEFORE the input context consumes Return.
@@ -45,6 +46,8 @@ final class NoteTextView: NSTextView, NSLayoutManagerDelegate {
         // Key equivalents visit every view in the window; only the focused row toggles.
         if flags == .command, event.charactersIgnoringModifiers == "\r", window?.firstResponder === self,
            !hasMarkedText(), let toggleCompletion { toggleCompletion(); return true }
+        if flags == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "x", window?.firstResponder === self,
+           !hasMarkedText(), let toggleStrike { toggleStrike(); return true }
         return super.performKeyEquivalent(with: event)
     }
     override func paste(_ sender: Any?) {

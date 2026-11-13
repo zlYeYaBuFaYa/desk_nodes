@@ -192,10 +192,10 @@ struct HistoryView: View {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: item.completed ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(.secondary).frame(width: 14).padding(.top, 2)
-                            .accessibilityLabel(item.completed ? "已完成" : "未完成")
+                            .accessibilityLabel(item.completed ? "已完成" : item.struck ? "已划掉" : "未完成")
                         Text(item.text.isEmpty ? "空白事项" : item.text)
-                            .strikethrough(item.deletedAt != nil || note.deletedAt != nil)
-                            .foregroundStyle(item.deletedAt != nil || note.deletedAt != nil ? Color.secondary : Color.primary)
+                            .strikethrough(item.struck || item.deletedAt != nil || note.deletedAt != nil)
+                            .foregroundStyle(item.struck || item.deletedAt != nil || note.deletedAt != nil ? Color.secondary : Color.primary)
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                         if item.deletedAt != nil || note.deletedAt != nil { badge("已删除", carry: false) }
                         else if let label = item.historyCarryLabel(relativeTo: model.selected) {

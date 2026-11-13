@@ -276,14 +276,16 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
                 let row = rows[item.id]!
                 orderedRows.append(row)
                 row.synchronize(item.text)
-                row.setCompleted(item.completed)
+                row.setState(completed: item.completed, struck: item.struck)
             }
             collapsedLabel.stringValue = WindowModes.collapsedTitle(note.title, firstItem: items.first?.text)
             setAccessibilityLabel("便签：" + (collapsedLabel.stringValue.isEmpty ? "无标题" : collapsedLabel.stringValue))
-            setAccessibilityValue("完成 \(items.filter(\.completed).count) / \(items.count)" + (note.collapsed && !reveal ? "，已折叠" : ""))
+            // Struck-out items were dropped, so they leave the progress count.
+            let done = items.filter(\.completed).count, total = items.filter { !$0.struck }.count
+            setAccessibilityValue("完成 \(done) / \(total)" + (note.collapsed && !reveal ? "，已折叠" : ""))
             layer?.cornerRadius = !reveal && note.collapsed ? NoteMetrics.collapsedCornerRadius : NoteMetrics.cornerRadius
-            count.stringValue = "\(items.filter(\.completed).count) / \(items.count)"
-            count.setAccessibilityLabel("已完成 \(items.filter(\.completed).count) 项，共 \(items.count) 项")
+            count.stringValue = "\(done) / \(total)"
+            count.setAccessibilityLabel("已完成 \(done) 项，共 \(total) 项")
             needsLayout = true; colors()
         } catch { failure(error) }
     }
@@ -450,6 +452,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         }
     }
     func toggle(_ item: ItemID) { run { try actions.toggle(item, in: id) } }
+    func strike(_ item: ItemID) { run { try actions.strike(item, in: id) } }
     func delete(_ item: ItemID) {
         guard canMutate() else { return }
         let previous = orderedRows.firstIndex(where: { $0.item.id == item }) ?? 0
@@ -557,6 +560,8 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     let check = CompletionButton(done: false)
     private let textScroll = NSScrollView()
     private let remove = NSButton()
+    private let strikeButton = NSButton()
+    private var struck = false
     private let handle = NSTextField(labelWithString: "⠿")
     override var isFlipped: Bool { true }
     private var tracking: NSTrackingArea?
@@ -570,19 +575,23 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
             .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
         remove.contentTintColor = NoteTheme.tertiary
         remove.setAccessibilityLabel("删除事项")
-        remove.toolTip = "删除事项"; handle.textColor = NoteTheme.tertiary; handle.font = .systemFont(ofSize: 11)
+        remove.toolTip = "删除事项"
+        strikeButton.target = self; strikeButton.action = #selector(strike); strikeButton.isBordered = false
+        strikeButton.contentTintColor = NoteTheme.tertiary
+        handle.textColor = NoteTheme.tertiary; handle.font = .systemFont(ofSize: 11)
         handle.setAccessibilityLabel("拖动排序")
         textScroll.drawsBackground = false
         textScroll.documentView = editor
-        [check, textScroll, remove, handle].forEach { addSubview($0) }
+        [check, textScroll, strikeButton, remove, handle].forEach { addSubview($0) }
         editor.delegate = self
         editor.addRow = { [weak self] in guard let self else { return }; self.owner?.add(after: self.item.id) }
         editor.deleteEmptyRow = { [weak self] in guard let self else { return }; self.owner?.delete(self.item.id) }
         editor.deletionUndo = { [weak owner] in owner?.undo() ?? false }
         editor.moveToRow = { [weak self] offset in guard let self else { return }; self.owner?.focus(from: self.item.id, offset: offset) }
         editor.toggleCompletion = { [weak self] in guard let self else { return }; self.owner?.toggle(self.item.id) }
+        editor.toggleStrike = { [weak self] in guard let self else { return }; self.owner?.strike(self.item.id) }
         editor.pasteLines = { [weak self] lines in guard let self else { return }; self.owner?.insert(lines: lines, after: self.item.id) }
-        remove.isHidden = true; handle.isHidden = true
+        remove.isHidden = true; strikeButton.isHidden = true; handle.isHidden = true
         registerForDraggedTypes([Self.type])
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -595,6 +604,7 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         textScroll.frame = NSRect(x: Self.textX, y: 0, width: max(1, bounds.width - Self.textX - CGFloat(NoteMetrics.rowTrailing)), height: bounds.height)
         editor.frame.size = NSSize(width: textScroll.contentSize.width, height: max(bounds.height, editor.frame.height))
         remove.frame = NSRect(x: bounds.width - 30, y: (line - 20) / 2, width: 18, height: 20)
+        strikeButton.frame = NSRect(x: bounds.width - 50, y: (line - 20) / 2, width: 18, height: 20)
     }
     /// Circle centre in row coordinates (flipped: y from the top).
     var circleCenter: NSPoint { NSPoint(x: check.frame.minX + Self.circleInset + CGFloat(NoteMetrics.checkboxSize) / 2, y: check.frame.midY) }
@@ -604,8 +614,8 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
         addTrackingArea(area); tracking = area
     }
-    override func mouseEntered(with event: NSEvent) { remove.isHidden = false; handle.isHidden = false }
-    override func mouseExited(with event: NSEvent) { remove.isHidden = true; handle.isHidden = true }
+    override func mouseEntered(with event: NSEvent) { [remove, strikeButton, handle].forEach { $0.isHidden = false } }
+    override func mouseExited(with event: NSEvent) { [remove, strikeButton, handle].forEach { $0.isHidden = true } }
     func fittingHeight(width: CGFloat) -> CGFloat {
         let line = CGFloat(NoteMetrics.lineHeight)
         let paragraph = NSMutableParagraphStyle()
@@ -627,27 +637,38 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         // Commit this card's own typed edits (never a passive copy), then refresh.
         owner.editingEnded()
     }
-    func setCompleted(_ completed: Bool) {
+    /// Completed reads as done (dimmed); struck reads as dropped (dimmed and lined through).
+    func setState(completed: Bool, struck: Bool) {
+        self.struck = struck
         check.state = completed ? .on : .off
+        check.struck = struck
         check.needsDisplay = true
         check.setAccessibilityLabel(completed ? "取消完成" : "标记完成")
+        strikeButton.image = NSImage(systemSymbolName: struck ? "arrow.uturn.backward" : "strikethrough",
+                                     accessibilityDescription: struck ? "取消划掉" : "划掉事项")?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        strikeButton.setAccessibilityLabel(struck ? "取消划掉" : "划掉事项")
+        strikeButton.toolTip = struck ? "取消划掉（⌘⇧X）" : "划掉事项：不做了，但保留在便签里（⌘⇧X）"
         // Layout-manager temporary ink leaves text storage, selection and text undo untouched.
         guard let manager = editor.layoutManager else { return }
         let range = NSRange(location: 0, length: (editor.string as NSString).length)
         manager.removeTemporaryAttribute(.strikethroughStyle, forCharacterRange: range)
         manager.removeTemporaryAttribute(.strikethroughColor, forCharacterRange: range)
-        manager.addTemporaryAttribute(.foregroundColor, value: completed ? NoteTheme.completed : NoteTheme.primary, forCharacterRange: range)
-        if completed {
+        manager.addTemporaryAttribute(.foregroundColor, value: struck ? NoteTheme.tertiary : completed ? NoteTheme.completed : NoteTheme.primary,
+                                      forCharacterRange: range)
+        if struck {
             manager.addTemporaryAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, forCharacterRange: range)
-            manager.addTemporaryAttribute(.strikethroughColor, value: NoteTheme.completed.withAlphaComponent(0.6), forCharacterRange: range)
+            manager.addTemporaryAttribute(.strikethroughColor, value: NoteTheme.completed, forCharacterRange: range)
         }
     }
+    private func restyle() { setState(completed: check.state == .on, struck: struck) }
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        setCompleted(check.state == .on)
+        restyle()
     }
-    func textDidChange(_ notification: Notification) { owner?.save(item.id, text: editor.string); setCompleted(check.state == .on) }
+    func textDidChange(_ notification: Notification) { owner?.save(item.id, text: editor.string); restyle() }
     @objc private func toggle() { owner?.toggle(item.id) }
+    @objc private func strike() { owner?.strike(item.id) }
     @objc private func deleteItem() { owner?.delete(item.id) }
     override func mouseDown(with event: NSEvent) {
         guard convert(event.locationInWindow, from: nil).x > bounds.width - 12 else { super.mouseDown(with: event); return }
@@ -674,6 +695,8 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
 
 /// Draws a fixed-size circle at `ItemRow.circleInset`, centred vertically in its bounds.
 final class CompletionButton: NSButton {
+    /// A struck-out row keeps an empty, fainter circle.
+    var struck = false
     init(done: Bool) {
         super.init(frame: .zero)
         title = ""; isBordered = false; setButtonType(.toggle)
@@ -695,7 +718,7 @@ final class CompletionButton: NSButton {
             path.lineWidth = 1.6; path.lineCapStyle = .round; path.lineJoinStyle = .round; path.stroke()
         } else {
             let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 0.7, dy: 0.7))
-            NoteTheme.checkboxBorder.setStroke()
+            NoteTheme.checkboxBorder.withAlphaComponent(struck ? 0.4 : 1).setStroke()
             circle.lineWidth = 1.4; circle.stroke()
         }
     }
