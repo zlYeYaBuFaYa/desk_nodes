@@ -27,13 +27,13 @@ final class WindowStateTests: XCTestCase {
         XCTAssertEqual(WindowModes.collapsedTitle("", firstItem: nil), "")
         XCTAssertEqual(WindowModes.collapsedTitle("标题", firstItem: "首项"), "标题")
     }
-    func testAllTopmostRestoreAndTransientRaise() {
+    func testPeekRestoreAndTransientRaise() {
         var modes = WindowModes()
         let choices: [WindowLevel] = [.desktop, .ordinary, .topmost]
         XCTAssertEqual(choices.map { modes.effective($0) }, choices)
-        modes.allTopmost = true
+        modes.peek = true
         XCTAssertEqual(choices.map { modes.effective($0) }, [.topmost, .topmost, .topmost])
-        modes.allTopmost = false
+        modes.peek = false
         XCTAssertEqual(choices.map { modes.effective($0) }, choices)
         XCTAssertEqual(modes.effective(.desktop, temporarilyRaised: true), .ordinary)
         XCTAssertEqual(modes.effective(.desktop), .desktop)
@@ -60,10 +60,10 @@ final class WindowStateTests: XCTestCase {
             XCTAssertEqual(try store.notes().first, before)
             try actions.finalGeometry(note.id, frame: NoteFrame(x: -500, y: -30, width: 330, height: 550), manuallyResized: true)
             try actions.appearance(note.id, color: .mint, level: .ordinary, collapsed: true)
-            var modes = WindowModes(); modes.allTopmost = true
+            var modes = WindowModes(); modes.peek = true
             XCTAssertEqual(modes.effective(.ordinary), .topmost)
             try actions.appearance(note.id, level: .desktop) // choice made during override survives restore
-            modes.allTopmost = false
+            modes.peek = false
             let saved = try XCTUnwrap(store.notes().first)
             XCTAssertEqual(modes.effective(saved.level), .desktop)
             XCTAssertEqual(saved.placement, .free(displayID: nil, x: -500, y: -30, width: 330, height: 550))

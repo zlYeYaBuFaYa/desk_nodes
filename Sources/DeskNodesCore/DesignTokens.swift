@@ -107,7 +107,7 @@ public enum ToolbarMetrics {
     /// A button's extent along the long axis: taller rows vertically, wider cells horizontally.
     public static let buttonHeight = 52.0
     public static let buttonWidth = 60.0
-    public static let buttonCount = 6.0
+    public static let buttonCount = 5.0
     public static let footerHeight = 32.0
     public static let footerWidth = 68.0
     /// Page switcher, present only while an arrangement overflows.

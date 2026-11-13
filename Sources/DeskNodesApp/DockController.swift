@@ -165,8 +165,8 @@ final class DockController: NSObject {
         }
         func title(_ note: Note) -> String { titles[note.id] ?? "空便签" }
         // Everything a tab window or its closures show; equal signature -> keep the windows.
-        // 浮起 changes every tab's effective level just like 置顶, so it is part of the signature.
-        let signature = ([String(describing: allocation), String(describing: modes.allTopmost), String(describing: modes.peek)] + notes.map {
+        // 浮起 changes every tab's effective level, so it is part of the signature.
+        let signature = ([String(describing: allocation), String(describing: modes.peek)] + notes.map {
             "\($0.id.rawValue)|\(title($0))|\($0.color.rawValue)|\($0.level.rawValue)"
         }).joined(separator: "\n")
         if rails[key]?.signature == signature { return }

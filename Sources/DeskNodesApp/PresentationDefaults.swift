@@ -4,7 +4,7 @@ import DeskNodesActions
 import DeskNodesPersistence
 
 /// Display preferences that belong to this Mac, not to the notes: the toolbar position,
-/// global collapse, all-topmost and the current arrangement pages. They live in UserDefaults on
+/// global collapse and the current arrangement pages. They live in UserDefaults on
 /// purpose, so a JSON backup never exports them and an import never moves windows.
 @MainActor
 final class PresentationDefaults {
@@ -26,10 +26,11 @@ final class PresentationDefaults {
         get { defaults.bool(forKey: "desk.collapsed") }
         set { defaults.set(newValue, forKey: "desk.collapsed") }
     }
-    /// Every note above other apps. Each note's own level is kept and returns when off.
-    var topmost: Bool {
-        get { defaults.bool(forKey: "desk.topmost") }
-        set { defaults.set(newValue, forKey: "desk.topmost") }
+    /// The retired global 置顶. Returns whether it was on and forgets it, so the
+    /// one-time notice about per-note 置顶 shows at most once.
+    func retireGlobalTopmost() -> Bool {
+        defer { defaults.removeObject(forKey: "desk.topmost") }
+        return defaults.bool(forKey: "desk.topmost")
     }
     var toolbar: ToolbarPlace? {
         get {

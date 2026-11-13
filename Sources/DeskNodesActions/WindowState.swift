@@ -27,12 +27,11 @@ public struct NoteFrame: Equatable, Sendable {
 /// Clicking a desktop-level note lifts it to the ordinary layer only, so it can sit
 /// above the desktop while editing without floating over other applications.
 public struct WindowModes {
-    public var allTopmost = false
-    /// "浮起": a temporary all-topmost that is never saved.
+    /// "浮起": every note temporarily topmost; never saved. Lasting topmost is per note.
     public var peek = false
     public init() {}
     public func effective(_ choice: WindowLevel, temporarilyRaised: Bool = false) -> WindowLevel {
-        if allTopmost || peek { return .topmost }
+        if peek { return .topmost }
         return choice == .desktop && temporarilyRaised ? .ordinary : choice
     }
     public static func collapsedTitle(_ title: String?, firstItem: String?) -> String {

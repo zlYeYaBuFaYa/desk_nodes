@@ -117,13 +117,12 @@ final class DesktopRedesignTests: XCTestCase {
         defer { raw.removePersistentDomain(forName: suite) }
         let defaults = PresentationDefaults(raw)
         XCTAssertFalse(defaults.collapsed); XCTAssertNil(defaults.toolbar); XCTAssertTrue(defaults.pages.isEmpty)
-        XCTAssertFalse(defaults.topmost)
         let id = NoteID()
-        defaults.collapsed = true; defaults.topmost = true
+        defaults.collapsed = true
         defaults.toolbar = .init(x: 20, y: 860, display: "37D8832A-2D66-02CA-B9F7-8F30A301B230")
         defaults.pages = [id: (page: 1, pages: 3)]; defaults.currentPage = 2
         let reopened = PresentationDefaults(raw)
-        XCTAssertTrue(reopened.collapsed); XCTAssertTrue(reopened.topmost)
+        XCTAssertTrue(reopened.collapsed)
         XCTAssertEqual(reopened.toolbar, .init(x: 20, y: 860, display: "37D8832A-2D66-02CA-B9F7-8F30A301B230"))
         XCTAssertEqual(reopened.pages[id]?.page, 1); XCTAssertEqual(reopened.pages[id]?.pages, 3)
         XCTAssertEqual(reopened.currentPage, 2)
@@ -144,7 +143,7 @@ final class DesktopRedesignTests: XCTestCase {
         for key in ["collapsed", "toolbar", "arrange", "desk."] { XCTAssertFalse(backup.contains(key), key) }
     }
 
-    @MainActor func testPeekLiftsRealNotesTemporarilyAndYieldsToTopmost() throws {
+    @MainActor func testPeekLiftsRealNotesTemporarily() throws {
         let suite = "local.desknodes.native.tests." + UUID().uuidString
         let raw = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { raw.removePersistentDomain(forName: suite) }
@@ -168,18 +167,13 @@ final class DesktopRedesignTests: XCTestCase {
         XCTAssertEqual(surfaces.panels[note.id]?.level, .floating)
         XCTAssertEqual(surfaces.panels[note.id]?.collectionBehavior.contains(.fullScreenAuxiliary), true)
         XCTAssertEqual(try store.notes().first?.level, .desktop, "peek never rewrites a note's own level")
-        XCTAssertFalse(PresentationDefaults(raw).topmost, "peek is not the lasting toggle")
+        XCTAssertNil(raw.object(forKey: "desk.topmost"), "peek is never saved")
 
         desk.togglePeek()
         XCTAssertFalse(desk.peeking); XCTAssertFalse(button.isOn)
         XCTAssertEqual(surfaces.panels[note.id]?.collectionBehavior.contains(.fullScreenNone), true)
 
-        // 置顶 supersedes a peek and leaves nothing to lift.
-        desk.beginPeek(); desk.toggleTopmost()
-        XCTAssertFalse(desk.peeking); XCTAssertFalse(button.isEnabled)
-        XCTAssertEqual(changes, [true, false, true, false])
-        desk.toggleTopmost()
-        XCTAssertTrue(desk.canPeek)
+        XCTAssertEqual(changes, [true, false])
 
         // Gathering the notes puts them back first: nothing stays lifted behind the stack.
         desk.beginPeek(); XCTAssertTrue(desk.peeking)
@@ -188,42 +182,40 @@ final class DesktopRedesignTests: XCTestCase {
         XCTAssertEqual(changes.suffix(2), [true, false])
     }
 
-    @MainActor func testTopmostToggleKeepsEachNotesOwnLevel() throws {
+    @MainActor func testPeekKeepsEachNotesOwnLevelAndRetiresGlobalTopmost() throws {
         let suite = "local.desknodes.native.tests." + UUID().uuidString
         let raw = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { raw.removePersistentDomain(forName: suite) }
+        // An older build saved global 置顶: it is reported once, then forgotten.
+        raw.set(true, forKey: "desk.topmost")
+        XCTAssertTrue(PresentationDefaults(raw).retireGlobalTopmost())
+        XCTAssertFalse(PresentationDefaults(raw).retireGlobalTopmost())
+        XCTAssertNil(raw.object(forKey: "desk.topmost"))
+
         let surfaces = NoteSurfaces(actions: actions, changed: {}, undo: { false }, canMutate: { true }, failure: { XCTFail("\($0)") })
         let desk = DesktopController(actions: actions, defaults: PresentationDefaults(raw))
         desk.surfaces = { surfaces }
-        var mirrored: [Bool] = []
-        desk.topmostChanged = { mirrored.append($0) }
         let plain = try actions.createNote(), pinned = try actions.createNote()
         try actions.appearance(pinned.id, level: .topmost)
         try surfaces.refresh(.all)
         defer { surfaces.discardAll() }
-        let button = desk.toolbar.buttons[Toolbar.Action.topmost.rawValue]
         defer { desk.toolbar.invalidate() }
         desk.sync(try store.notes())
-        XCTAssertEqual(button.label, "置顶"); XCTAssertFalse(button.isOn)
+        XCTAssertEqual(desk.toolbar.buttons.count, 5)
         XCTAssertEqual(surfaces.panels[plain.id]?.collectionBehavior.contains(.fullScreenNone), true)
+        XCTAssertEqual(surfaces.panels[pinned.id]?.level, .floating)
 
-        desk.toggleTopmost()
-        XCTAssertEqual(button.label, "取消置顶"); XCTAssertTrue(button.isOn)
-        XCTAssertEqual(surfaces.panels[plain.id]?.level, .floating)
-        XCTAssertEqual(surfaces.panels[plain.id]?.collectionBehavior.contains(.fullScreenAuxiliary), true)
-        XCTAssertTrue(PresentationDefaults(raw).topmost)
-        // A note created while everything floats floats too, but keeps its own desktop level.
+        desk.beginPeek()
+        // A note created while lifted is lifted too, but keeps its own desktop level.
         let late = try actions.createNote()
         try surfaces.refresh(.all)
         XCTAssertEqual(surfaces.panels[late.id]?.level, .floating)
         XCTAssertEqual(try store.notes().first { $0.id == late.id }?.level, .desktop)
 
-        desk.toggleTopmost()
-        XCTAssertEqual(button.label, "置顶"); XCTAssertFalse(button.isOn)
+        desk.endPeek()
         XCTAssertEqual(surfaces.panels[plain.id]?.level.rawValue, Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
-        XCTAssertEqual(surfaces.panels[pinned.id]?.level, .floating)
+        XCTAssertEqual(surfaces.panels[pinned.id]?.level, .floating, "per-note 置顶 is the lasting one")
         XCTAssertEqual(try store.notes().map(\.level), [.desktop, .topmost, .desktop])
-        XCTAssertEqual(mirrored, [true, false])
         XCTAssertTrue(desk.toolbar.panel.collectionBehavior.contains(.fullScreenAuxiliary))
     }
 }

@@ -4,7 +4,7 @@ import DeskNodesActions
 import DeskNodesPersistence
 
 /// Owns the resident toolbar and the desktop-wide presentation: global collapse,
-/// all-topmost, "浮起", "整理" and its overflow pages. It never edits note content; geometry changes go
+/// "浮起", "整理" and its overflow pages. It never edits note content; geometry changes go
 /// through `NoteActions` in one transaction, and only at the end of a user action.
 @MainActor
 final class DesktopController {
@@ -26,8 +26,6 @@ final class DesktopController {
     var refresh: (RefreshScope) -> Void = { _ in }
     var canMutate: () -> Bool = { true }
     var failure: (Error) -> Void = { _ in }
-    /// Lets the status menu mirror the toolbar's 置顶 toggle.
-    var topmostChanged: (Bool) -> Void = { _ in }
     /// The app activates on entry and watches for leaving (Esc, another app).
     var peekChanged: (Bool) -> Void = { _ in }
     /// "浮起" is session state: a relaunch always starts with notes at their own levels.
@@ -75,43 +73,31 @@ final class DesktopController {
         }
     }
 
-    // MARK: Topmost
-
-    var topmost: Bool { defaults.topmost }
-    func toggleTopmost() {
-        endPeek() // the lasting toggle supersedes the temporary one
-        defaults.topmost.toggle()
-        applyTopmost()
-        updateToolbar()
-    }
-    /// Pushes the saved toggle and the peek to the note windows; also after an import rebuilds them.
-    func applyTopmost() {
-        if let surfaces = surfaces() {
-            var modes = surfaces.modes; modes.allTopmost = defaults.topmost; modes.peek = peeking
-            surfaces.apply(modes)
-        }
-        topmostChanged(defaults.topmost)
-    }
-
     // MARK: Peek
 
+    /// Pushes the peek to the note windows; also after an import rebuilds them.
+    func applyModes() {
+        guard let surfaces = surfaces() else { return }
+        var modes = surfaces.modes; modes.peek = peeking
+        surfaces.apply(modes)
+    }
     /// Lifts every note above other apps, fullscreen ones included, until `endPeek`.
     /// The real notes come forward where they are: nothing is copied or moved.
     func togglePeek() { peeking ? endPeek() : beginPeek() }
-    /// 置顶 already keeps every note in front; with no notes there is nothing to lift.
-    var canPeek: Bool { !defaults.topmost && !notes.isEmpty }
+    /// With no notes there is nothing to lift.
+    var canPeek: Bool { !notes.isEmpty }
     func beginPeek() {
         guard !peeking, canPeek else { return }
         if state.targetsCollapsed { expand() }
         peeking = true
-        applyTopmost()
+        applyModes()
         for panel in (surfaces()?.panels ?? [:]).values where !panel.suppressed { panel.orderFrontRegardless() }
         updateToolbar(); peekChanged(true)
     }
     func endPeek() {
         guard peeking else { return }
         peeking = false
-        applyTopmost(); updateToolbar(); peekChanged(false)
+        applyModes(); updateToolbar(); peekChanged(false)
     }
 
     // MARK: Toolbar
@@ -143,8 +129,8 @@ final class DesktopController {
     func updateToolbar() {
         let paged = toolbar.paged
         if notes.isEmpty { endPeek() }
-        toolbar.update(Toolbar.State(count: notes.count, peeking: peeking, canPeek: canPeek,
-                                     collapsed: state.targetsCollapsed, topmost: defaults.topmost, page: pageInfo))
+        toolbar.update(Toolbar.State(count: notes.count, peeking: peeking,
+                                     collapsed: state.targetsCollapsed, page: pageInfo))
         // Only the pager changes the toolbar's length; re-solve from the same anchor.
         if toolbar.paged != paged { placeToolbar() }
     }

@@ -18,7 +18,6 @@ struct DeskNodesApplication {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var topmostMenuItem: NSMenuItem?
     private var peekMenuItem: NSMenuItem?
     /// Esc while 浮起 is showing; installed only for its duration.
     private var peekKeys: Any?
@@ -57,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 surfaces = makeSurfaces(actions)
                 desk = makeDesk(actions)
                 docking = makeDocking(actions)
-                desk?.applyTopmost()
+                desk?.applyModes()
             }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
             installRolloverScheduler()
@@ -65,6 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try actions?.reconcileScreens(DockController.screens())
             refresh(.all)
             desk?.start()
+            // Global 置顶 is gone; per-note levels are untouched, so say once where it went.
+            if PresentationDefaults.standard().retireGlobalTopmost() {
+                inform("已移除“全部置顶”：常驻最前请在便签菜单选“置顶”，临时查看用“浮起”。", seconds: 10)
+            }
             if let actions {
                 // Registration errors must not prevent the first-launch consent question.
                 do {
@@ -132,8 +135,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("显示工具条", to: menu, action: #selector(revealToolbar(_:)))
         let peek = NSMenuItem(title: "浮起便签", action: #selector(togglePeek(_:)), keyEquivalent: "")
         peek.target = self; menu.addItem(peek); peekMenuItem = peek
-        let toggle = NSMenuItem(title: "全部置顶", action: #selector(toggleTopmost(_:)), keyEquivalent: "")
-        toggle.target = self; menu.addItem(toggle); topmostMenuItem = toggle
         let dockMenu = NSMenuItem(title: "停靠", action: nil, keyEquivalent: "")
         let submenu = NSMenu(); submenu.delegate = self; dockMenu.submenu = submenu; menu.addItem(dockMenu)
         menu.addItem(.separator())
@@ -255,7 +256,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desk.refresh = { [weak self] scope in self?.refresh(scope) }
         desk.canMutate = { [weak self] in self?.hasMarkedComposition == false }
         desk.failure = { [weak self] in self?.report($0) }
-        desk.topmostChanged = { [weak self] on in self?.topmostMenuItem?.title = on ? "取消置顶" : "全部置顶" }
         desk.peekChanged = { [weak self] on in self?.peekChanged(on) }
         desk.toolbar.perform = { [weak self] action in
             switch action {
@@ -263,7 +263,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .peek: self?.desk?.togglePeek()
             case .arrange: self?.desk?.arrange()
             case .collapse: self?.desk?.toggleCollapse()
-            case .topmost: self?.desk?.toggleTopmost()
             case .settings: self?.showSettings(nil)
             }
         }
@@ -295,7 +294,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desk?.screensChanged()
         do { try actions?.reconcileScreens(DockController.screens()); refresh(.all) } catch { report(error) }
     }
-    @objc private func toggleTopmost(_ sender: Any?) { desk?.toggleTopmost() }
     func applicationDidResignActive(_ notification: Notification) {
         surfaces?.lowerTransientRaises()
     }
@@ -341,14 +339,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Background failures (timers, typing, edge polling) never block with a modal alert:
     /// they are logged and shown in a short non-activating notice. Modal is reserved for
     /// failures of an explicit one-time request.
+    /// A short non-activating notice that is not an error.
+    private func inform(_ message: String, seconds: TimeInterval = 5) {
+        if notice == nil { notice = NoticeToast { [weak self] in self?.notice = nil } }
+        notice?.show(message, seconds: seconds)
+    }
     private func report(_ error: Error, modal: Bool = false) {
         let message = String(describing: error)
         log.error("\(message, privacy: .public)")
-        guard modal else {
-            if notice == nil { notice = NoticeToast { [weak self] in self?.notice = nil } }
-            notice?.show("无法完成操作：\(message)")
-            return
-        }
+        guard modal else { inform("无法完成操作：\(message)"); return }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "无法完成操作"
@@ -436,7 +435,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         docking?.invalidateAfterImport()
         surfaces?.discardAll(); actions.invalidateUndoAfterImport()
         docking = makeDocking(actions)
-        desk?.applyTopmost() // a Mac preference: import never changes it
+        desk?.applyModes()
         rolloverDeferred = false
         refresh(.all); auxiliary.reloadHistoryIfVisible()
         // No autostart registration and no rollover/capture on import.

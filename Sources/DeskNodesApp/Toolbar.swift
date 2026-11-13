@@ -17,8 +17,8 @@ final class ToolbarPanel: NSPanel {
         isReleasedWhenClosed = false; isOpaque = false; backgroundColor = .clear; hasShadow = true
         hidesOnDeactivate = false; isFloatingPanel = true; level = .floating; isMovable = false
         acceptsMouseMovedEvents = true
-        // Above ordinary windows on every desktop and over fullscreen apps, so "取消置顶"
-        // stays reachable wherever topmost notes are showing.
+        // Above ordinary windows on every desktop and over fullscreen apps, so "放回"
+        // stays reachable wherever lifted notes are showing.
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         title = "DeskNodes 工具条"
     }
@@ -35,7 +35,7 @@ final class ToolbarPanel: NSPanel {
 /// controls' opacity. Interrupting a transition simply starts the next one from that state.
 @MainActor
 final class Toolbar {
-    enum Action: Int { case create, peek, arrange, collapse, topmost, settings }
+    enum Action: Int { case create, peek, arrange, collapse, settings }
     enum Shape: Equatable { case expanded, collapsing, round, expanding }
     /// Resolved rest frames in screen points. `circle` exists only while snapped.
     struct Frames: Equatable {
@@ -110,14 +110,11 @@ final class Toolbar {
     struct State: Equatable {
         var count = 0
         var peeking = false
-        /// 置顶 already keeps every note in front, so there is nothing to lift.
-        var canPeek = true
         var collapsed = false
-        var topmost = false
         /// (current, total) while an arrangement overflows.
         var page: (Int, Int)? = nil
         static func == (a: Self, b: Self) -> Bool {
-            a.count == b.count && a.peeking == b.peeking && a.canPeek == b.canPeek && a.collapsed == b.collapsed && a.topmost == b.topmost
+            a.count == b.count && a.peeking == b.peeking && a.collapsed == b.collapsed
                 && a.page?.0 == b.page?.0 && a.page?.1 == b.page?.1
         }
     }
@@ -129,21 +126,16 @@ final class Toolbar {
         state = new
         let view = root.content, empty = new.count == 0
         let peek = view.buttons[Action.peek.rawValue]
-        peek.isEnabled = new.canPeek || new.peeking
+        peek.isEnabled = !empty || new.peeking
         peek.isOn = new.peeking
         peek.label = new.peeking ? "放回" : "浮起"
-        peek.help = !new.canPeek ? "已全部置顶，无需浮起" : new.peeking ? "便签回到各自的层级（Esc）" : "临时把全部便签浮到最前，包括全屏应用"
+        peek.help = new.peeking ? "便签回到各自的层级（Esc）" : "临时把全部便签浮到最前，包括全屏应用"
         view.buttons[Action.arrange.rawValue].isEnabled = !empty
         let collapse = view.buttons[Action.collapse.rawValue]
         collapse.isEnabled = !empty
         collapse.symbol = new.collapsed ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left"
         collapse.label = new.collapsed ? "展开" : "收起"
         collapse.help = new.collapsed ? "展开全部便签，恢复到收起前的位置" : "把全部便签收拢到工具条旁"
-        let topmost = view.buttons[Action.topmost.rawValue]
-        topmost.isOn = new.topmost
-        topmost.symbol = new.topmost ? "pin.slash" : "pin"
-        topmost.label = new.topmost ? "取消置顶" : "置顶"
-        topmost.help = new.topmost ? "便签恢复各自的层级" : "全部便签显示在其他应用上方，包括全屏应用"
         view.count.stringValue = "\(new.count) 张便签"
         view.count.setAccessibilityLabel("当前共 \(new.count) 张便签")
         view.pager.isHidden = new.page == nil
@@ -645,7 +637,6 @@ final class ToolbarView: NSView {
         ToolbarButton(symbol: "rectangle.stack", label: "浮起", help: "临时把全部便签浮到最前，包括全屏应用"),
         ToolbarButton(symbol: "square.grid.2x2", label: "整理", help: "把便签按屏幕从左到右排整齐"),
         ToolbarButton(symbol: "arrow.down.right.and.arrow.up.left", label: "收起", help: "把全部便签收拢到工具条旁"),
-        ToolbarButton(symbol: "pin", label: "置顶", help: "全部便签显示在其他应用上方，包括全屏应用"),
         ToolbarButton(symbol: "gearshape", label: "设置", help: "打开设置")
     ]
     let pager = ToolbarPager()
