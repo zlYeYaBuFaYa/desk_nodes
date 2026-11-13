@@ -29,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notice: NoticeToast?
     /// The resident toolbar and desktop-wide presentation; it replaces the old empty-state window.
     private var desk: DesktopController?
+    /// 批量删除 selection mode.
+    private var picker: NotePicker?
+    private var pickMenuItem: NSMenuItem?
     private let log = Logger(subsystem: "local.desknodes.native", category: "app")
     private var expiryTimer: Timer?
     private var rolloverTimer: Timer?
@@ -52,10 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
+            NoteType.size = PresentationDefaults.standard().noteTextSize
             if let actions {
                 surfaces = makeSurfaces(actions)
                 desk = makeDesk(actions)
                 docking = makeDocking(actions)
+                picker = makePicker()
                 desk?.applyModes()
             }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -135,8 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("显示工具条", to: menu, action: #selector(revealToolbar(_:)))
         let peek = NSMenuItem(title: "浮起便签", action: #selector(togglePeek(_:)), keyEquivalent: "")
         peek.target = self; menu.addItem(peek); peekMenuItem = peek
-        let dockMenu = NSMenuItem(title: "停靠", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(); submenu.delegate = self; dockMenu.submenu = submenu; menu.addItem(dockMenu)
+        let pick = NSMenuItem(title: "选择便签…", action: #selector(pickNotes(_:)), keyEquivalent: "")
+        pick.target = self; menu.addItem(pick); pickMenuItem = pick
         menu.addItem(.separator())
         add("历史记录…", to: menu, action: #selector(showHistory(_:)))
         add("最近删除…", to: menu, action: #selector(showRecentlyDeleted(_:)))
@@ -181,17 +186,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(redo)
         editItem.submenu = edit
         main.addItem(editItem)
+        // 文字大小 steps for every note; ⌘= is the unshifted spelling of ⌘+.
+        let viewItem = NSMenuItem(title: "显示", action: nil, keyEquivalent: "")
+        let view = NSMenu(title: "显示")
+        for (title, action, key, hidden) in [
+            ("放大文字", #selector(largerText(_:)), "+", false), ("放大文字", #selector(largerText(_:)), "=", true),
+            ("缩小文字", #selector(smallerText(_:)), "-", false), ("标准文字大小", #selector(standardText(_:)), "0", false)
+        ] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = self; item.isHidden = hidden; item.allowsKeyEquivalentWhenHidden = hidden
+            view.addItem(item)
+        }
+        viewItem.submenu = view
+        main.addItem(viewItem)
         NSApp.mainMenu = main
     }
 
     @objc private func createNote(_ sender: Any?) {
         guard !hasMarkedComposition else { return }
         guard let actions, let desk else { return }
+        picker?.end()
         do {
             // Creating while collapsed brings the existing notes back first.
             desk.expand()
             let size = PresentationDefaults.standard().newNoteSize
-            let height = size.height ?? NoteFrame.automaticHeight(content: NoteMetrics.headerHeight + NoteMetrics.rowHeight + NoteMetrics.footerHeight + 6)
+            let height = size.height ?? NoteFrame.automaticHeight(content: Double(NoteType.headerHeight + NoteType.rowHeight + NoteType.footerHeight + 6))
             let (frame, displayID) = desk.newNoteFrame(width: size.width, height: height)
             let note = try actions.createNote(frame: frame, displayID: displayID, automaticHeight: size.height == nil)
             refresh()
@@ -208,6 +227,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc private func revealToolbar(_ sender: Any?) { desk?.revealToolbar() }
     @objc private func togglePeek(_ sender: Any?) { desk?.togglePeek() }
+    @objc private func pickNotes(_ sender: Any?) { picker?.begin(with: nil) }
+    @objc private func largerText(_ sender: Any?) { setTextSize(NoteType.size.stepped(1)) }
+    @objc private func smallerText(_ sender: Any?) { setTextSize(NoteType.size.stepped(-1)) }
+    @objc private func standardText(_ sender: Any?) { setTextSize(.standard) }
+    /// Restyles every card, then refits automatic heights and dock strips.
+    private func setTextSize(_ size: NoteTextSize) {
+        guard size != NoteType.size, !hasMarkedComposition else { return }
+        NoteType.size = size; PresentationDefaults.standard().noteTextSize = size
+        surfaces?.cards.forEach { $0.applyTextSize() }
+        refresh(.all)
+        auxiliary.settings?.reload()
+    }
+
+    // MARK: 批量删除
+
+    private func makePicker() -> NotePicker {
+        let picker = NotePicker(surfaces: { [weak self] in self?.surfaces })
+        picker.lift = { [weak self] on in self?.desk?.picking = on }
+        picker.canMutate = { [weak self] in self?.hasMarkedComposition == false }
+        picker.delete = { [weak self] ids in self?.deleteNotes(ids) }
+        surfaces?.pickPress = { [weak self, weak picker] event, id in
+            guard let picker, let panel = self?.surfaces?.panels[id] else { return false }
+            return picker.press(event, on: id, in: panel)
+        }
+        surfaces?.pickMany = { [weak picker] id in picker?.begin(with: id) }
+        return picker
+    }
+    /// Typed text is committed first, so undoing the deletion restores it too.
+    private func deleteNotes(_ ids: [NoteID]) {
+        guard !hasMarkedComposition, let actions else { return }
+        do { try surfaces?.flushEdits(); try actions.deleteNotes(ids) } catch { report(error) }
+        refresh()
+    }
 
     // MARK: 浮起
 
@@ -220,7 +272,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard on else { return }
         peekKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // Esc only from a note: settings recording, alerts and file panels keep their own Esc.
-            guard event.keyCode == 53, event.window is NotePanel, let self, !self.hasMarkedComposition else { return event }
+            // While selecting, Esc belongs to the selection mode; 浮起 stays.
+            guard event.keyCode == 53, event.window is NotePanel, let self, !self.hasMarkedComposition,
+                  self.picker?.active != true else { return event }
             self.desk?.endPeek(); return nil
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -258,6 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desk.failure = { [weak self] in self?.report($0) }
         desk.peekChanged = { [weak self] on in self?.peekChanged(on) }
         desk.toolbar.perform = { [weak self] action in
+            self?.picker?.end()
             switch action {
             case .create: self?.createNote(nil)
             case .peek: self?.desk?.togglePeek()
@@ -304,7 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 toast = DeletionToast { [weak self] in _ = self?.undoDeletion() }
                 toast?.orderFrontRegardless()
             }
-            toast?.update(count: actions.recoverableDeletionCount, note: actions.latestDeletionIsNote)
+            toast?.update(count: actions.recoverableDeletionCount, notes: actions.latestDeletedNoteCount)
             if expiryTimer == nil {
                 let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
                     MainActor.assumeIsolated { self?.tickExpiry() }
@@ -407,14 +462,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.desk?.setToolbarOrientation(orientation); self?.desk?.setToolbarAutoShrink(seconds)
                 }, toolbarCurrent: { [weak self] in
                     (self?.desk?.toolbar.orientation ?? .vertical, self?.desk?.toolbar.autoShrink ?? ToolbarMetrics.defaultAutoShrink)
-                })
+                }, textSize: { [weak self] in self?.setTextSize($0) })
         }
         auxiliary.show(.settings)
     }
     private func importBackup(_ backup: ValidatedBackup) throws {
         guard let actions, !hasMarkedComposition else { throw StoreError.invalid("请先完成输入法组词，再导入备份") }
         if globalHotkey == nil { globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) } }
-        desk?.endPeek()
+        picker?.end(); desk?.endPeek()
         // The imported creation key may be today's 浮起 key: release 浮起 first.
         let previousPeek = (try? actions.store.preferences().peekHotkey) ?? ""
         try bindPeek("", persist: {})
@@ -467,11 +522,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // The status menu itself only refreshes 浮起; its 停靠 submenu lists the strips.
-        if menu === statusItem?.menu {
-            peekMenuItem?.isEnabled = desk?.peeking == true || desk?.canPeek == true
-            return
-        }
-        docking?.populateControls(menu)
+        guard menu === statusItem?.menu else { return }
+        peekMenuItem?.isEnabled = desk?.peeking == true || desk?.canPeek == true
+        pickMenuItem?.isEnabled = desk?.canPeek == true
     }
 }

@@ -60,13 +60,40 @@ public enum NotePalette: String, CaseIterable, Codable, Sendable {
         case .mint: return "1E2E26"
         }
     }
+
+    /// Selection outline: a deeper tone of the same hue, so it never clashes with the card.
+    public var selectionLightHex: String {
+        switch self {
+        case .paper: return "B59E74"
+        case .lemon: return "C9A93A"
+        case .apricot: return "D9905F"
+        case .cherry: return "CF7F90"
+        case .lavender: return "9A82C9"
+        case .mist: return "6F97C4"
+        case .mint: return "6FA585"
+        }
+    }
+
+    public var selectionDarkHex: String {
+        switch self {
+        case .paper: return "C4B08A"
+        case .lemon: return "D6BE5C"
+        case .apricot: return "E0A47E"
+        case .cherry: return "DB98A6"
+        case .lavender: return "B5A2DE"
+        case .mist: return "92B4DA"
+        case .mint: return "8FC4A3"
+        }
+    }
 }
 
 public enum NoteMetrics {
     public static let width = 288.0
     /// Size offered for new notes in Settings. Height 0 means "follow the content".
     public static let newWidthChoices = [240.0, 288.0, 340.0, 400.0]
-    public static let newHeightChoices = [0.0, 200.0, 300.0, 400.0]
+    public static let newHeightChoices = [0.0, 200.0, 240.0, 300.0, 400.0]
+    /// Default new-note height: room for about four items, so an empty note does not look cramped.
+    public static let newHeight = 240.0
     public static let padding = 18.0
     public static let cornerRadius = 13.0
     public static let titleSize = 16.0
@@ -91,6 +118,52 @@ public enum NoteMetrics {
     public static let maximumWidth = 400.0
     public static let maximumHeight = 600.0
     public static let scrollHeight = 480.0
+}
+
+/// "文字大小": one choice for every note. Width and padding stay; type, rows, the
+/// checkbox and the header/footer bands scale by the item size's ratio to 14pt.
+public enum NoteTextSize: String, CaseIterable, Sendable {
+    case small, standard, large, extraLarge
+    public var name: String {
+        switch self {
+        case .small: return "小"
+        case .standard: return "标准"
+        case .large: return "大"
+        case .extraLarge: return "特大"
+        }
+    }
+    public var itemSize: Double {
+        switch self {
+        case .small: return 13
+        case .standard: return 14
+        case .large: return 16
+        case .extraLarge: return 18
+        }
+    }
+    public var titleSize: Double {
+        switch self {
+        case .small: return 15
+        case .standard: return 16
+        case .large: return 18
+        case .extraLarge: return 20
+        }
+    }
+    public var secondarySize: Double {
+        switch self {
+        case .small: return 11
+        case .standard: return 12
+        case .large: return 14
+        case .extraLarge: return 15
+        }
+    }
+    public var scale: Double { itemSize / NoteMetrics.itemSize }
+    /// A standard-size length at this size, in whole points.
+    public func scaled(_ value: Double) -> Double { (value * scale).rounded() }
+    /// The next step up (+1) or down (-1), stopping at either end.
+    public func stepped(_ offset: Int) -> NoteTextSize {
+        let all = Self.allCases, index = all.firstIndex(of: self)! + offset
+        return all[min(max(0, index), all.count - 1)]
+    }
 }
 
 /// The resident toolbar: a capsule laid out vertically or horizontally, which can shrink

@@ -23,7 +23,6 @@ final class DockController: NSObject {
     private var dragOrigin: NoteFrame?
     private var layouts: [String: DockLayout] = [:]
     private var pages: [String: Int] = [:]
-    private var controls: [(DockEdge, String?)] = []
     /// Global collapse: strips keep their geometry but their overflow tab windows close.
     var suppressed = false
     /// The toolbar's full expanded frame and its display; strips there keep clear of it.
@@ -106,7 +105,7 @@ final class DockController: NSObject {
                     }
                     guard !group.isEmpty else { continue }
                     let k = key(edge, screen)
-                    let heights = Dictionary(uniqueKeysWithValues: group.map { ($0.id, (panels[$0.id]?.contentView as? NoteCardView)?.preferredHeight(width: 240) ?? 120) })
+                    let heights = Dictionary(uniqueKeysWithValues: group.map { ($0.id, (panels[$0.id]?.contentView as? NoteCardView)?.preferredHeight(width: DockGeometry.sideWidth) ?? 120) })
                     let occupied = Set(notes.compactMap { note -> DockEdge? in
                         guard case .dock(let e, let d) = note.placement,
                               DockGeometry.screen(d, screens: screens, preferred: settings.displayID)?.id == screen.id else { return nil }
@@ -270,7 +269,7 @@ final class DockController: NSObject {
                 return e
             }).union([edge])
             let region = region(edge, occupied: occupied, screen: screen)
-            let heights = Dictionary(uniqueKeysWithValues: ids.map { ($0, (panels[$0]?.contentView as? NoteCardView)?.preferredHeight(width: 240) ?? 120) })
+            let heights = Dictionary(uniqueKeysWithValues: ids.map { ($0, (panels[$0]?.contentView as? NoteCardView)?.preferredHeight(width: DockGeometry.sideWidth) ?? 120) })
             let result = DockGeometry.layout(ids: ids, edge: edge, screen: region, heights: heights,
                 collapsed: Set(all.filter(\.collapsed).map(\.id)))
             for slot in result.slots where slot.id != id { proposed[slot.id] = slot.frame }
@@ -319,37 +318,18 @@ final class DockController: NSObject {
     private func changeDock(_ id: NoteID, edge: DockEdge?) {
         guard canMutate() else { return }
         do {
-            if let edge { try actions.dock(id, edge: edge, displayID: nil, index: Int.max, screens: Self.screens()) }
+            if let edge { try actions.dock(id, edge: edge, displayID: try display(of: id), index: Int.max, screens: Self.screens()) }
             else { try actions.detach(id); try actions.reconcileScreens(Self.screens()) }
             changed()
         } catch { failure(error) }
     }
-    func populateControls(_ menu: NSMenu) {
-        menu.removeAllItems(); controls = []
-        guard let settings = try? actions.store.settings() else { return }
+    /// A menu dock goes to the display the note is on now; nil means the default display.
+    private func display(of id: NoteID) throws -> String? {
         let screens = Self.screens()
-        let displays: [(String, String?)] = [("主屏幕（默认）", nil)] + NSScreen.screens.enumerated().compactMap { index, screen in
-            guard screens.indices.contains(index) else { return nil }
-            return screens[index].persistentID.map { (screen.localizedName, Optional($0)) }
-        }
-        if let chosen = settings.displayID, !screens.contains(where: { $0.id == chosen }) {
-            let unavailable = NSMenuItem(title: "所选显示器不可用，暂用主屏幕", action: nil, keyEquivalent: "")
-            unavailable.isEnabled = false; menu.addItem(unavailable)
-        }
-        for (label, display) in displays {
-            let parent = NSMenuItem(title: label, action: nil, keyEquivalent: ""), submenu = NSMenu()
-            parent.state = settings.displayID == display ? .on : .off
-            for (edge, title) in [(DockEdge.top, "顶部"), (.left, "左侧"), (.right, "右侧")] {
-                let item = NSMenuItem(title: title, action: #selector(preference(_:)), keyEquivalent: "")
-                item.target = self; item.tag = controls.count; controls.append((edge, display)); submenu.addItem(item)
-                item.state = settings.displayID == display && settings.dockEdge == edge ? .on : .off
-            }
-            parent.submenu = submenu; menu.addItem(parent)
-        }
-    }
-    @objc private func preference(_ sender: NSMenuItem) {
-        guard canMutate(), controls.indices.contains(sender.tag) else { return }
-        do { let value = controls[sender.tag]; try actions.dockPreference(edge: value.0, displayID: value.1); changed() } catch { failure(error) }
+        guard let frame = panels[id]?.frame,
+              let screen = screens.first(where: { DockGeometry.contains($0.visible, x: frame.midX, y: frame.midY) }) else { return nil }
+        let preferred = DockGeometry.screen(nil, screens: screens, preferred: try actions.store.settings().displayID)
+        return preferred?.id == screen.id ? nil : screen.persistentID
     }
     private func rect(_ frame: NoteFrame) -> NSRect { NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height) }
 }

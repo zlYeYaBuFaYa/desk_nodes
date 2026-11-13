@@ -78,8 +78,18 @@ final class DesktopController {
     /// Pushes the peek to the note windows; also after an import rebuilds them.
     func applyModes() {
         guard let surfaces = surfaces() else { return }
-        var modes = surfaces.modes; modes.peek = peeking
+        var modes = surfaces.modes; modes.peek = peeking || picking
         surfaces.apply(modes)
+    }
+    /// Batch selection lifts the notes like 浮起 so covered ones can be picked, without
+    /// becoming 浮起: ending it leaves 浮起 as it was.
+    var picking = false {
+        didSet {
+            guard picking != oldValue else { return }
+            if picking && state.targetsCollapsed { expand() }
+            applyModes()
+            if picking { for panel in (surfaces()?.panels ?? [:]).values where !panel.suppressed { panel.orderFrontRegardless() } }
+        }
     }
     /// Lifts every note above other apps, fullscreen ones included, until `endPeek`.
     /// The real notes come forward where they are: nothing is copied or moved.

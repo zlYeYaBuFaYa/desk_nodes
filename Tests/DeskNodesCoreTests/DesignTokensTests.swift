@@ -10,6 +10,15 @@ final class DesignTokensTests: XCTestCase {
             ["薄荷", "E2F0E8", "1E2E26"]
         ]
         XCTAssertEqual(NotePalette.allCases.map { [$0.name, $0.lightHex, $0.darkHex] }, expected)
+        // Outlines are a deeper tone of each colour: darker than the light card, lighter than the dark one.
+        for palette in NotePalette.allCases {
+            func luma(_ hex: String) -> Int {
+                let v = Int(hex, radix: 16)!
+                return (v >> 16 & 255) * 3 + (v >> 8 & 255) * 6 + (v & 255)
+            }
+            XCTAssertLessThan(luma(palette.selectionLightHex), luma(palette.lightHex))
+            XCTAssertGreaterThan(luma(palette.selectionDarkHex), luma(palette.darkHex))
+        }
         XCTAssertNil(NotePalette(rawValue: "graphite"))
         XCTAssertEqual(NotePalette(stored: "graphite"), .paper)
         XCTAssertEqual(NotePalette(stored: "mint"), .mint)
@@ -43,6 +52,20 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertEqual(NoteMetrics.collapsedHeight, 32)
         XCTAssertEqual(NoteMetrics.minimumWidth, 200)
         XCTAssertEqual(NoteMetrics.maximumHeight, 600)
+    }
+
+    func testTextSizesScaleFromTheStandardMetrics() {
+        XCTAssertEqual(NoteTextSize.allCases.map(\.name), ["小", "标准", "大", "特大"])
+        XCTAssertEqual(NoteTextSize.allCases.map(\.itemSize), [13, 14, 16, 18])
+        XCTAssertEqual(NoteTextSize.allCases.map(\.titleSize), [15, 16, 18, 20])
+        // Standard is exactly today's note.
+        XCTAssertEqual(NoteTextSize.standard.titleSize, NoteMetrics.titleSize)
+        XCTAssertEqual(NoteTextSize.standard.secondarySize, NoteMetrics.secondarySize)
+        XCTAssertEqual(NoteTextSize.standard.scaled(NoteMetrics.rowHeight), NoteMetrics.rowHeight)
+        XCTAssertEqual(NoteTextSize.extraLarge.scaled(NoteMetrics.rowHeight), 41)
+        XCTAssertEqual(NoteTextSize.standard.stepped(1), .large)
+        XCTAssertEqual(NoteTextSize.extraLarge.stepped(1), .extraLarge)
+        XCTAssertEqual(NoteTextSize.small.stepped(-1), .small)
     }
 
     func testReduceMotionRemovesInsertionMovement() {

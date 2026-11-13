@@ -82,10 +82,17 @@ final class PresentationDefaults {
         }
         set { defaults.set(newValue, forKey: "toolbar.autoShrink") }
     }
-    /// Size of a newly created note; a nil height follows the content.
+    /// "文字大小" for every note.
+    var noteTextSize: NoteTextSize {
+        get { defaults.string(forKey: "note.textSize").flatMap(NoteTextSize.init(rawValue:)) ?? .standard }
+        set { defaults.set(newValue.rawValue, forKey: "note.textSize") }
+    }
+    /// Size of a newly created note; a nil height follows the content. A stored 0 is an
+    /// explicit "随内容"; nothing stored yet means the 240pt default.
     var newNoteSize: (width: Double, height: Double?) {
         get {
-            let width = defaults.double(forKey: "note.newWidth"), height = defaults.double(forKey: "note.newHeight")
+            let width = defaults.double(forKey: "note.newWidth")
+            let height = defaults.object(forKey: "note.newHeight") == nil ? NoteMetrics.newHeight : defaults.double(forKey: "note.newHeight")
             return (NoteMetrics.newWidthChoices.contains(width) ? width : NoteMetrics.width,
                     height > 0 && NoteMetrics.newHeightChoices.contains(height) ? height : nil)
         }

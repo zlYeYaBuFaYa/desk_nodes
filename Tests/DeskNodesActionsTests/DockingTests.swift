@@ -22,7 +22,8 @@ final class DockingTests: XCTestCase {
         let tall = DockScreen(id: "tall", visible: NoteFrame(x: 0, y: 24, width: 1440, height: 900))
         let side = DockGeometry.layout(ids: ids, edge: .right, screen: tall, heights: [ids[0]: 300, ids[1]: 999], collapsed: [ids[2]])
         XCTAssertEqual(side.slots.map { $0.frame.height }, [300, 480, 32])
-        XCTAssertEqual(side.slots[0].frame.x, 1192)
+        XCTAssertEqual(side.slots[0].frame.width, DockGeometry.sideWidth)
+        XCTAssertEqual(side.slots[0].frame.x, 1144)
         XCTAssertEqual(side.slots[0].frame.y - side.slots[1].frame.y, 492)
     }
     func testOverflowAllocationOrderAndPromotion() {
@@ -133,11 +134,7 @@ final class DockingTests: XCTestCase {
             XCTAssertEqual(migrated.first { $0.id == dock.id }?.placement, .dock(edge: .right, displayID: "primary"))
             assertInside(try XCTUnwrap(migrated.first { $0.id == free.id }?.placement.freeFrame), primary.available)
             try actions.reconcileScreens([primary, secondary]); XCTAssertEqual(try store.notes(), migrated)
-            try actions.dockPreference(edge: .left, displayID: "unavailable")
-            XCTAssertEqual(try store.settings().displayID, "unavailable")
-            XCTAssertEqual(try store.notes().first { $0.id == dock.id }?.placement, .dock(edge: .left, displayID: nil))
             XCTAssertEqual(DockGeometry.screen(nil, screens: [primary], preferred: "unavailable"), primary)
-            XCTAssertEqual(try store.notes().first { $0.id == free.id }, migrated.first { $0.id == free.id })
         }
     }
     func testCombinedStripsHaveDisjointRegions() {

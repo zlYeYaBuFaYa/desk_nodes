@@ -30,6 +30,9 @@ public struct DockTabs: Equatable, Sendable {
 }
 public enum DockGeometry {
     public static let gap = 12.0
+    /// Side strips match a free note's standard width; the top strip stays narrower so more fit.
+    public static let sideWidth = 288.0
+    public static let topWidth = 220.0
     public static func screen(_ id: String?, screens: [DockScreen], preferred: String? = nil) -> DockScreen? {
         screens.first { $0.id == (id ?? preferred) } ?? screens.first
     }
@@ -49,7 +52,7 @@ public enum DockGeometry {
                               selected: NoteID? = nil) -> DockLayout {
         let a = screen.available
         let horizontal = edge == .top
-        let width = min(a.width, horizontal ? 220 : 240)
+        let width = min(a.width, horizontal ? topWidth : sideWidth)
         let topHeight = min(a.height, screen.visible.height < 700 ? 200.0 : 260.0)
         func height(_ id: NoteID) -> Double {
             collapsed.contains(id) ? min(32, a.height) : (horizontal ? topHeight : min(a.height, NoteFrame.automaticHeight(content: heights[id] ?? 120)))
@@ -180,16 +183,6 @@ extension NoteActions {
             let final = try (frame ?? saved?.freeFrame ?? NoteFrame(x: 100, y: 100)).bounded()
             note.placement = .free(final, displayID: frame == nil ? saved?.displayID : displayID)
             try store.update(note)
-        }
-    }
-    public func dockPreference(edge: DockEdge, displayID: String?) throws {
-        try store.transaction { store in
-            var settings = try store.settings(); settings.dockEdge = edge; settings.displayID = displayID
-            // Controls move existing dock notes as one strip, preserving their current stable order.
-            for var note in try store.notes() {
-                if case .dock = note.placement { note.placement = .dock(edge: edge, displayID: nil); try store.update(note) }
-            }
-            try store.update(settings)
         }
     }
     /// Empty topology is transient (sleep/reconfiguration): never manufacture a screen.

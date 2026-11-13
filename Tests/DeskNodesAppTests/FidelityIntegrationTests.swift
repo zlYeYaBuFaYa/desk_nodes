@@ -42,22 +42,4 @@ final class FidelityIntegrationTests: XCTestCase {
         XCTAssertTrue(button.isHidden)
     }
 
-    @MainActor
-    func testSettingsDockChangeRefusesWhileAnySurfaceIsComposing() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = try Store(url: url), actions = NoteActions(store: store)
-        defer { try? store.close() }
-        let note = try actions.createNote()
-        try actions.dock(note.id, edge: .top, displayID: nil, index: 0)
-        let before = try store.exportBackup()
-        let model = SettingsPresentation(actions: actions, login: LoginService(), changed: {},
-            hotkey: { _, _ in XCTFail("unexpected hotkey") }, export: { try store.exportBackup() },
-            importBackup: { _ in XCTFail("unexpected import") }, canImport: { false })
-        model.settings.dockEdge = .left
-        model.saveSettings(docking: true)
-        XCTAssertNotNil(model.message)
-        XCTAssertEqual(try store.exportBackup(), before)
-        XCTAssertEqual(model.settings.dockEdge, .top)
-    }
 }

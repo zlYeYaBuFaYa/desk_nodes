@@ -96,7 +96,7 @@ final class NoteTextView: NSTextView, NSLayoutManagerDelegate {
                        lineFragmentUsedRect: UnsafeMutablePointer<NSRect>, baselineOffset: UnsafeMutablePointer<CGFloat>,
                        in textContainer: NSTextContainer, forGlyphRange glyphRange: NSRange) -> Bool {
         baselineOffset.pointee = Self.centredBaseline(lineHeight: lineFragmentRect.pointee.height,
-                                                      font: font ?? .systemFont(ofSize: NoteMetrics.itemSize))
+                                                      font: font ?? .systemFont(ofSize: NoteType.itemSize))
         return true
     }
 
@@ -128,28 +128,33 @@ final class NoteTextView: NSTextView, NSLayoutManagerDelegate {
         importsGraphics = false
         allowsUndo = true
         drawsBackground = false
-        font = .systemFont(ofSize: NoteMetrics.itemSize)
         textColor = NoteTheme.primary
         insertionPointColor = NoteTheme.primary
-        // Item rows pad each side so one line fills a 32pt row and wrapped lines stay close.
-        textContainerInset = NSSize(width: 0, height: centredLines ? NoteMetrics.rowPadding : 0)
         textContainer?.lineFragmentPadding = 0
         textContainer?.widthTracksTextView = true
         isHorizontallyResizable = false
         isVerticallyResizable = true
         autoresizingMask = [.width]
-        minSize = NSSize(width: 0, height: NoteMetrics.rowHeight)
         maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticDashSubstitutionEnabled = false
+        applyTextSize()
+        setAccessibilityLabel("事项")
+    }
+    /// Font and fixed line height at the current 文字大小. Mid-composition text keeps its
+    /// marked range: `applyLineStyle` skips it and the next edit restyles.
+    func applyTextSize() {
+        font = .systemFont(ofSize: NoteType.itemSize)
+        // Item rows pad each side so one line fills a row and wrapped lines stay close.
+        textContainerInset = NSSize(width: 0, height: centredLines ? NoteType.rowPadding : 0)
+        minSize = NSSize(width: 0, height: NoteType.rowHeight)
         let paragraph = NSMutableParagraphStyle()
-        let line = centredLines ? NoteMetrics.lineHeight : NoteMetrics.rowHeight
+        let line = centredLines ? NoteType.lineHeight : NoteType.rowHeight
         paragraph.minimumLineHeight = line
         paragraph.maximumLineHeight = line
         defaultParagraphStyle = paragraph
         typingAttributes = [.font: font!, .foregroundColor: NoteTheme.primary, .paragraphStyle: paragraph]
         applyLineStyle()
-        setAccessibilityLabel("事项")
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }

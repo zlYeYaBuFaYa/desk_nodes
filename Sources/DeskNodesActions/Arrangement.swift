@@ -58,24 +58,25 @@ public enum Arrangement {
         return largestFree(inner, avoiding: toolbar, gap: ArrangeMetrics.gap)
     }
 
-    /// Left to right, top aligned rows; the next row starts below the row's tallest card.
-    /// A card that would cross the bottom starts a new page instead of overlapping.
+    /// Masonry: each card goes under the shortest column (the leftmost on a tie), so a tall
+    /// card leaves no gap beside it. When even the shortest column cannot take the card, a
+    /// new page starts instead of overlapping.
     public static func layout(_ cards: [Card], in area: NoteFrame, width: Double = NoteMetrics.width,
                               gap: Double = ArrangeMetrics.gap) -> [Slot] {
         let width = min(width, area.width)
         let columns = max(1, Int((area.width + gap) / (width + gap)))
         let pageTop = area.y + area.height
         var placed: [(Card, NoteFrame, Int)] = []
-        var page = 0, column = 0, top = pageTop, rowHeight = 0.0
+        var page = 0, tops = Array(repeating: pageTop, count: columns)
         for card in cards {
             let height = min(max(1, card.presentedHeight), area.height)
-            if column == columns { top -= rowHeight + gap; column = 0; rowHeight = 0 }
-            if top - height < area.y && top < pageTop {
-                page += 1; top = pageTop; column = 0; rowHeight = 0
+            var column = tops.indices.max { tops[$0] < tops[$1] || (tops[$0] == tops[$1] && $0 > $1) }!
+            if tops[column] - height < area.y && tops[column] < pageTop {
+                page += 1; tops = Array(repeating: pageTop, count: columns); column = 0
             }
-            let x = area.x + Double(column) * (width + gap)
+            let x = area.x + Double(column) * (width + gap), top = tops[column]
             placed.append((card, NoteFrame(x: x, y: top - card.expandedHeight, width: width, height: card.expandedHeight), page))
-            column += 1; rowHeight = max(rowHeight, height)
+            tops[column] = top - height - gap
         }
         let pages = page + 1
         return placed.map { Slot(id: $0.0.id, screen: $0.0.screen, frame: $0.1, page: $0.2, pages: pages) }

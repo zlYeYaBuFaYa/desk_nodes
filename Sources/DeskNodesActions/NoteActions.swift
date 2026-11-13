@@ -17,7 +17,8 @@ public enum EditingPolicy {
 public final class NoteActions {
     public let store: Store
     private let clock: () -> Date
-    private enum Deleted { case item(Item), note(Note, [Item]) }
+    /// `notes` is one batch deletion: it is undone, and counted, as a single entry.
+    private enum Deleted { case item(Item), note(Note, [Item]), notes([(Note, [Item])]) }
     public private(set) var prefersDeletionUndo = false
     private var pending: [(Deleted, Date)] = []
     public init(store: Store, clock: @escaping () -> Date = Date.init) {
@@ -30,11 +31,14 @@ public final class NoteActions {
     public var canUndoDeletion: Bool { pending.contains { recoverable($0.1) } }
     /// Deletions still inside their window, newest last (for the toast count).
     public var recoverableDeletionCount: Int { pending.filter { recoverable($0.1) }.count }
-    /// Whether the newest recoverable deletion was a whole note (for the toast wording).
-    public var latestDeletionIsNote: Bool {
-        guard let latest = pending.last(where: { recoverable($0.1) }) else { return false }
-        if case .note = latest.0 { return true }
-        return false
+    /// Notes in the newest recoverable deletion; 0 when it was an item (for the toast wording).
+    public var latestDeletedNoteCount: Int {
+        guard let latest = pending.last(where: { recoverable($0.1) }) else { return 0 }
+        switch latest.0 {
+        case .item: return 0
+        case .note: return 1
+        case .notes(let notes): return notes.count
+        }
     }
     public func invalidateUndoAfterImport() { pending = []; prefersDeletionUndo = false }
     public func expireDeletion() { pending.removeAll { !recoverable($0.1) } }
@@ -134,6 +138,21 @@ public final class NoteActions {
         pending.append((.note(original.0, original.1), now))
         prefersDeletionUndo = true
     }
+    /// Deletes several notes in one transaction; one undo restores all of them.
+    public func deleteNotes(_ ids: [NoteID]) throws {
+        guard ids.count > 1 else { if let id = ids.first { try deleteNote(id) }; return }
+        let now = try deletionTime()
+        let originals = try store.transaction { store -> [(Note, [Item])] in
+            let notes = try store.notes()
+            return try ids.map { id in
+                guard let note = notes.first(where: { $0.id == id }) else { throw StoreError.notFound }
+                let items = try store.items(in: id, includeDeleted: true)
+                try store.deleteNote(id); return (note, items)
+            }
+        }
+        pending.append((.notes(originals), now))
+        prefersDeletionUndo = true
+    }
     /// Restores the newest deletion still inside its window. A conflicting entry is dropped.
     @discardableResult public func undoDeletion() throws -> Bool {
         expireDeletion()
@@ -141,6 +160,7 @@ public final class NoteActions {
         switch latest.0 {
         case .item(let item): try store.restoreItem(item)
         case .note(let note, let items): try store.restoreNote(note, items: items)
+        case .notes(let notes): try store.transaction { store in for (note, items) in notes { try store.restoreNote(note, items: items) } }
         }
         return true
     }
@@ -150,7 +170,15 @@ public final class NoteActions {
     /// so a later Command-Z cannot fail on an already restored row.
     public func restoreDeletedNote(_ id: NoteID) throws {
         try store.restoreDeletedNote(id)
-        pending.removeAll { if case .note(let note, _) = $0.0 { return note.id == id }; return false }
+        pending = pending.compactMap { entry in
+            switch entry.0 {
+            case .note(let note, _) where note.id == id: return nil
+            case .notes(let notes):
+                let rest = notes.filter { $0.0.id != id }
+                return rest.isEmpty ? nil : (.notes(rest), entry.1)
+            default: return entry
+            }
+        }
     }
     public func restoreDeletedItem(_ id: ItemID) throws {
         try store.restoreDeletedItem(id)

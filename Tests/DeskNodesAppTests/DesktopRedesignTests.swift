@@ -138,9 +138,52 @@ final class DesktopRedesignTests: XCTestCase {
         XCTAssertEqual(PresentationDefaults(raw).toolbarAnchor, .free(centerX: 52, centerY: 660, display: nil))
         raw.set(7, forKey: "toolbar.autoShrink") // not an offered choice
         XCTAssertEqual(PresentationDefaults(raw).toolbarAutoShrink, ToolbarMetrics.defaultAutoShrink)
+        // New notes default to 240pt; someone who chose "随内容" keeps it.
+        XCTAssertEqual(reopened.newNoteSize.width, NoteMetrics.width)
+        XCTAssertEqual(reopened.newNoteSize.height, NoteMetrics.newHeight)
+        defaults.newNoteSize = (340, nil)
+        XCTAssertEqual(PresentationDefaults(raw).newNoteSize.width, 340)
+        XCTAssertNil(PresentationDefaults(raw).newNoteSize.height)
         // The JSON backup has no field for any of this.
         let backup = String(decoding: try store.exportBackup(), as: UTF8.self)
         for key in ["collapsed", "toolbar", "arrange", "desk."] { XCTAssertFalse(backup.contains(key), key) }
+    }
+
+    @MainActor func testTextSizeRestylesCardsAndKeepsCirclesAligned() throws {
+        defer { NoteType.size = .standard }
+        let note = try actions.createNote(frame: NoteFrame(x: 0, y: 0, width: NoteMetrics.width, height: 400))
+        let first = try XCTUnwrap(store.items(in: note.id).first)
+        try actions.text(first.id, in: note.id, "整理项目需求 Review")
+        let card = NoteCardView(note: try XCTUnwrap(store.notes().first), actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") })
+        card.frame = NSRect(x: 0, y: 0, width: NoteMetrics.width, height: 400)
+        let standard = card.preferredHeight(width: NoteMetrics.width)
+        for size in [NoteTextSize.small, .large, .extraLarge] {
+            NoteType.size = size
+            card.applyTextSize(); card.layoutSubtreeIfNeeded()
+            let row = try XCTUnwrap(card.itemRows.first); row.layoutSubtreeIfNeeded()
+            XCTAssertEqual(row.editor.font?.pointSize, CGFloat(size.itemSize))
+            XCTAssertEqual(try firstLineInkCenter(row), row.circleCenter.y, accuracy: 1.5, size.name)
+            let height = card.preferredHeight(width: NoteMetrics.width)
+            if size == .small { XCTAssertLessThan(height, standard) } else { XCTAssertGreaterThan(height, standard) }
+        }
+    }
+
+    @MainActor func testPickingMarksCardsAndForgetsDeletedNotes() throws {
+        let surfaces = NoteSurfaces(actions: actions, changed: {}, undo: { false }, canMutate: { true }, failure: { XCTFail("\($0)") })
+        let a = try actions.createNote(), b = try actions.createNote()
+        try surfaces.refresh()
+        func card(_ id: NoteID) -> NoteCardView? { surfaces.panels[id]?.contentView as? NoteCardView }
+        var events = 0
+        surfaces.pickedChanged = { events += 1 }
+        surfaces.setPicked([a.id, NoteID()])
+        XCTAssertEqual(surfaces.picked, [a.id], "unknown notes are never picked")
+        XCTAssertEqual(card(a.id)?.picked, true); XCTAssertEqual(card(b.id)?.picked, false)
+        try actions.deleteNotes([a.id])
+        try surfaces.refresh()
+        XCTAssertEqual(surfaces.picked, [], "a deleted note leaves the selection; the mode stays on")
+        surfaces.setPicked(nil)
+        XCTAssertNil(card(b.id)?.picked)
+        XCTAssertEqual(events, 3)
     }
 
     @MainActor func testPeekLiftsRealNotesTemporarily() throws {

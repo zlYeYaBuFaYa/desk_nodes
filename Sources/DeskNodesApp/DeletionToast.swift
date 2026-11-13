@@ -3,7 +3,7 @@ import QuartzCore
 import DeskNodesCore
 
 /// Light, rounded, slightly translucent capsule shared by the deletion and error toasts.
-private final class ToastSurface: NSVisualEffectView {
+final class ToastSurface: NSVisualEffectView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         material = .popover; blendingMode = .behindWindow; state = .active
@@ -54,8 +54,10 @@ final class DeletionToast: NSPanel {
         }
     }
     /// Several deletions inside the window are undone newest first, one per click / ⌘Z.
-    func update(count: Int, note: Bool) {
-        label.stringValue = count > 1 ? "已删除 \(count) 项 · 可逐项撤销" : (note ? "已删除便签" : "已删除事项")
+    /// `notes`: notes in the newest deletion, 0 for an item. A batch is one entry.
+    func update(count: Int, notes: Int) {
+        label.stringValue = count > 1 ? "已删除 \(count) 项 · 可逐项撤销"
+            : notes > 1 ? "已删除 \(notes) 张便签" : (notes == 1 ? "已删除便签" : "已删除事项")
     }
     func dismiss() {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer = contentView?.layer else { close(); return }

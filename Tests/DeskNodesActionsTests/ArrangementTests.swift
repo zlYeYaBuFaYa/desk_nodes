@@ -16,7 +16,7 @@ final class ArrangementTests: XCTestCase {
         a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
     }
 
-    func testRowsFlowLeftToRightTopAlignedAndClearTheToolbarColumn() {
+    func testMasonryFillsTheShortestColumnAndClearsTheToolbarColumn() {
         let input = cards([230, 180, 260, 200, 150, 220])
         let slots = Arrangement.plan(input, screens: [main], toolbar: toolbar, toolbarScreen: "main")
         XCTAssertEqual(slots.map(\.id), input.map(\.id), "stable durable order")
@@ -25,16 +25,31 @@ final class ArrangementTests: XCTestCase {
         let first = slots.filter { $0.frame.y + $0.frame.height == area.y + area.height }
         XCTAssertEqual(first.count, 4, "1440pt fits four 288pt cards beside the toolbar")
         XCTAssertEqual(first.map(\.frame.x), [0, 1, 2, 3].map { area.x + Double($0) * (288 + ArrangeMetrics.gap) })
-        // Second row starts below the first row's tallest card, with one gap.
-        let secondTop = area.y + area.height - 260 - ArrangeMetrics.gap
-        XCTAssertEqual(slots[4].frame.y + slots[4].frame.height, secondTop)
-        XCTAssertEqual(slots[4].frame.x, area.x)
+        // Later cards go under the shortest column (180pt, then 200pt), one gap below it.
+        let top = area.y + area.height, step = 288 + ArrangeMetrics.gap
+        XCTAssertEqual(slots[4].frame.x, area.x + step)
+        XCTAssertEqual(slots[4].frame.y + slots[4].frame.height, top - 180 - ArrangeMetrics.gap)
+        XCTAssertEqual(slots[5].frame.x, area.x + 3 * step)
+        XCTAssertEqual(slots[5].frame.y + slots[5].frame.height, top - 200 - ArrangeMetrics.gap)
         for (i, a) in slots.enumerated() {
             XCTAssertFalse(overlap(a.frame, toolbar))
             XCTAssertTrue(a.frame.x >= main.visible.x && a.frame.x + a.frame.width <= main.visible.x + main.visible.width)
             for b in slots[(i + 1)...] { XCTAssertFalse(overlap(a.frame, b.frame)) }
         }
         XCTAssertEqual(Set(slots.map(\.pages)), [1])
+    }
+
+    func testOneTallCardLeavesNoGapUnderItsShortNeighbours() {
+        // The redesign case: a 7-item note beside short ones. Short cards stack in the
+        // other columns instead of waiting for a row below the tall one.
+        let input = cards([290, 136, 136, 136, 136, 136])
+        let area = NoteFrame(x: 0, y: 0, width: 900, height: 800)
+        let slots = Arrangement.layout(input, in: area)
+        // After five cards every column is 308pt deep, so the sixth takes the leftmost.
+        XCTAssertEqual(slots.map(\.frame.x), [0, 306, 612, 306, 612, 0])
+        XCTAssertEqual(slots[3].frame.y + slots[3].frame.height, 800 - 136 - ArrangeMetrics.gap)
+        XCTAssertEqual(slots[5].frame.y + slots[5].frame.height, 800 - 290 - ArrangeMetrics.gap)
+        XCTAssertEqual(Set(slots.map(\.page)), [0])
     }
 
     func testRepeatedArrangementIsDeterministic() {

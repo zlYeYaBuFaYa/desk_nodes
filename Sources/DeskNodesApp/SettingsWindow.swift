@@ -20,8 +20,10 @@ final class SettingsPresentation: ObservableObject {
     /// Toolbar layout and idle shrink; Mac display preferences, not part of the backup.
     let toolbar: (ToolbarOrientation, Int) -> Void
     let toolbarCurrent: () -> (ToolbarOrientation, Int)
-    /// New-note size is a Mac display preference too.
+    /// New-note size and 文字大小 are Mac display preferences too.
     let presentation: PresentationDefaults
+    let textSize: (NoteTextSize) -> Void
+    @Published var noteTextSize = NoteTextSize.standard
     @Published var noteWidth = NoteMetrics.width
     /// 0 follows the content.
     @Published var noteHeight = 0.0
@@ -34,7 +36,6 @@ final class SettingsPresentation: ObservableObject {
     @Published var message: String?
     @Published var loginEnabled = false
     @Published var loginExplanation = ""
-    @Published var displays: [(String, String)] = []
     enum ShortcutTarget { case create, peek }
     @Published private(set) var recording: ShortcutTarget?
     private var recorder: Any?
@@ -45,35 +46,27 @@ final class SettingsPresentation: ObservableObject {
          canImport: @escaping () -> Bool = { true },
          toolbar: @escaping (ToolbarOrientation, Int) -> Void = { _, _ in },
          toolbarCurrent: @escaping () -> (ToolbarOrientation, Int) = { (.vertical, ToolbarMetrics.defaultAutoShrink) },
+         textSize: @escaping (NoteTextSize) -> Void = { _ in },
          presentation: PresentationDefaults? = nil) {
         self.actions = actions; self.login = login; self.changed = changed
         self.hotkey = hotkey; self.peekHotkey = peekHotkey; self.export = export; self.importBackup = importBackup; self.canImport = canImport
-        self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent; self.presentation = presentation ?? .standard()
+        self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent; self.textSize = textSize
+        self.presentation = presentation ?? .standard()
         reload()
     }
     func reload() {
         (toolbarOrientation, toolbarShrink) = toolbarCurrent()
         let size = presentation.newNoteSize
         noteWidth = size.width; noteHeight = size.height ?? 0
+        noteTextSize = presentation.noteTextSize
         do {
             settings = try actions.store.settings(); preferences = try actions.store.preferences()
             shortcut = preferences.hotkey; peekShortcut = preferences.peekHotkey
-            displays = zip(DockController.screens(), NSScreen.screens).compactMap { screen, native in
-                screen.persistentID.map { ($0, native.localizedName) }
-            }
-            if let id = settings.displayID, !displays.contains(where: { $0.0 == id }) {
-                displays.append((id, "不可用显示器（暂用主显示器）"))
-            }
             loginEnabled = login.enabled; loginExplanation = login.explanation
         } catch { message = String(describing: error) }
     }
-    func saveSettings(docking: Bool = false) {
-        perform {
-            if docking && !canImport() { throw StoreError.invalid("请先完成输入法组词，再调整停靠条") }
-            if docking { try actions.dockPreference(edge: settings.dockEdge, displayID: settings.displayID) }
-            else { try actions.store.update(settings) }
-            changed()
-        }
+    func saveSettings() {
+        perform { try actions.store.update(settings); changed() }
         reload()
     }
     func saveToolbar() { toolbar(toolbarOrientation, toolbarShrink) }
@@ -217,24 +210,26 @@ struct SettingsView: View {
                 Text(model.loginExplanation + " 跨天范围 00:00–23:59，默认 04:00。")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                 Button("在系统设置中查看登录项…") { model.openLoginSettings() }
-                group("停靠条") {
-                    row("停靠位置") {
-                        Picker("停靠位置", selection: Binding(get: { model.settings.dockEdge }, set: {
-                            model.settings.dockEdge = $0; model.saveSettings(docking: true)
+                group("外观") {
+                    row("文字大小") {
+                        Picker("文字大小", selection: Binding(get: { model.noteTextSize }, set: {
+                            // Refused during IME composition: show the size actually in use.
+                            model.textSize($0); model.noteTextSize = model.presentation.noteTextSize
                         })) {
-                            Text("顶部").tag(DockEdge.top); Text("左侧").tag(DockEdge.left); Text("右侧").tag(DockEdge.right)
-                        }.labelsHidden().pickerStyle(.segmented).frame(width: 220)
+                            ForEach(NoteTextSize.allCases, id: \.self) { Text($0.name).tag($0) }
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
                     }
                     Divider()
-                    row("显示在") {
-                        Picker("显示在", selection: Binding(get: { model.settings.displayID ?? "" }, set: {
-                            model.settings.displayID = $0.isEmpty ? nil : $0; model.saveSettings(docking: true)
-                        })) {
-                            Text("主显示器").tag("")
-                            ForEach(model.displays, id: \.0) { display in Text(display.1).tag(display.0) }
-                        }.labelsHidden().frame(width: 240)
-                    }
+                    HStack(spacing: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxGap))) {
+                        Circle().stroke(Color.primary.opacity(0.42), lineWidth: 1.4)
+                            .frame(width: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxSize)),
+                                   height: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxSize)))
+                        Text("示例事项：周五前交季度复盘").font(.system(size: CGFloat(model.noteTextSize.itemSize)))
+                        Spacer()
+                    }.frame(minHeight: 44).padding(.horizontal, 14).accessibilityHidden(true)
                 }
+                Text("对所有便签生效，宽度不变。也可以在便签里按 ⌘+、⌘−、⌘0 调整。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("工具条") {
                     row("排列方向") {
                         Picker("排列方向", selection: Binding(get: { model.toolbarOrientation }, set: {

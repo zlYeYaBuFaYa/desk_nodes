@@ -231,7 +231,7 @@ extension DockGeometry {
     public static func region(_ region: DockScreen, edge: DockEdge, avoiding toolbar: NoteFrame?) -> DockScreen {
         guard let toolbar else { return region }
         let a = region.available, v = region.visible
-        let depth = edge == .top ? (v.height < 700 ? 200.0 : 260.0) : 240.0
+        let depth = edge == .top ? (v.height < 700 ? 200.0 : 260.0) : sideWidth
         let band: NoteFrame
         switch edge {
         case .top: band = NoteFrame(x: a.x, y: a.y + a.height - depth, width: a.width, height: depth)

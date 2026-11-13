@@ -32,7 +32,10 @@ final class NotePanel: NSPanel, NSWindowDelegate {
     override func orderFrontRegardless() { guard !suppressed else { return }; super.orderFrontRegardless() }
     override func orderFront(_ sender: Any?) { guard !suppressed else { return }; super.orderFront(sender) }
     override func makeKeyAndOrderFront(_ sender: Any?) { guard !suppressed else { return }; super.makeKeyAndOrderFront(sender) }
+    /// Batch selection: consumes a press while selecting, or a ⌘-press that starts it.
+    var pickPress: ((NSEvent) -> Bool)?
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown || event.type == .rightMouseDown, pickPress?(event) == true { return }
         if event.type == .leftMouseDown || event.type == .rightMouseDown { pressed?() }
         if event.type == .leftMouseDown {
             if choice == .desktop { temporarilyRaised = true; applyLevel() }
@@ -94,8 +97,23 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private let addButton = NSButton(title: "＋ 添加事项", target: nil, action: nil)
     private let separator = NSView()
     private let moreButton = NSButton()
-    /// Toolbar deletion target; drawn as a quiet sage outline.
+    /// The current note, outlined in a deeper tone of its own colour.
     var isSelected = false { didSet { if isSelected != oldValue { colors() } } }
+    /// Batch selection: nil outside it, otherwise whether this note is picked.
+    var picked: Bool? {
+        didSet {
+            guard picked != oldValue else { return }
+            pickBadge.isHidden = picked == nil
+            pickBadge.image = NSImage(systemSymbolName: picked == true ? "checkmark.circle.fill" : "circle", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 18, weight: .regular))
+            pickBadge.contentTintColor = picked == true ? .controlAccentColor : NoteTheme.secondary
+            pickBadge.setAccessibilityLabel(picked == true ? "已选中" : "未选中")
+            colors()
+        }
+    }
+    /// "选择多张…" in the note menu.
+    var pickMany: (() -> Void)?
+    private let pickBadge = NSImageView()
     private let list = FlippedList()
     private var orderedRows: [ItemRow] = []
     private let scroll = NSScrollView()
@@ -133,19 +151,16 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             }
         ])
         wantsLayer = true; layer?.cornerRadius = NoteMetrics.cornerRadius; layer?.borderWidth = 1; layer?.masksToBounds = true
-        let titleFont = NSFont.systemFont(ofSize: NoteMetrics.titleSize, weight: .semibold)
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(activationChanged), name: name, object: nil)
+        }
         titleEditor.stringValue = note.title ?? ""
-        // A quiet placeholder: an untitled note is normal, not a missing field.
-        titleEditor.placeholderAttributedString = NSAttributedString(string: "标题",
-            attributes: [.font: NSFont.systemFont(ofSize: NoteMetrics.titleSize, weight: .regular), .foregroundColor: NoteTheme.tertiary])
         titleEditor.setAccessibilityLabel("便签标题（可选）")
         titleEditor.lineBreakMode = .byTruncatingTail; titleEditor.cell?.isScrollable = true
         pinIndicator.image = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "已置顶")
         pinIndicator.contentTintColor = NoteTheme.tertiary
         addButton.target = self; addButton.action = #selector(addItem)
         addButton.isBordered = false; addButton.alignment = .left
-        addButton.attributedTitle = NSAttributedString(string: "＋ 添加事项", attributes: [
-            .font: NSFont.systemFont(ofSize: NoteMetrics.secondarySize + 1), .foregroundColor: NoteTheme.secondary])
         addButton.setAccessibilityLabel("添加事项")
         separator.wantsLayer = true
         moreButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "更多操作")?
@@ -154,9 +169,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         moreButton.target = self; moreButton.action = #selector(showMenu)
         moreButton.setAccessibilityLabel("更多操作"); moreButton.toolTip = "颜色、置顶、折叠与更多操作"
         titleEditor.isBordered = false; titleEditor.drawsBackground = false
-        titleEditor.font = titleFont
         titleEditor.textColor = NoteTheme.primary; titleEditor.delegate = self
-        count.font = .monospacedDigitSystemFont(ofSize: NoteMetrics.secondarySize, weight: .regular)
         count.textColor = NoteTheme.secondary; count.alignment = .right
         collapsedLabel.textColor = NoteTheme.primary
         collapsedLabel.font = .systemFont(ofSize: NoteMetrics.titleSize - 2, weight: .semibold)
@@ -170,9 +183,24 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         scroll.drawsBackground = false; scroll.hasVerticalScroller = true
         scroll.documentView = list
         [header, titleEditor, collapsedLabel, count, scroll, separator, grip, pinIndicator, addButton, moreButton].forEach { addSubview($0) }
+        pickBadge.frame = NSRect(x: 7, y: 6, width: 22, height: 22); pickBadge.isHidden = true
+        addSubview(pickBadge)
+        applyTextSize()
         refresh(note, items: items)
     }
     required init?(coder: NSCoder) { fatalError() }
+    /// Applies `NoteType` (文字大小) to this card and its rows; the folded bar keeps its size.
+    func applyTextSize() {
+        titleEditor.font = .systemFont(ofSize: NoteType.titleSize, weight: .semibold)
+        // A quiet placeholder: an untitled note is normal, not a missing field.
+        titleEditor.placeholderAttributedString = NSAttributedString(string: "标题",
+            attributes: [.font: NSFont.systemFont(ofSize: NoteType.titleSize, weight: .regular), .foregroundColor: NoteTheme.tertiary])
+        addButton.attributedTitle = NSAttributedString(string: "＋ 添加事项", attributes: [
+            .font: NSFont.systemFont(ofSize: NoteType.secondarySize + 1), .foregroundColor: NoteTheme.secondary])
+        count.font = .monospacedDigitSystemFont(ofSize: NoteType.secondarySize, weight: .regular)
+        for row in orderedRows { row.applyTextSize() }
+        needsLayout = true
+    }
     /// Header, list and footer have fixed slots; hovering only shows controls in space
     /// that is already reserved, so the title never changes width under the pointer.
     override func layout() {
@@ -181,7 +209,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         let compact = note.collapsed
         // Folded notes have no grip row; "更多" shares the count slot.
         let inlineMore = compact
-        let headerHeight = compact ? bounds.height : CGFloat(NoteMetrics.headerHeight)
+        let headerHeight = compact ? bounds.height : NoteType.headerHeight
         header.frame = NSRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
         header.showsGrip = !inlineMore
         titleEditor.isHidden = compact
@@ -190,9 +218,12 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         let footer = !compact
         addButton.isHidden = !footer; separator.isHidden = !footer
         grip.isHidden = compact || !hovering || (window as? NotePanel)?.docked == true
-        let titleY: CGFloat = compact ? (bounds.height - 22) / 2 : 18
+        // Title band: 18pt down and 22pt tall at standard size, scaled with the type.
+        let scale = CGFloat(NoteType.size.scale), titleHeight = (22 * scale).rounded()
+        let titleY: CGFloat = compact ? (bounds.height - 22) / 2 : (18 * scale).rounded()
         let countWidth = max(32, ceil(count.attributedStringValue.size().width) + 2)
-        count.frame = NSRect(x: bounds.width - padding - countWidth, y: titleY + 3, width: countWidth, height: 16)
+        let countHeight = compact ? 16 : (16 * scale).rounded()
+        count.frame = NSRect(x: bounds.width - padding - countWidth, y: titleY + (compact ? 3 : (titleHeight - countHeight) / 2 + 1), width: countWidth, height: countHeight)
         count.isHidden = inlineMore && hovering
         moreButton.isHidden = !hovering
         moreButton.frame = inlineMore
@@ -200,18 +231,18 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             : NSRect(x: bounds.width - 34, y: 2, width: 28, height: 18)
         let pinned = note.level == .topmost
         pinIndicator.isHidden = !pinned
-        pinIndicator.frame = NSRect(x: count.frame.minX - 16, y: titleY + 5, width: 11, height: 11)
+        pinIndicator.frame = NSRect(x: count.frame.minX - 16, y: count.frame.midY - 5.5, width: 11, height: 11)
         let titleLimit = (pinned ? pinIndicator.frame.minX : count.frame.minX) - 10
         let available = max(1, titleLimit - padding)
         // An idle title is only as wide as its text, leaving the rest of the header to drag by.
         let shown = titleEditor.stringValue.isEmpty ? "标题" : titleEditor.stringValue
         let fitted = ceil((shown as NSString).size(withAttributes: [.font: titleEditor.font as Any]).width) + 12
         let editing = titleEditor.currentEditor() != nil
-        titleEditor.frame = NSRect(x: padding - 2, y: titleY, width: editing ? available : min(available, max(44, fitted)), height: 22)
+        titleEditor.frame = NSRect(x: padding - 2, y: titleY, width: editing ? available : min(available, max(44, fitted)), height: titleHeight)
         collapsedLabel.frame = NSRect(x: padding, y: titleY + 1, width: available, height: 20)
-        let footerTop = bounds.height - CGFloat(NoteMetrics.footerHeight)
+        let footerTop = bounds.height - NoteType.footerHeight
         separator.frame = NSRect(x: padding, y: footerTop, width: max(1, bounds.width - padding * 2), height: 1)
-        addButton.frame = NSRect(x: padding - 2, y: footerTop + 8, width: max(1, min(160, bounds.width - padding * 2)), height: 28)
+        addButton.frame = NSRect(x: padding - 2, y: footerTop + (NoteType.footerHeight - 28) / 2, width: max(1, min(160, bounds.width - padding * 2)), height: 28)
         grip.frame = NSRect(x: bounds.width - 18, y: bounds.height - 18, width: 16, height: 16)
         scroll.frame = NSRect(x: listX, y: headerHeight, width: max(1, bounds.width - listX - 8),
                               height: max(1, bounds.height - headerHeight - bottomInset(footer: footer)))
@@ -226,14 +257,14 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     }
     /// The circle's hit area starts left of the padding, so the circle itself lines up with the title.
     private var listX: CGFloat { CGFloat(NoteMetrics.padding) - ItemRow.circleInset }
-    private func bottomInset(footer: Bool) -> CGFloat { footer ? CGFloat(NoteMetrics.footerHeight) + 6 : 10 }
+    private func bottomInset(footer: Bool) -> CGFloat { footer ? NoteType.footerHeight + 6 : 10 }
     var firstEditor: NoteTextView? { orderedRows.first?.editor }
     var itemRows: [ItemRow] { orderedRows }
     var titleFrame: NSRect { titleEditor.frame }
     private var isDocked: Bool { if case .dock = note.placement { return true }; return false }
     func preferredHeight(width: CGFloat) -> Double {
         let compact = note.collapsed
-        let header = CGFloat(NoteMetrics.headerHeight)
+        let header = NoteType.headerHeight
         let rows = orderedRows.reduce(CGFloat(0)) { $0 + $1.fittingHeight(width: width - listX - 8) }
         return Double(compact ? CGFloat(NoteMetrics.collapsedHeight) : header + rows + bottomInset(footer: true))
     }
@@ -365,23 +396,34 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        for (index, title) in ["停靠到顶部", "停靠到左侧", "停靠到右侧", "移出停靠条"].enumerated() {
-            let item = NSMenuItem(title: title, action: #selector(docking(_:)), keyEquivalent: "")
-            item.target = self; item.tag = index
-            if index == 3 { item.isEnabled = (window as? NotePanel)?.docked == true }
-            menu.addItem(item)
+        // 停靠 ▸ marks the current edge; 取消停靠 only appears for a docked note.
+        var dockedEdge: DockEdge?
+        if case .dock(let edge, _) = note.placement { dockedEdge = edge }
+        let dockItem = NSMenuItem(title: "停靠", action: nil, keyEquivalent: ""), edges = NSMenu()
+        edges.autoenablesItems = false
+        for (index, edge) in [DockEdge.top, .left, .right].enumerated() {
+            let item = NSMenuItem(title: ["顶部", "左侧", "右侧"][index], action: #selector(docking(_:)), keyEquivalent: "")
+            item.target = self; item.tag = index; item.state = edge == dockedEdge ? .on : .off
+            edges.addItem(item)
+        }
+        dockItem.submenu = edges; menu.addItem(dockItem)
+        if dockedEdge != nil {
+            let undock = NSMenuItem(title: "取消停靠", action: #selector(docking(_:)), keyEquivalent: "")
+            undock.target = self; undock.tag = 3; menu.addItem(undock)
         }
         menu.addItem(.separator())
-        let pinItem = NSMenuItem(title: note.level == .topmost ? "取消置顶" : "置顶", action: #selector(pin), keyEquivalent: "")
-        pinItem.target = self; menu.addItem(pinItem)
         let folding = note.collapsed ? "展开" : "折叠"
-        for (title, selector) in [(folding, #selector(collapse)),
-                                  ("随内容调整高度", #selector(autoHeight)), ("添加事项", #selector(addItem)), ("删除便签", #selector(deleteNote))] {
+        for (title, selector) in [(folding, #selector(collapse)), ("随内容调整高度", #selector(autoHeight)), ("添加事项", #selector(addItem))] {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
-            item.target = self
-            if title == "删除便签" { item.attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: NSColor.systemRed]) }
-            menu.addItem(item)
+            item.target = self; menu.addItem(item)
         }
+        menu.addItem(.separator())
+        let pick = NSMenuItem(title: "选择多张…", action: #selector(startPicking), keyEquivalent: "")
+        pick.target = self; pick.isEnabled = pickMany != nil; menu.addItem(pick)
+        let delete = NSMenuItem(title: "删除便签", action: #selector(deleteNote), keyEquivalent: "")
+        delete.target = self
+        delete.attributedTitle = NSAttributedString(string: "删除便签", attributes: [.foregroundColor: NSColor.systemRed])
+        menu.addItem(delete)
         activeMenu = menu
         return menu
     }
@@ -396,7 +438,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
 
     }
     @objc private func selectLevel(_ sender: NSMenuItem) { run { try actions.appearance(id, level: [WindowLevel.desktop, .ordinary, .topmost][sender.tag]) } }
-    @objc private func pin() { run { try actions.appearance(id, level: note.level == .topmost ? .desktop : .topmost) } }
+    @objc private func startPicking() { guard !invalidated, canMutate() else { return }; pickMany?() }
     @objc private func collapse() { run { try actions.appearance(id, collapsed: !note.collapsed) } }
     @objc private func autoHeight() { run { try actions.appearance(id, automaticHeight: true) } }
     func run(_ body: () throws -> Void) { guard !invalidated, canMutate() else { return }; do { try body(); changed() } catch { failure(error) } }
@@ -529,12 +571,17 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         run { try actions.deleteNote(id) }
     }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); colors() }
+    @objc private func activationChanged() { if isSelected { colors() } }
     private func colors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             CATransaction.begin(); CATransaction.setDisableActions(true)
             layer?.backgroundColor = NoteTheme.background(palette).cgColor
-            layer?.borderWidth = isSelected ? 1.5 : 1
-            layer?.borderColor = (isSelected ? NoteTheme.selection : hovering ? NoteTheme.primary.withAlphaComponent(0.10) : NoteTheme.border).cgColor
+            // While picking, the blue pick outline replaces the selection outline.
+            let outlined = isSelected && picked == nil
+            layer?.borderWidth = picked == true ? 2 : outlined ? 1.5 : 1
+            layer?.borderColor = (picked == true ? NSColor.controlAccentColor
+                : outlined ? NoteTheme.selection(palette, active: NSApp?.isActive ?? true)
+                : hovering ? NoteTheme.primary.withAlphaComponent(0.10) : NoteTheme.border).cgColor
             separator.layer?.backgroundColor = NoteTheme.hairline.cgColor
             CATransaction.commit()
         }
@@ -549,7 +596,7 @@ private final class FlippedList: NSView { override var isFlipped: Bool { true } 
 final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     /// Hit area to the left of the visible circle.
     static let circleInset: CGFloat = 6
-    static var textX: CGFloat { circleInset + CGFloat(NoteMetrics.checkboxSize + NoteMetrics.checkboxGap) }
+    static var textX: CGFloat { circleInset + NoteType.checkboxSize + NoteType.checkboxGap }
     let item: Item
     weak var owner: NoteCardView?
     let editor: NoteTextView
@@ -587,7 +634,7 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     required init?(coder: NSCoder) { fatalError() }
     override func layout() {
         super.layout()
-        let line = CGFloat(NoteMetrics.rowHeight)
+        let line = NoteType.rowHeight
         let action = CGFloat(RowActionButton.size)
         handle.frame = NSRect(x: bounds.width - 14, y: (line - 18) / 2, width: 14, height: 18)
         // Taller than the circle and as tall as the first line: a comfortable target.
@@ -598,7 +645,8 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         strikeButton.frame = NSRect(x: remove.frame.minX - 2 - action, y: (line - action) / 2, width: action, height: action)
     }
     /// Circle centre in row coordinates (flipped: y from the top).
-    var circleCenter: NSPoint { NSPoint(x: check.frame.minX + Self.circleInset + CGFloat(NoteMetrics.checkboxSize) / 2, y: check.frame.midY) }
+    var circleCenter: NSPoint { NSPoint(x: check.frame.minX + Self.circleInset + NoteType.checkboxSize / 2, y: check.frame.midY) }
+    func applyTextSize() { editor.applyTextSize(); check.needsDisplay = true; needsLayout = true }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
@@ -608,14 +656,14 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     override func mouseEntered(with event: NSEvent) { [remove, strikeButton, handle].forEach { $0.isHidden = false } }
     override func mouseExited(with event: NSEvent) { [remove, strikeButton, handle].forEach { $0.isHidden = true } }
     func fittingHeight(width: CGFloat) -> CGFloat {
-        let line = CGFloat(NoteMetrics.lineHeight)
+        let line = NoteType.lineHeight
         let paragraph = NSMutableParagraphStyle()
         paragraph.minimumLineHeight = line; paragraph.maximumLineHeight = line
         let rect = (editor.string as NSString).boundingRect(
             with: NSSize(width: max(1, width - Self.textX - CGFloat(NoteMetrics.rowTrailing)), height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: NSFont.systemFont(ofSize: NoteMetrics.itemSize), .paragraphStyle: paragraph])
-        return max(CGFloat(NoteMetrics.rowHeight), ceil(rect.height) + CGFloat(NoteMetrics.rowPadding) * 2)
+            attributes: [.font: NSFont.systemFont(ofSize: NoteType.itemSize), .paragraphStyle: paragraph])
+        return max(NoteType.rowHeight, ceil(rect.height) + NoteType.rowPadding * 2)
     }
     func synchronize(_ text: String) {
         guard EditorSynchronization.receive(local: editor.string, committed: text, active: window?.isKeyWindow == true && window?.firstResponder === editor, marked: editor.hasMarkedText()) else { return }
@@ -729,7 +777,7 @@ final class CompletionButton: NSButton {
     }
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ dirtyRect: NSRect) {
-        let size = CGFloat(NoteMetrics.checkboxSize)
+        let size = NoteType.checkboxSize
         let rect = NSRect(x: ItemRow.circleInset, y: bounds.midY - size / 2, width: size, height: size)
         if state == .on {
             NoteTheme.checkboxFill.setFill(); NSBezierPath(ovalIn: rect).fill()

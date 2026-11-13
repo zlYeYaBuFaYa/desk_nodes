@@ -112,6 +112,28 @@ final class NoteActionsTests: XCTestCase {
         XCTAssertEqual(try store.notes(), originalNotes)
         XCTAssertEqual(try store.items(in: note.id, includeDeleted: true), originalItems)
     }
+    func testBatchDeleteIsOneUndoEntryAndRollsBackOnFailure() throws {
+        let a = try actions.createNote(), b = try actions.createNote(), c = try actions.createNote()
+        let before = try store.notes()
+        try actions.deleteNotes([a.id, b.id])
+        XCTAssertEqual(try store.notes().map(\.id), [c.id])
+        XCTAssertEqual(actions.recoverableDeletionCount, 1)
+        XCTAssertEqual(actions.latestDeletedNoteCount, 2)
+        XCTAssertEqual(Set(try actions.recentlyDeleted().notes.map(\.note.id)), [a.id, b.id], "listed one by one")
+        XCTAssertTrue(try actions.undoDeletion())
+        XCTAssertEqual(try store.notes(), before)
+        XCTAssertFalse(actions.canUndoDeletion)
+        // A missing note fails the whole batch: nothing is deleted, no undo entry is added.
+        XCTAssertThrowsError(try actions.deleteNotes([a.id, NoteID()]))
+        XCTAssertEqual(try store.notes(), before)
+        XCTAssertFalse(actions.canUndoDeletion)
+        // Restoring one note from 最近删除 leaves the rest of the batch undoable.
+        try actions.deleteNotes([a.id, b.id, c.id])
+        try actions.restoreDeletedNote(b.id)
+        XCTAssertEqual(actions.latestDeletedNoteCount, 2)
+        XCTAssertTrue(try actions.undoDeletion())
+        XCTAssertEqual(try store.notes(), before)
+    }
     func testExpiryAtFiveSecondsAndNoResurrection() throws {
         let note = try actions.createNote()
         try actions.deleteNote(note.id)

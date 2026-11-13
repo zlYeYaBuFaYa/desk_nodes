@@ -10,6 +10,22 @@ extension NSColor {
     }
 }
 
+/// Note type and row metrics at the current 文字大小. Read live: a change applies on each
+/// card's `applyTextSize()` and next layout. Standard equals the `NoteMetrics` values.
+enum NoteType {
+    static var size = NoteTextSize.standard
+    static var titleSize: CGFloat { CGFloat(size.titleSize) }
+    static var itemSize: CGFloat { CGFloat(size.itemSize) }
+    static var secondarySize: CGFloat { CGFloat(size.secondarySize) }
+    static var rowHeight: CGFloat { CGFloat(size.scaled(NoteMetrics.rowHeight)) }
+    static var lineHeight: CGFloat { CGFloat(size.scaled(NoteMetrics.lineHeight)) }
+    static var rowPadding: CGFloat { (rowHeight - lineHeight) / 2 }
+    static var checkboxSize: CGFloat { CGFloat(size.scaled(NoteMetrics.checkboxSize)) }
+    static var checkboxGap: CGFloat { CGFloat(size.scaled(NoteMetrics.checkboxGap)) }
+    static var headerHeight: CGFloat { CGFloat(size.scaled(NoteMetrics.headerHeight)) }
+    static var footerHeight: CGFloat { CGFloat(size.scaled(NoteMetrics.footerHeight)) }
+}
+
 enum NoteTheme {
     static func dynamic(_ light: String, _ dark: String) -> NSColor {
         NSColor(name: nil) { appearance in
@@ -19,7 +35,7 @@ enum NoteTheme {
     static let primary = dynamic(NoteInk.primaryLight, NoteInk.primaryDark)
     static let secondary = dynamic(NoteInk.secondaryLight, NoteInk.secondaryDark)
     static let completed = dynamic(NoteInk.completedLight, NoteInk.completedDark)
-    /// Low-saturation sage: completion fill, selection outline and the undo action.
+    /// Low-saturation sage: completion fill and the undo action.
     static let accent = dynamic("6E9A68", "8DB887")
     static let checkboxFill = accent
     static let checkboxBorder = NSColor(name: nil) { appearance in
@@ -36,9 +52,9 @@ enum NoteTheme {
             ? NSColor(sRGBHex: NoteInk.secondaryDark).withAlphaComponent(0.55)
             : NSColor(sRGBHex: NoteInk.secondaryLight).withAlphaComponent(0.5)
     }
-    static let selection = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(sRGBHex: "8DB887").withAlphaComponent(0.85) : NSColor(sRGBHex: "8FB487")
+    /// Selection outline in the note's own hue; faded while another app is active.
+    static func selection(_ palette: NotePalette, active: Bool) -> NSColor {
+        dynamic(palette.selectionLightHex, palette.selectionDarkHex).withAlphaComponent(active ? 1 : 0.45)
     }
     static let hairline = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua

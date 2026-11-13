@@ -61,6 +61,22 @@ final class NoteSurfaces {
         selectionChanged()
     }
 
+    /// Batch selection: nil outside it, otherwise the picked notes.
+    private(set) var picked: Set<NoteID>?
+    var pickedChanged: () -> Void = {}
+    func setPicked(_ ids: Set<NoteID>?) {
+        let ids = ids.map { $0.filter { panels[$0] != nil } }
+        guard ids != picked else { return }
+        picked = ids
+        for (key, panel) in panels { (panel.contentView as? NoteCardView)?.picked = ids.map { $0.contains(key) } }
+        pickedChanged()
+    }
+    /// Notes on screen now: not hidden by collapse, an arrangement page or a dock overflow.
+    var pickable: [NoteID: NotePanel] { panels.filter { !$0.value.suppressed && $0.value.isVisible } }
+    /// Press routing and the "选择多张…" menu item, wired by the owner.
+    var pickPress: (NSEvent, NoteID) -> Bool = { _, _ in false }
+    var pickMany: (NoteID) -> Void = { _ in }
+
     init(actions: NoteActions, changed: @escaping () -> Void, undo: @escaping () -> Bool,
          canMutate: @escaping () -> Bool, failure: @escaping (Error) -> Void) {
         self.actions = actions; self.changed = changed; self.undo = undo
@@ -84,6 +100,7 @@ final class NoteSurfaces {
             panels.removeValue(forKey: id)?.dismissNote()
             rendered[id] = nil; pass.removed.insert(id)
             if selection == id { selection = nil; selectionChanged() }
+            if picked?.contains(id) == true { picked?.remove(id); pickedChanged() }
         }
         let visible = NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
         for (index, note) in notes.enumerated() {
@@ -100,10 +117,13 @@ final class NoteSurfaces {
                 panel.deletionUndo = undo
                 let id = note.id
                 panel.pressed = { [weak self] in self?.select(id) }
+                panel.pickPress = { [weak self] event in self?.pickPress(event, id) ?? false }
                 panel.suppressed = hidden(id)
                 let card = NoteCardView(note: note, actions: actions, changed: changed,
                                         undoDelete: undo, failure: failure, items: state.items)
                 card.canMutate = canMutate
+                card.pickMany = { [weak self] in self?.pickMany(id) }
+                card.picked = picked.map { $0.contains(id) }
                 panel.contentView = card
                 panels[note.id] = panel
                 state = Rendered(note: try configure(panel, note: note), items: state.items); panel.showNote()
@@ -153,8 +173,8 @@ final class NoteSurfaces {
     }
     /// Import replaces every identity: cards must already be invalidated by the caller.
     func discardAll() {
-        for panel in panels.values { panel.undoManager?.removeAllActions(); panel.pressed = nil; panel.close() }
-        panels = [:]; rendered = [:]; modes = WindowModes(); selection = nil
+        for panel in panels.values { panel.undoManager?.removeAllActions(); panel.pressed = nil; panel.pickPress = nil; panel.close() }
+        panels = [:]; rendered = [:]; modes = WindowModes(); selection = nil; picked = nil
     }
 }
 
