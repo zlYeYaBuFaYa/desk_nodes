@@ -45,7 +45,7 @@ assert offset == len(icon) and found == set(slots)
 png((root/'Resources/DeskNodes-icon.png').read_bytes(),512)
 assert 'cp Resources/DeskNodes.icns "$app_path/Contents/Resources/DeskNodes.icns"' in read('scripts/build-macos.sh')
 card = read('Sources/DeskNodesApp/NotePanel.swift')
-for text in ['＋ 添加事项','pinIndicator','便签标题（可选）','NSAccessibilityCustomAction','便签菜单','（当前）','remove.setAccessibilityLabel("删除事项")']:
+for text in ['＋ 添加事项','pinIndicator','便签标题（可选）','NSAccessibilityCustomAction','便签菜单','（当前）','RowActionButton(symbol: "xmark", label: "删除事项"']:
     assert text in card, text
 assert 'guard !invalidated, canMutate()' in card
 assert 'canMutate() != false' in read('Sources/DeskNodesApp/WindowChrome.swift')
@@ -62,7 +62,7 @@ for name in ['README.md', 'REQUIREMENTS.md', 'TECHNICAL_DESIGN.md', 'UI_SPEC.md'
     assert document.startswith('# '), name
 prototype = read('docs/UI_PROTOTYPE.html')
 assert '<html lang="zh-CN">' in prototype
-for scene in ['desktop', 'reveal', 'history', 'deleted', 'settings']:
+for scene in ['desktop', 'peek', 'history', 'deleted', 'settings']:
     assert f'data-scene="{scene}"' in prototype, scene
 assert '<script src=' not in prototype
 print('N10 resource/source/current documentation checks passed; no Mac acceptance implied.')

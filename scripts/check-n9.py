@@ -15,20 +15,20 @@ def check(value):
     global count
     assert value
     count += 1
-for label in ['通用', '停靠条', '边缘唤出', '快捷键', '数据', '每天跨天时间', '停靠位置', '显示在', '唤出边', '新建便签', '备份（JSON）', '导入…', '导出…']:
+for label in ['通用', '停靠条', '快捷键', '数据', '每天跨天时间', '停靠位置', '显示在', '新建便签', '浮起便签', '备份（JSON）', '导入…', '导出…']:
     check(label in settings and label in prototype)
 for value in ['NSOpenPanel()', 'NSSavePanel()', 'Store.validateBackup', '.alertSecondButtonReturn', 'Data.write']:
     check(value in settings if value != 'Data.write' else 'data.write(to: url, options: .atomic)' in settings)
 check(settings.index('Store.validateBackup') < settings.index('alert.messageText = "替换全部本机数据？"') < settings.index('try importBackup(backup)'))
 check('.onChange(' not in settings) # Reload/import must not trigger preference writes.
 check('displayedComponents: .hourAndMinute' in settings) # full 00:00-23:59 range via one 24-hour time field
-check('无法读取 Dock 位置' in settings and '暂用主显示器' in settings)
+check('暂用主显示器' in settings and '边缘唤出' not in settings)
 for value in ['RegisterEventHotKey(', 'UnregisterEventHotKey(', 'InstallEventHandler(', 'RemoveEventHandler(', 'SMAppService.mainApp.register()', 'SMAppService.mainApp.unregister()', 'shouldAskForLogin', 'alert.runModal() == .alertSecondButtonReturn']:
     check(value in services)
 check(services.index('guard try store.preferences().shouldAskForLogin') < services.index('let alert = NSAlert()'))
 for value in ['invalidateAfterImport()', 'invalidateUndoAfterImport()', 'prepareForRemoval()', 'reloadHistoryIfVisible()', 'hasMarkedComposition', 'store.exportBackup', 'store.replace(with:', 'setActivationPolicy(.accessory)']:
     check(value in app)
-check('globalHotkey?.stop()' in app)
+check('globalHotkey?.stop()' in app and 'peekHotkey?.stop()' in app)
 check('guard !invalidated' in card and 'invalidated = true' in card)
 for field in ['notes', 'items', 'history', 'settings', 'preferences', 'checkpoint', 'pendingNotes', 'pendingItems']:
     check(f'var {field}:' in backup)
