@@ -44,7 +44,7 @@ open "$HOME/Applications/DeskNodes.app"
 
 ## 隔离验证
 
-手动验收或截图时，可用 `DESKNODES_DATA_DIR=/某个临时目录 build/DeskNodes.app/Contents/MacOS/DeskNodes` 启动：数据库与自动备份写入该目录，工具条位置、全局收起、全部置顶与整理分页写入独立的 `local.desknodes.native.verification` 偏好域，不读写个人数据。工具条位置、全局收起、全部置顶和整理分页属于本机展示偏好（UserDefaults），不进入 JSON 备份，导入备份也不会改变它们。
+手动验收或截图时，可用 `DESKNODES_DATA_DIR=/某个临时目录 build/DeskNodes.app/Contents/MacOS/DeskNodes` 启动：数据库与自动备份写入该目录，工具条位置、全局收起与整理分页写入独立的 `local.desknodes.native.verification` 偏好域，不读写个人数据。工具条位置、新建便签尺寸、全局收起和整理分页属于本机展示偏好（UserDefaults），不进入 JSON 备份，导入备份也不会改变它们。
 
 ## 备份与恢复
 

@@ -119,9 +119,9 @@ RefreshScope：`changes` 触及变化内容；`layout` 还重排停靠；`all` �
 
 ### 7.1 层级
 
-`WindowModes` 计算有效层级；`allTopmost`（持久）或 `peek`（会话）任一为真即为置顶。桌面层为 `desktopIconWindow + 1`，普通为 `.normal`，置顶为 `.floating`。全部便签加入所有 Space；仅有效置顶使用 `.fullScreenAuxiliary`，其余 `.fullScreenNone`。
+`WindowModes` 计算有效层级；`peek`（会话态）为真时全部为置顶，否则使用每张便签保存的层级。旧 `desk.topmost` 由 `retireGlobalTopmost()` 在启动时读取一次并删除。桌面层为 `desktopIconWindow + 1`，普通为 `.normal`，置顶为 `.floating`。全部便签加入所有 Space；仅有效置顶使用 `.fullScreenAuxiliary`，其余 `.fullScreenNone`。
 
-ToolbarPanel 是不获取 key 的 nonactivating 浮动 NSPanel；工具条和 StackHint 允许全屏辅助显示。浮起不新建窗口：激活应用、让便签成为 key，用应用内 keyDown 监听处理 Esc，用 `didResignActiveNotification` 检测离开；不用全局监听。设置、历史为普通窗口，禁止辅助全屏行为。状态栏／系统高优先级窗口不在“全部置顶”保证范围。
+ToolbarPanel 是不获取 key 的 nonactivating 浮动 NSPanel；工具条和 StackHint 允许全屏辅助显示。浮起不新建窗口：激活应用、让便签成为 key，用应用内 keyDown 监听处理 Esc，用 `didResignActiveNotification` 检测离开；不用全局监听。设置、历史为普通窗口，禁止辅助全屏行为。状态栏／系统高优先级窗口不在置顶层级保证范围。
 
 ### 7.2 几何职责
 
@@ -135,7 +135,7 @@ ToolbarPanel 是不获取 key 的 nonactivating 浮动 NSPanel；工具条和 St
 
 ### 7.3 UserDefaults
 
-`PresentationDefaults.swift` 保存：`desk.collapsed`、`desk.topmost`、`toolbar.place`（旧位置）、`toolbar.anchor`、`toolbar.orientation`、`toolbar.autoShrink`、`arrange.pages`、`arrange.page`。
+`PresentationDefaults.swift` 保存：`desk.collapsed`、`toolbar.place`（旧位置）、`toolbar.anchor`、`toolbar.orientation`、`toolbar.autoShrink`、`arrange.pages`、`arrange.page`。
 
 旧 toolbar.place 迁为自由锚点，不按距离自动认定吸边。自由锚点保存中心，吸边锚点保存边和圆心沿边合法范围内的比例；目标 frame 每次求解，不存动画进度。隔离验证使用 `local.desknodes.native.verification` 偏好域；不同验证目录仍共用该验证域。
 
