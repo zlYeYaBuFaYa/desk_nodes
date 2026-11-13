@@ -35,7 +35,7 @@ check('undoClicked() { _ = restoreDeletion() }' in reveal)
 check('restoreDeletion: { [weak self] in self?.undoDeletion() ?? false }' in application)
 for path in app.glob('*.swift'):
     text = path.read_text()
-    # docs/design/desknodes-color-and-topmost.md: the toolbar, its stack hint and
+    # docs/REQUIREMENTS.md (FR-09): the toolbar, its stack hint and
     # effectively topmost notes may also cover fullscreen apps.
     if path.name not in ('EdgeRevealController.swift', 'Toolbar.swift', 'WindowChrome.swift'):
         check('.fullScreenAuxiliary' not in text)

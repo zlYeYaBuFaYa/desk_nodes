@@ -9,7 +9,7 @@ services = read('Sources/DeskNodesApp/SystemServices.swift')
 backup = read('Sources/DeskNodesPersistence/Backup.swift')
 sqlite = read('Sources/DeskNodesPersistence/SQLite.swift')
 card = read('Sources/DeskNodesApp/NotePanel.swift')
-prototype = read('docs/spec/macos-native/prototypes/html/05-settings-window.html')
+prototype = read('docs/UI_PROTOTYPE.html')
 count = 0
 def check(value):
     global count

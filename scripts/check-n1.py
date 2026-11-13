@@ -14,13 +14,11 @@ def check(label, condition):
         raise AssertionError(label)
     print('PASS:', label)
 
-spec = read('docs/spec/macos-native/requirements.md')
+spec = read('docs/UI_SPEC.md')
 tokens = read('Sources/DeskNodesCore/DesignTokens.swift')
-pairs = re.findall(r'\|\s*(宣纸|柠黄|杏|樱|薰衣草|雾蓝|薄荷|石墨)\s*\|\s*#([A-F0-9]{6})\s*\|\s*#([A-F0-9]{6})', spec)
-check('eight authoritative palette rows', len(pairs) == 8)
-# 石墨 was retired by docs/design/desknodes-color-and-topmost.md; the other seven stay exact.
-check('石墨 is the retired last row', pairs[-1][0] == '石墨' and 'case paper, lemon, apricot, cherry, lavender, mist, mint\n' in tokens)
-pairs = pairs[:7]
+pairs = re.findall(r'- (宣纸|柠黄|杏|樱|薰衣草|雾蓝|薄荷) `[^`]+`：浅色 `#([A-F0-9]{6})`，深色 `#([A-F0-9]{6})`', spec)
+check('seven documented palette entries', len(pairs) == 7)
+check('seven current palette cases', 'case paper, lemon, apricot, cherry, lavender, mist, mint\n' in tokens)
 case_names = ['paper', 'lemon', 'apricot', 'cherry', 'lavender', 'mist', 'mint']
 sections = [tokens.split('public var ' + field + ': String {', 1)[1].split('\n    }', 1)[0]
             for field in ('name', 'lightHex', 'darkHex')]
@@ -29,10 +27,10 @@ for case_name, (name, light, dark) in zip(case_names, pairs):
         f'case .{case_name}: return "{value}"' in section
         for value, section in zip((name, light, dark), sections)))
 check('exactly fourteen palette hex literals', len(re.findall(r'return "[A-F0-9]{6}"', tokens)) == 14)
-proto = read('docs/spec/macos-native/prototypes/html/03-note-states-menu.html')
+proto = read('docs/UI_PROTOTYPE.html').upper()
 for hex_value in ('1F1F1F', 'EDEBE6', '5F5A52', 'B3ADA2', '6F6A61', 'A39D92'):
-    check(f'prototype 03 ink {hex_value}', f'#{hex_value}' in proto and f'"{hex_value}"' in tokens)
-# Card metrics follow docs/design/desknodes-desktop-redesign-prompt.md §9, which supersedes N1's.
+    check(f'current prototype ink {hex_value}', f'#{hex_value}' in proto and f'"{hex_value}"' in tokens)
+# Current note metrics are documented in docs/UI_SPEC.md.
 for key, value in [('width', 288), ('padding', 18), ('cornerRadius', 13), ('titleSize', 16),
                    ('itemSize', 14), ('rowHeight', 32), ('collapsedHeight', 32)]:
     check(f'metric {key}', f'let {key} = {value}.0' in tokens)

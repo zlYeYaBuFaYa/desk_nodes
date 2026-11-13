@@ -7,7 +7,8 @@ aux = (root / 'Sources/DeskNodesApp/AuxiliaryWindows.swift').read_text()
 app = (root / 'Sources/DeskNodesApp/Application.swift').read_text()
 store = (root / 'Sources/DeskNodesPersistence/Store.swift').read_text()
 model = (root / 'Sources/DeskNodesPersistence/History.swift').read_text()
-prototype = (root / 'docs/spec/macos-native/prototypes/html/04-history-window.html').read_text()
+prototype = (root / 'docs/UI_PROTOTYPE.html').read_text()
+ui_spec = (root / 'docs/UI_SPEC.md').read_text()
 count = 0
 def check(value):
     global count
@@ -18,7 +19,7 @@ for text in ['本月完成率', '已删除', '顺延到', '上个月', '下个�
 for text in ['width: 400', 'height: 46', 'width: 22, height: 3', 'size: 20', 'size: 24', 'cornerRadius: 9', 'spacing: 18', '.horizontal, 28', '.horizontal, 32']:
     check(text in view)
 for color in ['FBFAF8', 'EFEDE8', '2F2C27', '4F7A64', 'E4E1DA', '6B5A2E', 'F3E9C9']:
-    check(color in view and color in prototype)
+    check(color in view and color in ui_spec)
 for text in ['ScrollView', 'LazyVStack', 'note.historyTitle', 'note.deletedAt', 'item.deletedAt', 'item.historyCarryLabel', 'HistoryCompletion(snapshots: model.snapshots)', 'counts.rate == nil ? 0 : 1', '当天没有历史记录', '无法读取历史记录']:
     check(text in view)
 for text in ['TextField(', 'Toggle(', 'DatePicker(', 'Timer(', '.capture(', '.rollover(', 'WKWebView']:

@@ -3,7 +3,6 @@
 from pathlib import Path
 import plistlib
 import struct
-from n10_preservation import verify_protected_files
 import zlib
 
 root = Path(__file__).resolve().parents[1]
@@ -56,13 +55,14 @@ assert 'applicationShouldTerminate(_ sender:' in app and '.terminateCancel' in a
 assert 'toast?.dismiss()' in app
 assert 'toastDismissal' in read('Sources/DeskNodesApp/DeletionToast.swift')
 assert 'canMutate(), controls.indices' in read('Sources/DeskNodesApp/DockController.swift')
-# Review all five authoritative local artifacts; dimensions are PNG pixels (2× HTML canvas).
-for name, width, height in [('01-desktop-overview',2880,1800),('02-fullscreen-edge-reveal',2880,1800),
-                          ('03-note-states-menu',2880,1800),('04-history-window',2080,1400),('05-settings-window',1520,1240)]:
-    html = read(f'docs/spec/macos-native/prototypes/html/{name}.html')
-    data = (root/f'docs/spec/macos-native/prototypes/png/{name}.png').read_bytes()
-    assert struct.unpack_from('>II',data,16) == (width,height)
-    assert '<html lang="zh-CN">' in html and '<script' not in html
-# Content anchor survives cherry-pick/git-am and later followup commits.
-verify_protected_files(root)
-print('N10 resource/source/spec preservation checks passed; no Mac acceptance implied.')
+# The maintained documentation replaces the retired milestone/spec snapshots.
+for name in ['README.md', 'REQUIREMENTS.md', 'TECHNICAL_DESIGN.md', 'UI_SPEC.md',
+             'INTERACTIONS.md', 'ACCEPTANCE.md', 'native-build.md']:
+    document = read(f'docs/{name}')
+    assert document.startswith('# '), name
+prototype = read('docs/UI_PROTOTYPE.html')
+assert '<html lang="zh-CN">' in prototype
+for scene in ['desktop', 'reveal', 'history', 'deleted', 'settings']:
+    assert f'data-scene="{scene}"' in prototype, scene
+assert '<script src=' not in prototype
+print('N10 resource/source/current documentation checks passed; no Mac acceptance implied.')
