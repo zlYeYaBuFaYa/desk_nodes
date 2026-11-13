@@ -14,7 +14,7 @@ def check(value):
 # 浮起 lifts the real note windows; there is no second copy of any note.
 check(not (app / 'EdgeRevealController.swift').exists())
 check('modes.peek = peeking' in desk)
-check('if allTopmost || peek { return .topmost }' in (root / 'Sources/DeskNodesActions/WindowState.swift').read_text())
+check('if peek { return .topmost }' in (root / 'Sources/DeskNodesActions/WindowState.swift').read_text())
 # Leaving is Esc inside DeskNodes or switching apps; never a global event monitor.
 check('NSEvent.addLocalMonitorForEvents(matching: .keyDown)' in application)
 check('NSApplication.didResignActiveNotification' in application)
