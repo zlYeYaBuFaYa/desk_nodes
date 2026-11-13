@@ -19,11 +19,13 @@ struct DeskNodesApplication {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var topmostMenuItem: NSMenuItem?
+    private var peekMenuItem: NSMenuItem?
+    /// Esc while 浮起 is showing; installed only for its duration.
+    private var peekKeys: Any?
     private var statusItem: NSStatusItem?
     private var surfaces: NoteSurfaces?
     private var actions: NoteActions?
     private var docking: DockController?
-    private var reveal: EdgeRevealController?
     private var toast: DeletionToast?
     private var notice: NoticeToast?
     /// The resident toolbar and desktop-wide presentation; it replaces the old empty-state window.
@@ -36,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let auxiliary = AuxiliaryWindows()
     private let login = LoginService()
     private var globalHotkey: GlobalHotkey?
+    private var peekHotkey: GlobalHotkey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
@@ -46,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.image = symbol
         item.button?.toolTip = "DeskNodes"
         item.menu = makeStatusMenu()
+        item.menu?.delegate = self
         statusItem = item
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
@@ -56,13 +60,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 desk?.applyTopmost()
             }
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
-            if let actions {
-                reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
-                    undo: { [weak self] in self?.routeDeletionUndo() ?? false },
-                    restoreDeletion: { [weak self] in self?.undoDeletion() ?? false },
-                    canMutate: { [weak self] in self?.hasMarkedComposition == false },
-                    failure: { [weak self] in self?.report($0) })
-            }
             installRolloverScheduler()
             catchUpDay()
             try actions?.reconcileScreens(DockController.screens())
@@ -74,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) }
                     try globalHotkey?.apply(Hotkey(actions.store.preferences().hotkey), persist: {})
                 } catch { report(error) }
+                do { try bindPeek(actions.store.preferences().peekHotkey, persist: {}) } catch { report(error) }
                 do { try login.askOnFirstLaunch(store: actions.store) } catch { report(error, modal: true) }
             }
         } catch { report(error, modal: true) } // e.g. the database cannot be opened
@@ -108,7 +106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let result = try actions.store.rollover(using: calendar) {
                 if self.hasMarkedComposition { return false }
                 try self.surfaces?.flushEdits()
-                try self.reveal?.flushEdits()
                 return true
             }
             rolloverDeferred = result == .deferredEditing
@@ -126,13 +123,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var hasMarkedComposition: Bool {
-        reveal?.hasMarkedComposition == true || surfaces?.hasMarkedComposition == true
+        surfaces?.hasMarkedComposition == true
     }
     private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         add("新建便签", to: menu, action: #selector(createNote(_:)))
         add("显示工具条", to: menu, action: #selector(revealToolbar(_:)))
+        let peek = NSMenuItem(title: "浮起便签", action: #selector(togglePeek(_:)), keyEquivalent: "")
+        peek.target = self; menu.addItem(peek); peekMenuItem = peek
         let toggle = NSMenuItem(title: "全部置顶", action: #selector(toggleTopmost(_:)), keyEquivalent: "")
         toggle.target = self; menu.addItem(toggle); topmostMenuItem = toggle
         let dockMenu = NSMenuItem(title: "停靠", action: nil, keyEquivalent: "")
@@ -207,6 +206,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         catch { report(error) }
     }
     @objc private func revealToolbar(_ sender: Any?) { desk?.revealToolbar() }
+    @objc private func togglePeek(_ sender: Any?) { desk?.togglePeek() }
+
+    // MARK: 浮起
+
+    /// Entering activates DeskNodes so the lifted notes take clicks and keys at once.
+    /// Leaving is Esc, the toggle again, or switching to another app: no global monitor.
+    private func peekChanged(_ on: Bool) {
+        peekMenuItem?.title = on ? "放回便签" : "浮起便签"
+        if let peekKeys { NSEvent.removeMonitor(peekKeys); self.peekKeys = nil }
+        NotificationCenter.default.removeObserver(self, name: NSApplication.didResignActiveNotification, object: nil)
+        guard on else { return }
+        peekKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // Esc only from a note: settings recording, alerts and file panels keep their own Esc.
+            guard event.keyCode == 53, event.window is NotePanel, let self, !self.hasMarkedComposition else { return event }
+            self.desk?.endPeek(); return nil
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let panels = surfaces?.panels ?? [:]
+        let target = surfaces?.selection.flatMap { panels[$0] } ?? panels.values.first { !$0.suppressed && $0.isVisible }
+        target?.makeKeyAndOrderFront(nil)
+        // Observe only after activating, so the switch away from the previous app is not mistaken for leaving.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.desk?.peeking == true else { return }
+            NotificationCenter.default.addObserver(self, selector: #selector(self.leftPeek), name: NSApplication.didResignActiveNotification, object: nil)
+        }
+    }
+    @objc private func leftPeek() { desk?.endPeek() }
+    /// An empty shortcut leaves 浮起 to the toolbar and the menu.
+    private func bindPeek(_ value: String, persist: () throws -> Void) throws {
+        if peekHotkey == nil { peekHotkey = try GlobalHotkey { [weak self] in self?.desk?.togglePeek() } }
+        if value.isEmpty { try peekHotkey?.unbind(persist: persist) }
+        else { try peekHotkey?.apply(Hotkey(value), persist: persist) }
+    }
     /// Reconciles windows with the store; see `NoteSurfaces` for what each scope touches.
     private func refresh(_ scope: RefreshScope = .changes) {
         guard let surfaces else { return }
@@ -224,9 +256,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desk.canMutate = { [weak self] in self?.hasMarkedComposition == false }
         desk.failure = { [weak self] in self?.report($0) }
         desk.topmostChanged = { [weak self] on in self?.topmostMenuItem?.title = on ? "取消置顶" : "全部置顶" }
+        desk.peekChanged = { [weak self] on in self?.peekChanged(on) }
         desk.toolbar.perform = { [weak self] action in
             switch action {
             case .create: self?.createNote(nil)
+            case .peek: self?.desk?.togglePeek()
             case .arrange: self?.desk?.arrange()
             case .collapse: self?.desk?.toggleCollapse()
             case .topmost: self?.desk?.toggleTopmost()
@@ -246,9 +280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failure: { [weak self] in self?.report($0) })
         surfaces.layoutDock = { [weak self] panels, modes, changed, strips in
             self?.docking?.layout(panels: panels, modes: modes, changed: changed, strips: strips)
-        }
-        surfaces.refreshReveal = { [weak self] notes, items, changed in
-            self?.reveal?.refresh(notes, items: items, changed: changed)
         }
         return surfaces
     }
@@ -360,12 +391,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else { throw StoreError.closed }
                     if self.globalHotkey == nil { self.globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) } }
                     try self.globalHotkey?.apply(key, persist: persist)
+                }, peekHotkey: { [weak self] value, persist in
+                    guard let self else { throw StoreError.closed }
+                    try self.bindPeek(value, persist: persist)
                 }, export: { [weak self] in
                     guard let self else { throw StoreError.closed }
                     return try actions.store.exportBackup {
                         guard !self.hasMarkedComposition else { return false }
-                        try self.surfaces?.flushEdits()
-                        try self.reveal?.flushEdits(); return true
+                        try self.surfaces?.flushEdits(); return true
                     }
                 }, importBackup: { [weak self] backup in
                     guard let self else { throw StoreError.closed }
@@ -382,22 +415,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func importBackup(_ backup: ValidatedBackup) throws {
         guard let actions, !hasMarkedComposition else { throw StoreError.invalid("请先完成输入法组词，再导入备份") }
         if globalHotkey == nil { globalHotkey = try GlobalHotkey { [weak self] in self?.createNote(nil) } }
+        desk?.endPeek()
+        // The imported creation key may be today's 浮起 key: release 浮起 first.
+        let previousPeek = (try? actions.store.preferences().peekHotkey) ?? ""
+        try bindPeek("", persist: {})
         // A conflicting imported shortcut refuses the entire import. Failed replacement
         // retires the candidate only; old data/UI/binding remain usable.
-        try globalHotkey?.apply(Hotkey(backup.contents.preferences.hotkey)) {
-            try actions.store.replace(with: backup, confirmed: true, prepareEditing: { !self.hasMarkedComposition })
+        do {
+            try globalHotkey?.apply(Hotkey(backup.contents.preferences.hotkey)) {
+                try actions.store.replace(with: backup, confirmed: true, prepareEditing: { !self.hasMarkedComposition })
+            }
+        } catch {
+            try? bindPeek(previousPeek, persist: {})
+            throw error
         }
+        // The data is in; a 浮起 key another app holds is reported, not a failed import.
+        do { try bindPeek(backup.contents.preferences.peekHotkey, persist: {}) } catch { report(error) }
         // Invalidate even if imported IDs match. Relinquishing focus cannot flush old data.
         for card in surfaces?.cards ?? [] { card.prepareForRemoval() }
-        reveal?.invalidateAfterImport(); reveal = nil
         docking?.invalidateAfterImport()
         surfaces?.discardAll(); actions.invalidateUndoAfterImport()
         docking = makeDocking(actions)
         desk?.applyTopmost() // a Mac preference: import never changes it
-        reveal = EdgeRevealController(actions: actions, changed: { [weak self] in self?.refresh() },
-            undo: { [weak self] in self?.routeDeletionUndo() ?? false },
-            restoreDeletion: { [weak self] in self?.undoDeletion() ?? false },
-            canMutate: { [weak self] in self?.hasMarkedComposition == false }, failure: { [weak self] in self?.report($0) })
         rolloverDeferred = false
         refresh(.all); auxiliary.reloadHistoryIfVisible()
         // No autostart registration and no rollover/capture on import.
@@ -412,15 +451,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         do {
             try surfaces?.flushEdits()
-            try reveal?.flushEdits()
             return .terminateNow
         } catch { report(error); return .terminateCancel }
     }
     func applicationWillTerminate(_ notification: Notification) {
-        globalHotkey?.stop()
+        globalHotkey?.stop(); peekHotkey?.stop()
         expiryTimer?.invalidate()
         rolloverTimer?.invalidate()
-        reveal?.stop()
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         try? actions?.store.close()
@@ -430,5 +467,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 
 extension AppDelegate: NSMenuDelegate {
-    func menuNeedsUpdate(_ menu: NSMenu) { docking?.populateControls(menu) }
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        // The status menu itself only refreshes 浮起; its 停靠 submenu lists the strips.
+        if menu === statusItem?.menu {
+            peekMenuItem?.isEnabled = desk?.peeking == true || desk?.canPeek == true
+            return
+        }
+        docking?.populateControls(menu)
+    }
 }

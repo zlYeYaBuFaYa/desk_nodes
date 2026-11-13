@@ -136,7 +136,7 @@ private extension NativeBackup {
             if case let .free(_, x, y, w, h) = value { try require([x,y,w,h].allSatisfy(\.isFinite) && w > 0 && h > 0, "placement") }
         }
         try require((0...23).contains(settings.hour) && (0...59).contains(settings.minute), "rollover time")
-        _ = try Hotkey(preferences.hotkey)
+        try preferences.validate()
         try require(Set(notes.map(\.id)).count == notes.count && Set(items.map(\.id)).count == items.count && Set(history.map(\.day)).count == history.count, "duplicate identity")
         let noteMap = Dictionary(uniqueKeysWithValues: notes.map { ($0.id, $0) })
         let itemMap = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })

@@ -38,4 +38,18 @@ final class HotkeyTests: XCTestCase {
         binding.stop { retired.append($0) }; binding.stop { retired.append($0) }
         XCTAssertEqual(retired, [2,1,3]); XCTAssertNil(binding.binding)
     }
+    func testPeekShortcutDefaultsValidationAndLegacyPayloads() throws {
+        XCTAssertNoThrow(try NativePreferences().validate())
+        var same = NativePreferences(); same.peekHotkey = same.hotkey
+        XCTAssertThrowsError(try same.validate())
+        var cleared = NativePreferences(); cleared.peekHotkey = ""
+        XCTAssertNoThrow(try cleared.validate())
+        let legacy = try JSONDecoder().decode(NativePreferences.self, from: Data(#"{"hotkey":"Control+Option+N","loginDecision":"declined"}"#.utf8))
+        XCTAssertEqual(legacy.peekHotkey, NativePreferences.defaultPeekHotkey)
+        XCTAssertEqual(legacy.loginDecision, .declined)
+        // Someone already creating notes with the new default keeps it; 浮起 starts unbound.
+        let taken = try JSONDecoder().decode(NativePreferences.self, from: Data(#"{"hotkey":"Control+Option+F","loginDecision":"unasked"}"#.utf8))
+        XCTAssertEqual(taken.peekHotkey, "")
+        XCTAssertNoThrow(try taken.validate())
+    }
 }

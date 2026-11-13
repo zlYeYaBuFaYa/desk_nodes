@@ -4,9 +4,30 @@ import Foundation
 public enum LoginDecision: String, Codable, Sendable { case unasked, declined, requested }
 public struct NativePreferences: Codable, Equatable, Sendable {
     public var hotkey = "Control+Option+N"
+    /// "浮起": lifts every note in front until the user leaves. Empty means no shortcut.
+    public var peekHotkey = NativePreferences.defaultPeekHotkey
+    public static let defaultPeekHotkey = "Control+Option+F"
     public var loginDecision: LoginDecision = .unasked
     public init() {}
     public var shouldAskForLogin: Bool { loginDecision == .unasked }
+    /// Both shortcuts parse and differ; one key cannot do two things.
+    public func validate() throws {
+        let create = try Hotkey(hotkey)
+        guard !peekHotkey.isEmpty else { return }
+        guard try Hotkey(peekHotkey) != create else { throw StoreError.invalid("新建便签和浮起便签不能使用同一个快捷键") }
+    }
+}
+// Payloads and backups written before "浮起" have no peekHotkey; they get the default.
+extension NativePreferences {
+    private enum CodingKeys: String, CodingKey { case hotkey, peekHotkey, loginDecision }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hotkey = try c.decode(String.self, forKey: .hotkey)
+        loginDecision = try c.decode(LoginDecision.self, forKey: .loginDecision)
+        if let peek = try c.decodeIfPresent(String.self, forKey: .peekHotkey) { peekHotkey = peek }
+        // Someone may already create notes with the new default: leave 浮起 unbound instead.
+        else if (try? Hotkey(hotkey)) == (try? Hotkey(Self.defaultPeekHotkey)) { peekHotkey = "" }
+    }
 }
 
 /// Portable parser shared by persistence, Settings and the Carbon adapter.
@@ -60,12 +81,12 @@ extension Store {
         try locked {
             guard let value = try db.query("SELECT payload FROM native_preferences WHERE id=1").first?[0] else { throw StoreError.corrupt("native preferences") }
             let result = try JSONDecoder().decode(NativePreferences.self, from: Data(value.utf8))
-            _ = try Hotkey(result.hotkey)
+            try result.validate()
             return result
         }
     }
     public func update(_ preferences: NativePreferences) throws {
-        _ = try Hotkey(preferences.hotkey)
+        try preferences.validate()
         try transaction { _ in
             try db.run("UPDATE native_preferences SET payload=? WHERE id=1", [.text(String(decoding: try JSONEncoder().encode(preferences), as: UTF8.self))])
         }

@@ -78,7 +78,7 @@ final class NoticeToast: NSPanel {
     init(closed: @escaping () -> Void) {
         self.closed = closed
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenNone] // only the reveal panel may cover fullscreen apps
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenNone] // only the toolbar and topmost notes cover fullscreen apps
         level = .floating
         isReleasedWhenClosed = false; isOpaque = false; backgroundColor = .clear; hasShadow = true
         let view = ToastSurface(frame: .zero)

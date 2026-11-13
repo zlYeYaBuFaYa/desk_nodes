@@ -28,9 +28,11 @@ public struct NoteFrame: Equatable, Sendable {
 /// above the desktop while editing without floating over other applications.
 public struct WindowModes {
     public var allTopmost = false
+    /// "浮起": a temporary all-topmost that is never saved.
+    public var peek = false
     public init() {}
     public func effective(_ choice: WindowLevel, temporarilyRaised: Bool = false) -> WindowLevel {
-        if allTopmost { return .topmost }
+        if allTopmost || peek { return .topmost }
         return choice == .desktop && temporarilyRaised ? .ordinary : choice
     }
     public static func collapsedTitle(_ title: String?, firstItem: String?) -> String {

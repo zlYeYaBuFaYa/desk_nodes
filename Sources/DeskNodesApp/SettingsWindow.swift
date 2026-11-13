@@ -12,6 +12,8 @@ final class SettingsPresentation: ObservableObject {
     let login: LoginService
     let changed: () -> Void
     let hotkey: (Hotkey, () throws -> Void) throws -> Void
+    /// "" unbinds 浮起.
+    let peekHotkey: (String, () throws -> Void) throws -> Void
     let export: () throws -> Data
     let importBackup: (ValidatedBackup) throws -> Void
     let canImport: () -> Bool
@@ -28,22 +30,24 @@ final class SettingsPresentation: ObservableObject {
     @Published var settings = Settings()
     @Published var preferences = NativePreferences()
     @Published var shortcut = "Control+Option+N"
+    @Published var peekShortcut = NativePreferences.defaultPeekHotkey
     @Published var message: String?
     @Published var loginEnabled = false
     @Published var loginExplanation = ""
-    @Published var dockExplanation = ""
     @Published var displays: [(String, String)] = []
-    @Published private(set) var recording = false
+    enum ShortcutTarget { case create, peek }
+    @Published private(set) var recording: ShortcutTarget?
     private var recorder: Any?
     init(actions: NoteActions, login: LoginService, changed: @escaping () -> Void,
          hotkey: @escaping (Hotkey, () throws -> Void) throws -> Void,
+         peekHotkey: @escaping (String, () throws -> Void) throws -> Void = { _, persist in try persist() },
          export: @escaping () throws -> Data, importBackup: @escaping (ValidatedBackup) throws -> Void,
          canImport: @escaping () -> Bool = { true },
          toolbar: @escaping (ToolbarOrientation, Int) -> Void = { _, _ in },
          toolbarCurrent: @escaping () -> (ToolbarOrientation, Int) = { (.vertical, ToolbarMetrics.defaultAutoShrink) },
          presentation: PresentationDefaults? = nil) {
         self.actions = actions; self.login = login; self.changed = changed
-        self.hotkey = hotkey; self.export = export; self.importBackup = importBackup; self.canImport = canImport
+        self.hotkey = hotkey; self.peekHotkey = peekHotkey; self.export = export; self.importBackup = importBackup; self.canImport = canImport
         self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent; self.presentation = presentation ?? .standard()
         reload()
     }
@@ -53,14 +57,10 @@ final class SettingsPresentation: ObservableObject {
         noteWidth = size.width; noteHeight = size.height ?? 0
         do {
             settings = try actions.store.settings(); preferences = try actions.store.preferences()
-            shortcut = preferences.hotkey
+            shortcut = preferences.hotkey; peekShortcut = preferences.peekHotkey
             displays = zip(DockController.screens(), NSScreen.screens).compactMap { screen, native in
                 screen.persistentID.map { ($0, native.localizedName) }
             }
-            let orientation = UserDefaults(suiteName: "com.apple.dock")?.string(forKey: "orientation")
-            let side = settings.edgePreference.resolved(dock: orientation) == .left ? "左侧" : "右侧"
-            let dock = ["bottom":"底部", "left":"左侧", "right":"右侧"][orientation ?? ""]
-            dockExplanation = dock.map { "Dock 在屏幕\($0)，当前使用\(side)。" } ?? "无法读取 Dock 位置；自动模式回退到右侧。当前使用\(side)。"
             if let id = settings.displayID, !displays.contains(where: { $0.0 == id }) {
                 displays.append((id, "不可用显示器（暂用主显示器）"))
             }
@@ -83,14 +83,25 @@ final class SettingsPresentation: ObservableObject {
         perform {
             let parsed = try Hotkey(shortcut)
             var updated = try actions.store.preferences(); updated.hotkey = parsed.canonical
+            try updated.validate()
             try hotkey(parsed) { try self.actions.store.update(updated) }
             preferences = updated; shortcut = updated.hotkey
         }
     }
+    /// Binds 浮起 to `peekShortcut`; an empty value removes the shortcut.
+    func savePeekHotkey() {
+        perform {
+            var updated = try actions.store.preferences()
+            updated.peekHotkey = peekShortcut.isEmpty ? "" : try Hotkey(peekShortcut).canonical
+            try updated.validate()
+            try peekHotkey(updated.peekHotkey) { try self.actions.store.update(updated) }
+            preferences = updated; peekShortcut = updated.peekHotkey
+        }
+    }
     /// Captures the next key press as the shortcut. Esc cancels; unsupported keys explain why.
-    func startRecording() {
-        guard !recording else { return }
-        recording = true; message = nil
+    func startRecording(_ target: ShortcutTarget) {
+        guard recording == nil else { return }
+        recording = target; message = nil
         recorder = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             if event.keyCode == 53 { self.stopRecording(); return nil } // Esc
@@ -98,14 +109,20 @@ final class SettingsPresentation: ObservableObject {
                 self.message = "只支持字母、数字或 Space，并需包含 Control 或 Command。"; return nil
             }
             self.stopRecording()
-            self.shortcut = text; self.saveHotkey()
-            if self.message != nil { self.shortcut = self.preferences.hotkey } // rejected: show the kept binding
+            // Rejected: show the kept binding.
+            if target == .create {
+                self.shortcut = text; self.saveHotkey()
+                if self.message != nil { self.shortcut = self.preferences.hotkey }
+            } else {
+                self.peekShortcut = text; self.savePeekHotkey()
+                if self.message != nil { self.peekShortcut = self.preferences.peekHotkey }
+            }
             return nil
         }
     }
     func stopRecording() {
         if let recorder { NSEvent.removeMonitor(recorder) }
-        recorder = nil; recording = false
+        recorder = nil; recording = nil
     }
     var rolloverTime: Date {
         get { Calendar.current.date(from: DateComponents(hour: settings.rolloverHour, minute: settings.rolloverMinute)) ?? Date() }
@@ -166,6 +183,21 @@ struct SettingsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
         }
     }
+    private func shortcutRow(_ title: String, value: String, target: SettingsPresentation.ShortcutTarget,
+                             @ViewBuilder extra: () -> some View = { EmptyView() }) -> some View {
+        row(title) {
+            let active = model.recording == target
+            Text(active ? "请按下新快捷键（Esc 取消）" : value.isEmpty ? "未设置" : ShortcutText.symbols(value))
+                .font(.system(size: 13, weight: .medium)).monospaced()
+                .foregroundStyle(active || value.isEmpty ? .secondary : .primary)
+                .frame(minWidth: 200, alignment: .trailing)
+                .accessibilityLabel("\(title)快捷键：\(value.isEmpty ? "未设置" : value)")
+            Button(active ? "取消" : "录制…") {
+                active ? model.stopRecording() : model.startRecording(target)
+            }.disabled(model.recording != nil && !active)
+            extra()
+        }
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -203,16 +235,6 @@ struct SettingsView: View {
                         }.labelsHidden().frame(width: 240)
                     }
                 }
-                group("边缘唤出") {
-                    row("唤出边") {
-                        Picker("唤出边", selection: Binding(get: { model.settings.edgePreference }, set: {
-                            model.settings.edgePreference = $0; model.saveSettings()
-                        })) {
-                            Text("自动").tag(EdgePreference.automatic); Text("左侧").tag(EdgePreference.left); Text("右侧").tag(EdgePreference.right)
-                        }.labelsHidden().pickerStyle(.segmented).frame(width: 220)
-                    }
-                }
-                Text(model.dockExplanation).font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("工具条") {
                     row("排列方向") {
                         Picker("排列方向", selection: Binding(get: { model.toolbarOrientation }, set: {
@@ -252,17 +274,15 @@ struct SettingsView: View {
                 Text("只影响之后新建的便签，单位为点。「随内容」会随事项增多自动变高；固定高度可在便签菜单里改回「随内容调整高度」。")
                     .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("快捷键") {
-                    row("新建便签") {
-                        Text(model.recording ? "请按下新快捷键（Esc 取消）" : ShortcutText.symbols(model.shortcut))
-                            .font(.system(size: 13, weight: .medium)).monospaced()
-                            .foregroundStyle(model.recording ? .secondary : .primary)
-                            .frame(minWidth: 200, alignment: .trailing)
-                            .accessibilityLabel("新建便签快捷键：\(model.shortcut)")
-                        Button(model.recording ? "取消" : "录制…") {
-                            model.recording ? model.stopRecording() : model.startRecording()
-                        }
+                    shortcutRow("新建便签", value: model.shortcut, target: .create)
+                    Divider()
+                    shortcutRow("浮起便签", value: model.peekShortcut, target: .peek) {
+                        Button("清除") { model.peekShortcut = ""; model.savePeekHotkey() }
+                            .disabled(model.peekShortcut.isEmpty || model.recording != nil)
                     }
                 }
+                Text("浮起：把全部便签临时浮到最前，包括全屏应用；按 Esc、再按一次或切换到其他应用即放回。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("数据") {
                     row("备份（JSON）") {
                         Button("导入…") { model.importFile() }; Button("导出…") { model.exportFile() }

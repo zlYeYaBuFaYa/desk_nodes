@@ -21,7 +21,9 @@ enum HotkeyKeyCodes {
 final class GlobalHotkey {
     private let binding = HotkeyBinding<EventHotKeyRef>()
     private var handler: EventHandlerRef?
-    private var serial: UInt32 = 0
+    /// Shared by every instance: each handler sees every DeskNodes hotkey and must only
+    /// claim its own, so two instances may never hand out the same id.
+    private static var serial: UInt32 = 0
     private var activeID: UInt32 = 0
     private let action: () -> Void
     init(action: @escaping () -> Void) throws {
@@ -44,7 +46,7 @@ final class GlobalHotkey {
     func apply(_ shortcut: Hotkey, persist: () throws -> Void) throws {
         var candidateID = activeID
         try binding.replace(shortcut, register: { key in
-            self.serial &+= 1; candidateID = self.serial
+            Self.serial &+= 1; candidateID = Self.serial
             guard let code = HotkeyKeyCodes.codes[key.key] else { throw StoreError.invalid("不支持的按键") }
             var modifiers: UInt32 = 0
             for (name, value) in [("Control", controlKey), ("Option", optionKey), ("Shift", shiftKey), ("Command", cmdKey)] where key.modifiers.contains(name) { modifiers |= UInt32(value) }
@@ -54,6 +56,12 @@ final class GlobalHotkey {
             return reference
         }, persist: persist, unregister: { _ = UnregisterEventHotKey($0) })
         activeID = candidateID
+    }
+    /// Releases the shortcut but keeps the handler, so a later `apply` can bind again.
+    func unbind(persist: () throws -> Void) throws {
+        try persist()
+        binding.stop { _ = UnregisterEventHotKey($0) }
+        activeID = 0
     }
     func stop() {
         binding.stop { _ = UnregisterEventHotKey($0) }

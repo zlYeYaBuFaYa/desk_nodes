@@ -44,8 +44,6 @@ final class NoteSurfaces {
     private let failure: (Error) -> Void
     /// Dock strips and free-panel clamping. `changed == nil` means every free panel.
     var layoutDock: (_ panels: [NoteID: NotePanel], _ modes: WindowModes, _ changed: Set<NoteID>?, _ strips: Bool) -> Void = { _, _, _, _ in }
-    /// The fullscreen reveal copies. `changed == nil` means every card.
-    var refreshReveal: (_ notes: [Note], _ items: [NoteID: [Item]], _ changed: Set<NoteID>?) -> Void = { _, _, _ in }
     /// Screens used for automatic-height limits; injectable for tests.
     var screens: () -> [DockScreen] = { DockController.screens() }
     /// Global collapse / inactive page. Consulted before a new panel is first shown;
@@ -118,7 +116,6 @@ final class NoteSurfaces {
         pass.stripsLaidOut = strips
         let changedIDs: Set<NoteID>? = scope == .all ? nil : pass.touched
         if strips || !pass.touched.isEmpty { layoutDock(panels, modes, changedIDs, strips) }
-        refreshReveal(notes, items, changedIDs)
         return (notes, pass)
     }
 

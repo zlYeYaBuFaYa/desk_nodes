@@ -10,7 +10,6 @@ final class NoteSurfacesTests: XCTestCase {
     private var actions: NoteActions!
     private var surfaces: NoteSurfaces!
     private var dockCalls: [(changed: Set<NoteID>?, strips: Bool)] = []
-    private var revealCalls: [Set<NoteID>?] = []
 
     @MainActor override func setUpWithError() throws {
         _ = NSApplication.shared
@@ -18,7 +17,6 @@ final class NoteSurfacesTests: XCTestCase {
         store = try Store(url: url); actions = NoteActions(store: store)
         surfaces = NoteSurfaces(actions: actions, changed: {}, undo: { false }, canMutate: { true }, failure: { XCTFail("\($0)") })
         surfaces.layoutDock = { [unowned self] _, _, changed, strips in dockCalls.append((changed, strips)) }
-        surfaces.refreshReveal = { [unowned self] _, _, changed in revealCalls.append(changed) }
     }
     @MainActor override func tearDownWithError() throws {
         surfaces.discardAll(); try store.close()
@@ -37,7 +35,6 @@ final class NoteSurfacesTests: XCTestCase {
         XCTAssertTrue(pass.touched.isEmpty && pass.removed.isEmpty)
         XCTAssertFalse(pass.stripsLaidOut)
         XCTAssertTrue(dockCalls.isEmpty, "no dock work when nothing changed")
-        XCTAssertEqual(revealCalls.last, .some([]), "reveal only re-lays out its cards")
     }
 
     @MainActor func testEditingOneNoteRefreshesOnlyThatNoteAndKeepsEditors() throws {
@@ -51,7 +48,6 @@ final class NoteSurfacesTests: XCTestCase {
         XCTAssertEqual(pass.updated, [a.id])
         XCTAssertEqual(dockCalls.count, 1)
         XCTAssertEqual(dockCalls[0].changed, [a.id]); XCTAssertFalse(dockCalls[0].strips, "free note: strips untouched")
-        XCTAssertEqual(revealCalls.last, .some([a.id]))
         XCTAssertTrue(zip(editors(a.id), editorsA).allSatisfy { $0 === $1 }, "editors are never replaced")
         XCTAssertTrue(zip(editors(b.id), editorsB).allSatisfy { $0 === $1 })
         XCTAssertEqual(editors(a.id).first?.string, "新的内容")

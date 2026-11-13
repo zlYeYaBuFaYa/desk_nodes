@@ -101,7 +101,6 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private let scroll = NSScrollView()
     private var rows: [ItemID: ItemRow] = [:]
     private var note: Note
-    private let reveal: Bool
     var canMutate: () -> Bool = { true }
     private var invalidated = false
     private var hovering = false
@@ -119,10 +118,9 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     private var saveWork: DispatchWorkItem?
     override var isFlipped: Bool { true }
     init(note: Note, actions: NoteActions, changed: @escaping () -> Void,
-         undoDelete: @escaping () -> Bool, failure: @escaping (Error) -> Void, reveal: Bool = false,
+         undoDelete: @escaping () -> Bool, failure: @escaping (Error) -> Void,
          items: [Item]? = nil) {
         self.note = note
-        self.reveal = reveal
         id = note.id; self.actions = actions; self.changed = changed
         self.undoDelete = undoDelete; self.failure = failure
         super.init(frame: .zero)
@@ -180,20 +178,19 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     override func layout() {
         super.layout()
         let padding = CGFloat(NoteMetrics.padding)
-        let compact = !reveal && note.collapsed
-        // Folded notes and the fullscreen copies have no grip row; "更多" shares the count slot.
-        let inlineMore = compact || reveal
-        let headerHeight = compact ? bounds.height : CGFloat(reveal ? 42 : NoteMetrics.headerHeight)
+        let compact = note.collapsed
+        // Folded notes have no grip row; "更多" shares the count slot.
+        let inlineMore = compact
+        let headerHeight = compact ? bounds.height : CGFloat(NoteMetrics.headerHeight)
         header.frame = NSRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
         header.showsGrip = !inlineMore
-        header.isHidden = reveal
         titleEditor.isHidden = compact
         collapsedLabel.isHidden = !compact
         scroll.isHidden = compact
-        let footer = !reveal && !compact
+        let footer = !compact
         addButton.isHidden = !footer; separator.isHidden = !footer
-        grip.isHidden = reveal || compact || !hovering || (window as? NotePanel)?.docked == true
-        let titleY: CGFloat = compact ? (bounds.height - 22) / 2 : (reveal ? 10 : 18)
+        grip.isHidden = compact || !hovering || (window as? NotePanel)?.docked == true
+        let titleY: CGFloat = compact ? (bounds.height - 22) / 2 : 18
         let countWidth = max(32, ceil(count.attributedStringValue.size().width) + 2)
         count.frame = NSRect(x: bounds.width - padding - countWidth, y: titleY + 3, width: countWidth, height: 16)
         count.isHidden = inlineMore && hovering
@@ -235,10 +232,10 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     var titleFrame: NSRect { titleEditor.frame }
     private var isDocked: Bool { if case .dock = note.placement { return true }; return false }
     func preferredHeight(width: CGFloat) -> Double {
-        let compact = !reveal && note.collapsed
-        let header = reveal ? 42 : CGFloat(NoteMetrics.headerHeight)
+        let compact = note.collapsed
+        let header = CGFloat(NoteMetrics.headerHeight)
         let rows = orderedRows.reduce(CGFloat(0)) { $0 + $1.fittingHeight(width: width - listX - 8) }
-        return Double(compact ? CGFloat(NoteMetrics.collapsedHeight) : header + rows + bottomInset(footer: !reveal))
+        return Double(compact ? CGFloat(NoteMetrics.collapsedHeight) : header + rows + bottomInset(footer: true))
     }
     /// `preloaded` comes from a batched refresh; nil reads this note's rows itself.
     func refresh(_ note: Note, items preloaded: [Item]? = nil) {
@@ -282,8 +279,8 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
             setAccessibilityLabel("便签：" + (collapsedLabel.stringValue.isEmpty ? "无标题" : collapsedLabel.stringValue))
             // Struck-out items were dropped, so they leave the progress count.
             let done = items.filter(\.completed).count, total = items.filter { !$0.struck }.count
-            setAccessibilityValue("完成 \(done) / \(total)" + (note.collapsed && !reveal ? "，已折叠" : ""))
-            layer?.cornerRadius = !reveal && note.collapsed ? NoteMetrics.collapsedCornerRadius : NoteMetrics.cornerRadius
+            setAccessibilityValue("完成 \(done) / \(total)" + (note.collapsed ? "，已折叠" : ""))
+            layer?.cornerRadius = note.collapsed ? NoteMetrics.collapsedCornerRadius : NoteMetrics.cornerRadius
             count.stringValue = "\(done) / \(total)"
             count.setAccessibilityLabel("已完成 \(done) 项，共 \(total) 项")
             needsLayout = true; colors()
@@ -371,14 +368,13 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         for (index, title) in ["停靠到顶部", "停靠到左侧", "停靠到右侧", "移出停靠条"].enumerated() {
             let item = NSMenuItem(title: title, action: #selector(docking(_:)), keyEquivalent: "")
             item.target = self; item.tag = index
-            item.isEnabled = !reveal
-            if index == 3 { item.isEnabled = !reveal && (window as? NotePanel)?.docked == true }
+            if index == 3 { item.isEnabled = (window as? NotePanel)?.docked == true }
             menu.addItem(item)
         }
         menu.addItem(.separator())
         let pinItem = NSMenuItem(title: note.level == .topmost ? "取消置顶" : "置顶", action: #selector(pin), keyEquivalent: "")
         pinItem.target = self; menu.addItem(pinItem)
-        let folding = note.collapsed ? (reveal ? "展开桌面便签" : "展开") : (reveal ? "折叠桌面便签" : "折叠")
+        let folding = note.collapsed ? "展开" : "折叠"
         for (title, selector) in [(folding, #selector(collapse)),
                                   ("随内容调整高度", #selector(autoHeight)), ("添加事项", #selector(addItem)), ("删除便签", #selector(deleteNote))] {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
@@ -559,8 +555,8 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     let editor: NoteTextView
     let check = CompletionButton(done: false)
     private let textScroll = NSScrollView()
-    private let remove = NSButton()
-    private let strikeButton = NSButton()
+    private let remove = RowActionButton(symbol: "xmark", label: "删除事项", destructive: true)
+    private let strikeButton = RowActionButton(symbol: "minus.circle", label: "划掉事项")
     private var struck = false
     private let handle = NSTextField(labelWithString: "⠿")
     override var isFlipped: Bool { true }
@@ -570,15 +566,9 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         self.item = item; self.owner = owner; editor = NoteTextView(text: item.text, centredLines: true)
         super.init(frame: .zero)
         check.target = self; check.action = #selector(toggle)
-        remove.target = self; remove.action = #selector(deleteItem); remove.isBordered = false
-        remove.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "删除事项")?
-            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
-        remove.contentTintColor = NoteTheme.tertiary
-        remove.setAccessibilityLabel("删除事项")
-        remove.toolTip = "删除事项"
-        strikeButton.target = self; strikeButton.action = #selector(strike); strikeButton.isBordered = false
-        strikeButton.contentTintColor = NoteTheme.tertiary
-        handle.textColor = NoteTheme.tertiary; handle.font = .systemFont(ofSize: 11)
+        remove.target = self; remove.action = #selector(deleteItem); remove.toolTip = "删除事项"
+        strikeButton.target = self; strikeButton.action = #selector(strike)
+        handle.textColor = NoteTheme.secondary; handle.font = .systemFont(ofSize: 13); handle.alignment = .center
         handle.setAccessibilityLabel("拖动排序")
         textScroll.drawsBackground = false
         textScroll.documentView = editor
@@ -598,13 +588,14 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     override func layout() {
         super.layout()
         let line = CGFloat(NoteMetrics.rowHeight)
-        handle.frame = NSRect(x: bounds.width - 10, y: (line - 16) / 2, width: 10, height: 16)
+        let action = CGFloat(RowActionButton.size)
+        handle.frame = NSRect(x: bounds.width - 14, y: (line - 18) / 2, width: 14, height: 18)
         // Taller than the circle and as tall as the first line: a comfortable target.
         check.frame = NSRect(x: 0, y: 0, width: Self.textX - 4, height: line)
         textScroll.frame = NSRect(x: Self.textX, y: 0, width: max(1, bounds.width - Self.textX - CGFloat(NoteMetrics.rowTrailing)), height: bounds.height)
         editor.frame.size = NSSize(width: textScroll.contentSize.width, height: max(bounds.height, editor.frame.height))
-        remove.frame = NSRect(x: bounds.width - 30, y: (line - 20) / 2, width: 18, height: 20)
-        strikeButton.frame = NSRect(x: bounds.width - 50, y: (line - 20) / 2, width: 18, height: 20)
+        remove.frame = NSRect(x: bounds.width - 16 - action, y: (line - action) / 2, width: action, height: action)
+        strikeButton.frame = NSRect(x: remove.frame.minX - 2 - action, y: (line - action) / 2, width: action, height: action)
     }
     /// Circle centre in row coordinates (flipped: y from the top).
     var circleCenter: NSPoint { NSPoint(x: check.frame.minX + Self.circleInset + CGFloat(NoteMetrics.checkboxSize) / 2, y: check.frame.midY) }
@@ -644,9 +635,7 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         check.struck = struck
         check.needsDisplay = true
         check.setAccessibilityLabel(completed ? "取消完成" : "标记完成")
-        strikeButton.image = NSImage(systemSymbolName: struck ? "arrow.uturn.backward" : "strikethrough",
-                                     accessibilityDescription: struck ? "取消划掉" : "划掉事项")?
-            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        strikeButton.symbol = struck ? "arrow.uturn.backward.circle" : "minus.circle"
         strikeButton.setAccessibilityLabel(struck ? "取消划掉" : "划掉事项")
         strikeButton.toolTip = struck ? "取消划掉（⌘⇧X）" : "划掉事项：不做了，但保留在便签里（⌘⇧X）"
         // Layout-manager temporary ink leaves text storage, selection and text undo untouched.
@@ -671,7 +660,7 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     @objc private func strike() { owner?.strike(item.id) }
     @objc private func deleteItem() { owner?.delete(item.id) }
     override func mouseDown(with event: NSEvent) {
-        guard convert(event.locationInWindow, from: nil).x > bounds.width - 12 else { super.mouseDown(with: event); return }
+        guard convert(event.locationInWindow, from: nil).x > bounds.width - 15 else { super.mouseDown(with: event); return }
         let pasteboard = NSPasteboardItem()
         pasteboard.setString(item.id.rawValue.uuidString, forType: Self.type)
         let drag = NSDraggingItem(pasteboardWriter: pasteboard)
@@ -690,6 +679,42 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard let owner, let source = sender.draggingSource as? ItemRow, source.owner === owner else { return false }
         owner.move(source.item.id, before: item.id); return true
+    }
+}
+
+/// A row's hover action: a 22pt target with a quiet plate under the pointer, red when destructive.
+final class RowActionButton: NSButton {
+    static let size = 22.0
+    var symbol: String { didSet { needsDisplay = true } }
+    private let destructive: Bool
+    private var hovering = false { didSet { needsDisplay = true } }
+    private var tracking: NSTrackingArea?
+    init(symbol: String, label: String, destructive: Bool = false) {
+        self.symbol = symbol; self.destructive = destructive
+        super.init(frame: .zero)
+        title = ""; isBordered = false
+        setAccessibilityLabel(label)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area); tracking = area
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override var isHidden: Bool { didSet { if isHidden { hovering = false } } }
+    override func draw(_ dirtyRect: NSRect) {
+        if hovering {
+            NoteTheme.primary.withAlphaComponent(isHighlighted ? 0.16 : 0.09).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        }
+        let ink = hovering && destructive ? NSColor.systemRed : hovering ? NoteTheme.primary : NoteTheme.secondary
+        let configuration = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium).applying(.init(paletteColors: [ink]))
+        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(configuration) else { return }
+        image.draw(in: NSRect(x: bounds.midX - image.size.width / 2, y: bounds.midY - image.size.height / 2,
+                              width: image.size.width, height: image.size.height))
     }
 }
 

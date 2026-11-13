@@ -144,6 +144,50 @@ final class DesktopRedesignTests: XCTestCase {
         for key in ["collapsed", "toolbar", "arrange", "desk."] { XCTAssertFalse(backup.contains(key), key) }
     }
 
+    @MainActor func testPeekLiftsRealNotesTemporarilyAndYieldsToTopmost() throws {
+        let suite = "local.desknodes.native.tests." + UUID().uuidString
+        let raw = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { raw.removePersistentDomain(forName: suite) }
+        let surfaces = NoteSurfaces(actions: actions, changed: {}, undo: { false }, canMutate: { true }, failure: { XCTFail("\($0)") })
+        let desk = DesktopController(actions: actions, defaults: PresentationDefaults(raw))
+        desk.surfaces = { surfaces }
+        var changes: [Bool] = []
+        desk.peekChanged = { changes.append($0) }
+        let button = desk.toolbar.buttons[Toolbar.Action.peek.rawValue]
+        defer { desk.toolbar.invalidate() }
+        desk.sync([])
+        XCTAssertFalse(button.isEnabled, "nothing to lift")
+        desk.beginPeek(); XCTAssertFalse(desk.peeking)
+
+        let note = try actions.createNote()
+        try surfaces.refresh(.all)
+        defer { surfaces.discardAll() }
+        desk.sync(try store.notes())
+        desk.togglePeek()
+        XCTAssertTrue(desk.peeking); XCTAssertTrue(button.isOn); XCTAssertEqual(button.label, "放回")
+        XCTAssertEqual(surfaces.panels[note.id]?.level, .floating)
+        XCTAssertEqual(surfaces.panels[note.id]?.collectionBehavior.contains(.fullScreenAuxiliary), true)
+        XCTAssertEqual(try store.notes().first?.level, .desktop, "peek never rewrites a note's own level")
+        XCTAssertFalse(PresentationDefaults(raw).topmost, "peek is not the lasting toggle")
+
+        desk.togglePeek()
+        XCTAssertFalse(desk.peeking); XCTAssertFalse(button.isOn)
+        XCTAssertEqual(surfaces.panels[note.id]?.collectionBehavior.contains(.fullScreenNone), true)
+
+        // 置顶 supersedes a peek and leaves nothing to lift.
+        desk.beginPeek(); desk.toggleTopmost()
+        XCTAssertFalse(desk.peeking); XCTAssertFalse(button.isEnabled)
+        XCTAssertEqual(changes, [true, false, true, false])
+        desk.toggleTopmost()
+        XCTAssertTrue(desk.canPeek)
+
+        // Gathering the notes puts them back first: nothing stays lifted behind the stack.
+        desk.beginPeek(); XCTAssertTrue(desk.peeking)
+        desk.collapse()
+        XCTAssertFalse(desk.peeking); XCTAssertFalse(button.isOn)
+        XCTAssertEqual(changes.suffix(2), [true, false])
+    }
+
     @MainActor func testTopmostToggleKeepsEachNotesOwnLevel() throws {
         let suite = "local.desknodes.native.tests." + UUID().uuidString
         let raw = try XCTUnwrap(UserDefaults(suiteName: suite))

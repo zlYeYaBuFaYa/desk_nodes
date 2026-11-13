@@ -238,67 +238,27 @@ final class NativeFoundationTests: XCTestCase {
     }
 
     @MainActor
-    func testRevealAloneHasFullscreenAuxiliaryPolicy() {
+    func testOnlyTopmostNotesJoinFullscreenSpaces() {
         _ = NSApplication.shared
-        let reveal = RevealPanel(), ordinary = NotePanel(origin: .zero)
-        defer { reveal.close(); ordinary.close() }
-        XCTAssertTrue(reveal.styleMask.contains(.nonactivatingPanel))
-        XCTAssertTrue(reveal.collectionBehavior.contains(.fullScreenAuxiliary))
-        XCTAssertTrue(reveal.collectionBehavior.contains(.canJoinAllSpaces))
-        XCTAssertFalse(reveal.collectionBehavior.contains(.fullScreenNone))
-        XCTAssertFalse(ordinary.collectionBehavior.contains(.fullScreenAuxiliary))
-        XCTAssertTrue(ordinary.collectionBehavior.contains(.fullScreenNone))
-        XCTAssertTrue(reveal.canBecomeKey); XCTAssertFalse(reveal.canBecomeMain)
+        let panel = NotePanel(origin: .zero); defer { panel.close() }
+        XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenNone))
+        var modes = WindowModes(); modes.peek = true
+        panel.modes = modes; panel.applyLevel()
+        XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        XCTAssertEqual(panel.level, .floating)
+        panel.modes = WindowModes(); panel.applyLevel()
+        XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenNone))
     }
 
     @MainActor
-    func testTwoSurfacesSynchronizeWithoutPassiveFlushOrMarkedReplacement() throws {
+    func testTitleFieldCompositionIsIncludedInGate() throws {
         _ = NSApplication.shared
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = try Store(url: url); defer { try? store.close() }
         let actions = NoteActions(store: store), note = try actions.createNote()
-        let item = try XCTUnwrap(store.items(in: note.id).first)
-        try actions.text(item.id, in: note.id, "first")
-        let ordinary = NotePanel(origin: .zero), reveal = RevealPanel()
-        defer { ordinary.close(); reveal.close() }
-        let a = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") })
-        let b = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") }, reveal: true)
-        ordinary.contentView = a; reveal.contentView = b
-        func editors(_ view: NSView) -> [NoteTextView] {
-            (view as? NoteTextView).map { [$0] } ?? view.subviews.flatMap(editors)
-        }
-        let first = try XCTUnwrap(editors(a).first), second = try XCTUnwrap(editors(b).first)
-        ordinary.makeKeyAndOrderFront(nil); ordinary.makeFirstResponder(first)
-        reveal.makeKeyAndOrderFront(nil); reveal.makeFirstResponder(second)
-        second.string = "new 中文"
-        try b.flushRolloverEdits()
-        // An inactive window retains firstResponder: it still must not flush.
-        first.string = "stale"
-        try a.flushRolloverEdits()
-        XCTAssertEqual(try store.items(in: note.id).first?.text, "new 中文")
-        a.refresh(try XCTUnwrap(store.notes().first))
-        XCTAssertEqual(first.string, "new 中文")
-        second.setSelectedRange(NSRange(location: 2, length: 0))
-        second.setMarkedText("拼音", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
-        let text = second.string, range = second.markedRange(), selection = second.selectedRange()
-        try actions.toggle(item.id, in: note.id)
-        b.refresh(try XCTUnwrap(store.notes().first))
-        XCTAssertEqual(second.string, text); XCTAssertEqual(second.markedRange(), range)
-        XCTAssertEqual(second.selectedRange(), selection)
-        XCTAssertTrue(b.hasMarkedComposition)
-        XCTAssertFalse(first.undoManager === second.undoManager)
-    }
-
-    @MainActor
-    func testRevealTitleFieldCompositionIsIncludedInGate() throws {
-        _ = NSApplication.shared
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = try Store(url: url); defer { try? store.close() }
-        let actions = NoteActions(store: store), note = try actions.createNote()
-        let panel = RevealPanel(); defer { panel.close() }
-        let card = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") }, reveal: true)
+        let panel = NotePanel(origin: .zero); defer { panel.close() }
+        let card = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") })
         panel.contentView = card
         let field = try XCTUnwrap(card.subviews.compactMap { $0 as? NoteTitleField }.first)
         panel.makeKeyAndOrderFront(nil); panel.makeFirstResponder(field)
