@@ -26,7 +26,8 @@ for case_name, (name, light, dark) in zip(case_names, pairs):
     check(f'{name}: exact light/dark tokens', all(
         f'case .{case_name}: return "{value}"' in section
         for value, section in zip((name, light, dark), sections)))
-check('exactly fourteen palette hex literals', len(re.findall(r'return "[A-F0-9]{6}"', tokens)) == 14)
+# Seven light/dark backgrounds plus their seven light/dark selection tones.
+check('exactly twenty-eight palette hex literals', len(re.findall(r'return "[A-F0-9]{6}"', tokens)) == 28)
 proto = read('docs/UI_PROTOTYPE.html').upper()
 for hex_value in ('1F1F1F', 'EDEBE6', '5F5A52', 'B3ADA2', '6F6A61', 'A39D92'):
     check(f'current prototype ink {hex_value}', f'#{hex_value}' in proto and f'"{hex_value}"' in tokens)

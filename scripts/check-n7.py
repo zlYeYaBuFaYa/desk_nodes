@@ -31,8 +31,9 @@ check('refreshReveal' not in (app / 'NoteSurfaces.swift').read_text())
 for path in app.glob('*.swift'):
     text = path.read_text()
     # docs/REQUIREMENTS.md (FR-09): the toolbar, its stack hint and
-    # effectively topmost notes (置顶 or 浮起) may cover fullscreen apps.
-    if path.name not in ('Toolbar.swift', 'WindowChrome.swift'):
+    # effectively topmost notes (置顶 or 浮起) may cover fullscreen apps; so may the
+    # batch-selection overlay, which only exists while it lifts the notes like 浮起.
+    if path.name not in ('Toolbar.swift', 'WindowChrome.swift', 'SelectionOverlay.swift'):
         check('.fullScreenAuxiliary' not in text)
     for forbidden in ['CGS', 'CGEventTapCreate', 'addGlobalMonitorForEvents', 'AXIsProcessTrusted', 'CGRequestListenEventAccess']:
         check(forbidden not in text)

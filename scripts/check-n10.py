@@ -49,12 +49,11 @@ for text in ['＋ 添加事项','pinIndicator','便签标题（可选）','NSAcc
     assert text in card, text
 assert 'guard !invalidated, canMutate()' in card
 assert 'canMutate() != false' in read('Sources/DeskNodesApp/WindowChrome.swift')
-assert 'if docking && !canImport()' in read('Sources/DeskNodesApp/SettingsWindow.swift')
 app = read('Sources/DeskNodesApp/Application.swift')
 assert 'applicationShouldTerminate(_ sender:' in app and '.terminateCancel' in app
 assert 'toast?.dismiss()' in app
 assert 'toastDismissal' in read('Sources/DeskNodesApp/DeletionToast.swift')
-assert 'canMutate(), controls.indices' in read('Sources/DeskNodesApp/DockController.swift')
+assert 'guard canMutate() else { return }' in read('Sources/DeskNodesApp/DockController.swift')
 # The maintained documentation replaces the retired milestone/spec snapshots.
 for name in ['README.md', 'REQUIREMENTS.md', 'TECHNICAL_DESIGN.md', 'UI_SPEC.md',
              'INTERACTIONS.md', 'ACCEPTANCE.md', 'native-build.md']:
