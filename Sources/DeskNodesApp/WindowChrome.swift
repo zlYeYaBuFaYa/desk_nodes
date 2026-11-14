@@ -16,7 +16,7 @@ enum Motion {
     }
     /// Moves real windows (not snapshots) between frames, optionally fading. Frames are
     /// committed by AppKit as the animation runs, so hit testing always matches the pixels.
-    static func windows(_ moves: [(NSWindow, NSRect, CGFloat)], duration: Double, completion: @escaping () -> Void) {
+    static func windows(_ moves: [(NSWindow, NSRect, CGFloat)], duration: Double, completion: @escaping @MainActor () -> Void) {
         guard !moves.isEmpty else { completion(); return }
         let reduce = reduced
         NSAnimationContext.runAnimationGroup({ context in
@@ -27,7 +27,7 @@ enum Motion {
                 if reduce { window.setFrame(frame, display: true) } else { window.animator().setFrame(frame, display: true) }
                 window.animator().alphaValue = alpha
             }
-        }, completionHandler: completion)
+        }, completionHandler: { MainActor.assumeIsolated { completion() } })
     }
 }
 

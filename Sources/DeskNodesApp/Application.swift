@@ -181,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if key == "z" { item.target = self }
             edit.addItem(item)
         }
-        let redo = NSMenuItem(title: "重做", action: Selector("redo:"), keyEquivalent: "z")
+        let redo = NSMenuItem(title: "重做", action: Selector(("redo:")), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(redo)
         editItem.submenu = edit
@@ -387,7 +387,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func performUndo(_ sender: Any?) {
         if routeDeletionUndo() { return }
         let responder = NSApp.keyWindow?.firstResponder
-        if responder?.tryToPerform(Selector("undo:"), with: sender) == true { return }
+        if responder?.tryToPerform(Selector(("undo:")), with: sender) == true { return }
         let manager = (responder as? NSTextView)?.undoManager ?? NSApp.keyWindow?.undoManager
         if manager?.canUndo == true { manager?.undo() }
     }
