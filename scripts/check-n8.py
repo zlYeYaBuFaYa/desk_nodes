@@ -15,15 +15,16 @@ def check(value):
     count += 1
 for text in ['本月完成率', '已删除', '顺延到', '上个月', '下个月']:
     check(text in view + model)
-for text in ['width: 400', 'height: 46', 'width: 22, height: 3', 'size: 20', 'size: 24', 'cornerRadius: 9', 'spacing: 18', '.horizontal, 28', '.horizontal, 32']:
+for text in ['width: 400', 'height: 46', 'width: 4, height: 4', 'size: 20', 'size: 24', 'cornerRadius: 9', 'spacing: 18', '.horizontal, 28', '.horizontal, 32']:
     check(text in view)
 for color in ['FBFAF8', 'EFEDE8', '2F2C27', '4F7A64', 'E4E1DA', '6B5A2E', 'F3E9C9']:
     check(color in view and color in ui_spec)
-for text in ['ScrollView', 'LazyVStack', 'note.historyTitle', 'note.deletedAt', 'item.deletedAt', 'item.historyCarryLabel', 'HistoryCompletion(snapshots: model.snapshots)', 'counts.rate == nil ? 0 : 1', '当天没有历史记录', '无法读取历史记录']:
+for text in ['ScrollView', 'LazyVStack', 'note.historyTitle', 'note.deletedAt', 'item.deletedAt', 'item.historyCarryLabel', 'HistoryCompletion(snapshots: model.snapshots)', 'HistoryHeat(snapshot)', 'progress.opacity(0.62)', '今天', '当天没有历史记录', '无法读取历史记录']:
     check(text in view)
 for text in ['TextField(', 'Toggle(', 'DatePicker(', 'Timer(', '.capture(', '.rollover(', 'WKWebView']:
     check(text not in view)
-check('auxiliary.show(.history, store: actions?.store)' in app)
+check('auxiliary.show(.history, store: actions?.store, historyMode: .calendar' in app)
+check('recentHistory(limit: 7)' in app)
 check('auxiliary.reloadHistoryIfVisible()' in app)
 check('controllers[.history]?.window?.isVisible == true' in aux)
 check('if destination == .history { history?.reload() }' in aux)

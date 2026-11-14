@@ -73,7 +73,17 @@ final class PresentationDefaults {
         get { defaults.string(forKey: "toolbar.orientation").flatMap(ToolbarOrientation.init(rawValue:)) ?? .vertical }
         set { defaults.set(newValue.rawValue, forKey: "toolbar.orientation") }
     }
-    /// Seconds before a snapped, idle toolbar shrinks to its entry; 0 turns it off.
+    /// Where an idle toolbar shrinks to, on whichever display it is on.
+    var toolbarHome: ToolbarHome {
+        get {
+            guard let value = defaults.dictionary(forKey: "toolbar.home"),
+                  let edge = (value["edge"] as? String).flatMap(ToolbarEdge.init(rawValue:)),
+                  let ratio = value["ratio"] as? Double, ratio.isFinite else { return .standard }
+            return ToolbarHome(edge: edge, ratio: ratio)
+        }
+        set { defaults.set(["edge": newValue.edge.rawValue, "ratio": newValue.ratio], forKey: "toolbar.home") }
+    }
+    /// Seconds before an idle toolbar shrinks to its entry at home; 0 turns it off.
     var toolbarAutoShrink: Int {
         get {
             guard let value = defaults.object(forKey: "toolbar.autoShrink") as? Int,
@@ -86,6 +96,11 @@ final class PresentationDefaults {
     var noteTextSize: NoteTextSize {
         get { defaults.string(forKey: "note.textSize").flatMap(NoteTextSize.init(rawValue:)) ?? .standard }
         set { defaults.set(newValue.rawValue, forKey: "note.textSize") }
+    }
+    /// "字体" for every note; an unknown stored value reads as the default.
+    var noteFont: NoteFont {
+        get { defaults.string(forKey: "note.font").flatMap(NoteFont.init(rawValue:)) ?? .system }
+        set { defaults.set(newValue.rawValue, forKey: "note.font") }
     }
     /// Size of a newly created note; a nil height follows the content. A stored 0 is an
     /// explicit "随内容"; nothing stored yet means the 240pt default.

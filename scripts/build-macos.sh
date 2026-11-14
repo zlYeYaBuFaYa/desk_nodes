@@ -9,6 +9,8 @@ cd "$repo_root"
 export MACOSX_DEPLOYMENT_TARGET=14.0
 xcrun --find swift >/dev/null
 xcrun --sdk macosx --show-sdk-path >/dev/null
+# 霞鹜文楷 is fetched once into Resources/Fonts (not committed) and checked by hash.
+"$repo_root/scripts/fetch-fonts.sh"
 xcrun swift build --configuration release --product DeskNodes
 binary_dir="$(xcrun swift build --configuration release --show-bin-path)"
 # Stage only inside this repository; do not remove an existing user installation.
@@ -19,6 +21,8 @@ mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources" "$repo_root/b
 cp "$binary_dir/DeskNodes" "$app_path/Contents/MacOS/DeskNodes"
 cp Resources/Info.plist "$app_path/Contents/Info.plist"
 cp Resources/DeskNodes.icns "$app_path/Contents/Resources/DeskNodes.icns"
+mkdir -p "$app_path/Contents/Resources/Fonts"
+cp Resources/Fonts/LXGWWenKai-Regular.ttf Resources/Fonts/LXGWWenKai-Medium.ttf Resources/Fonts/OFL.txt "$app_path/Contents/Resources/Fonts/"
 chmod 755 "$app_path/Contents/MacOS/DeskNodes"
 /usr/bin/plutil -lint "$app_path/Contents/Info.plist"
 # Ad-hoc is the local default, not proof of SMAppService acceptance. An existing

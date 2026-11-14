@@ -21,6 +21,25 @@ final class HistoryTests: XCTestCase {
         XCTAssertNil(try month("0001-01-01").offset(-1))
         XCTAssertNil(try month("9999-12-01").offset(1))
     }
+    func testDayArithmeticCrossesMonthsYearsAndLeapDays() throws {
+        XCTAssertEqual(try day("2026-11-01").adding(days: -1), try day("2026-10-31"))
+        XCTAssertEqual(try day("2024-02-28").adding(days: 1), try day("2024-02-29"))
+        XCTAssertEqual(try day("2026-12-31").adding(days: 1), try day("2027-01-01"))
+        XCTAssertEqual(try day("2026-11-13").adding(days: -7), try day("2026-11-06"))
+        XCTAssertNil(try day("9999-12-31").adding(days: 1))
+        XCTAssertEqual(try day("2026-11-11").weekdayLabel, "周三")
+        XCTAssertEqual(try day("2026-11-11").detailLabel, "11月11日 周三")
+    }
+    func testRecentHistoryIsNewestFirstAndOnlyCapturedDays() throws {
+        try withStore { store, _ in
+            XCTAssertTrue(try store.recentHistory(limit: 7).isEmpty)
+            let note = try store.createNote(title: "a")
+            _ = try store.createItem(in: note.id, completed: true)
+            for key in ["2026-10-30", "2026-11-02", "2026-11-03", "2026-11-05"] { _ = try store.capture(day: try day(key)) }
+            XCTAssertEqual(try store.recentHistory(limit: 3).map(\.day.rawValue), ["2026-11-05", "2026-11-03", "2026-11-02"])
+            XCTAssertEqual(try store.recentHistory(limit: 7).count, 4)
+        }
+    }
     func testLeapDayAndMondayFirstSixWeekGrid() throws {
         XCTAssertEqual(try month("2024-02-29").days.count, 29)
         XCTAssertEqual(try month("2000-02-29").days.count, 29)

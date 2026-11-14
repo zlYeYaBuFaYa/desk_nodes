@@ -57,17 +57,31 @@ public struct HistoryCompletion: Equatable, Sendable {
 }
 
 public extension HistoryDay {
+    private static var civil: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+    private var date: Date {
+        let p = rawValue.split(separator: "-").map { Int($0)! }
+        return Self.civil.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))!
+    }
+    /// The civil day `days` away; nil past year 9999 or before year 1.
+    func adding(days: Int) -> HistoryDay? {
+        guard let next = Self.civil.date(byAdding: .day, value: days, to: date) else { return nil }
+        let c = Self.civil.dateComponents([.era, .year, .month, .day], from: next)
+        guard c.era == 1, let y = c.year, let m = c.month, let d = c.day, (1...9999).contains(y) else { return nil }
+        return try? HistoryDay(String(format: "%04d-%02d-%02d", y, m, d))
+    }
+    /// "周三".
+    var weekdayLabel: String {
+        "周" + ["日", "一", "二", "三", "四", "五", "六"][Self.civil.component(.weekday, from: date) - 1]
+    }
     var shortLabel: String {
         let parts = rawValue.split(separator: "-")
         return "\(Int(parts[1])!)月\(Int(parts[2])!)日"
     }
-    var detailLabel: String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        let p = rawValue.split(separator: "-").map { Int($0)! }
-        let date = calendar.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))!
-        return shortLabel + " 周" + ["日", "一", "二", "三", "四", "五", "六"][calendar.component(.weekday, from: date) - 1]
-    }
+    var detailLabel: String { shortLabel + " " + weekdayLabel }
 }
 public extension SnapshotNote {
     var historyTitle: String {

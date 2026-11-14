@@ -17,5 +17,7 @@
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <!-- Bundled 霞鹜文楷, registered for this app only (Contents/Resources/Fonts). -->
+    <key>ATSApplicationFontsPath</key><string>Fonts</string>
 </dict>
 </plist>

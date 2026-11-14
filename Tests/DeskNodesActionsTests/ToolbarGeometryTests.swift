@@ -7,6 +7,7 @@ final class ToolbarGeometryTests: XCTestCase {
     private let main = DockScreen(id: "main", visible: NoteFrame(x: 0, y: 0, width: 1440, height: 875))
     private let side = DockScreen(id: "side", visible: NoteFrame(x: 1440, y: 0, width: 1000, height: 700))
     private let gap = ToolbarMetrics.edgeGap
+    private let d = ToolbarMetrics.entrySize
 
     private func contains(_ outer: NoteFrame, _ inner: NoteFrame) -> Bool {
         inner.x >= outer.x - 0.001 && inner.y >= outer.y - 0.001
@@ -15,7 +16,7 @@ final class ToolbarGeometryTests: XCTestCase {
 
     func testDroppedEntryStaysPutAndTheCapsuleUnfoldsFromItsGripEnd() throws {
         // An entry dropped near the top of the left edge: no jump, the capsule hangs below it.
-        let entry = NoteFrame(x: 10, y: 780, width: 48, height: 48)
+        let entry = NoteFrame(x: 10, y: 780, width: d, height: d)
         let (anchor, frames) = try XCTUnwrap(ToolbarGeometry.release(entry, round: true, pointer: (30, 800), last: nil, previous: nil,
                                                                       orientation: .vertical, paged: false, screens: [main]))
         XCTAssertEqual(anchor.edge, .left)
@@ -27,7 +28,7 @@ final class ToolbarGeometryTests: XCTestCase {
     }
 
     func testCapsuleSlidesAlongTheEdgeButStillCoversTheEntry() throws {
-        let entry = NoteFrame(x: 10, y: 20, width: 48, height: 48)
+        let entry = NoteFrame(x: 10, y: 20, width: d, height: d)
         let (_, frames) = try XCTUnwrap(ToolbarGeometry.release(entry, round: true, pointer: (30, 40), last: nil, previous: nil,
                                                                  orientation: .vertical, paged: false, screens: [main]))
         let circle = try XCTUnwrap(frames.circle)
@@ -71,13 +72,13 @@ final class ToolbarGeometryTests: XCTestCase {
         XCTAssertNil(ToolbarGeometry.snapEdge(atSeam, screen: main, screens: [main, side], orientation: .vertical, paged: false, previous: nil))
         XCTAssertEqual(ToolbarGeometry.snapEdge(atSeam, screen: main, screens: [main], orientation: .vertical, paged: false, previous: nil), .right)
         // A corner at equal distance keeps the previous edge, else left before top.
-        let corner = NoteFrame(x: 10, y: 875 - 10 - 48, width: 48, height: 48)
+        let corner = NoteFrame(x: 10, y: 875 - 10 - d, width: d, height: d)
         XCTAssertEqual(ToolbarGeometry.snapEdge(corner, screen: main, screens: [main], orientation: .vertical, paged: false, previous: .top), .top)
         XCTAssertEqual(ToolbarGeometry.snapEdge(corner, screen: main, screens: [main], orientation: .vertical, paged: false, previous: nil), .left)
     }
 
     func testFreeReleaseUnfoldsFromTheDroppedEntryAndStaysOnScreen() throws {
-        let entry = NoteFrame(x: 600, y: 700, width: 48, height: 48)
+        let entry = NoteFrame(x: 600, y: 700, width: d, height: d)
         let (anchor, frames) = try XCTUnwrap(ToolbarGeometry.release(entry, round: true, pointer: (620, 720), last: nil, previous: nil,
                                                                       orientation: .vertical, paged: false, screens: [main]))
         XCTAssertNil(anchor.edge); XCTAssertNil(frames.circle)
@@ -101,16 +102,69 @@ final class ToolbarGeometryTests: XCTestCase {
         XCTAssertEqual(ToolbarGeometry.size(.vertical, paged: false, on: main).height, ToolbarMetrics.height(paged: false))
     }
 
-    func testArrangementAndStripsAvoidAHorizontalToolbarRow() {
+    func testArrangementAvoidsAHorizontalToolbarRow() {
         let row = NoteFrame(x: gap, y: 875 - gap - 64, width: ToolbarMetrics.length(horizontal: true, paged: false), height: 64)
         let area = Arrangement.area(main, avoiding: row)
         XCTAssertLessThanOrEqual(area.y + area.height, row.y - ArrangeMetrics.gap + 0.001, "cards go below the row, not beside it")
         XCTAssertEqual(area.width, 1440 - ArrangeMetrics.margin * 2)
-        let strip = DockGeometry.region(main, edge: .top, avoiding: row)
-        XCTAssertLessThanOrEqual(strip.visible.y + strip.visible.height, row.y)
-        let column = NoteFrame(x: gap, y: 200, width: 64, height: 400)
-        let left = DockGeometry.region(main, edge: .left, avoiding: column)
-        XCTAssertGreaterThanOrEqual(left.visible.x, column.x + column.width)
-        XCTAssertEqual(DockGeometry.region(main, edge: .right, avoiding: column), main, "a strip on the far edge is untouched")
+    }
+
+    // MARK: Home
+
+    func testStandardHomeIsOnTheRightALittleBelowTheMiddle() throws {
+        let anchor = ToolbarGeometry.anchor(home: .standard, screen: main)
+        XCTAssertEqual(anchor.edge, .right)
+        let frames = try XCTUnwrap(ToolbarGeometry.resolve(anchor, orientation: .vertical, paged: false, screens: [main]))
+        let entry = try XCTUnwrap(frames.circle)
+        XCTAssertEqual(entry.x + entry.width, 1440 - gap)
+        XCTAssertEqual(entry.width, d)
+        let fromTop = (875 - (entry.y + d / 2)) / 875
+        XCTAssertTrue((0.5...0.7).contains(fromTop), "\(fromTop)")
+        // The column hangs from the entry and stays on screen.
+        XCTAssertEqual(frames.target.y + frames.target.height, entry.y + entry.height, accuracy: 0.001)
+        XCTAssertTrue(contains(main.visible, frames.target))
+    }
+
+    func testHomeKeepsItsHitZoneClearOfTheCorners() {
+        for ratio in [0.0, 1.0] {
+            let zone = ToolbarGeometry.homeZone(ToolbarHome(edge: .right, ratio: ratio), screen: main)
+            XCTAssertEqual(zone.x + zone.width, 1440, "the zone reaches the edge")
+            XCTAssertGreaterThanOrEqual(zone.y, ToolbarMetrics.homeCornerClearance)
+            XCTAssertLessThanOrEqual(zone.y + zone.height, 875 - ToolbarMetrics.homeCornerClearance)
+        }
+    }
+
+    func testDroppedEntryTakesTheNearestOuterEdgeWhereItWasDropped() {
+        let home = ToolbarGeometry.home(at: (1400, 600), screen: main, screens: [main])
+        XCTAssertEqual(home.edge, .right)
+        // The zone it resolves to sits where the entry was dropped.
+        let zone = ToolbarGeometry.homeZone(home, screen: main)
+        XCTAssertEqual(zone.y + zone.height / 2, 600, accuracy: 0.001)
+        // A seam is no edge: next to `side`, the nearest outer edge wins instead.
+        XCTAssertEqual(ToolbarGeometry.home(at: (1420, 300), screen: main, screens: [main, side]).edge, .bottom)
+        // Dropped in a corner: clamped to the clearance, never into the corner.
+        let corner = ToolbarGeometry.home(at: (1430, 10), screen: main, screens: [main])
+        XCTAssertEqual(corner.ratio, 0)
+    }
+
+    func testAHomeOnASeamMovesToTheOppositeOuterEdge() {
+        // `main` continues into `side` on its right: no stopping edge there.
+        let home = ToolbarHome(edge: .right, ratio: 0.4)
+        XCTAssertEqual(ToolbarGeometry.home(home, on: main, among: [main, side]), ToolbarHome(edge: .left, ratio: 0.4))
+        XCTAssertEqual(ToolbarGeometry.home(home, on: side, among: [main, side]), home, "an outer edge stays")
+        XCTAssertEqual(ToolbarGeometry.home(home, on: main, among: [main]), home)
+    }
+
+    func testStripsKeepToTheLongerStretchBesideTheHomeZone() {
+        let low = ToolbarGeometry.homeZone(.standard, screen: main)
+        let right = DockGeometry.region(main, edge: .right, avoiding: low)
+        XCTAssertGreaterThanOrEqual(right.visible.y, low.y + low.height, "above the zone, the longer stretch")
+        XCTAssertEqual(right.visible.x, main.visible.x)
+        XCTAssertEqual(DockGeometry.region(main, edge: .left, avoiding: low), main, "a strip on the far edge is untouched")
+        let high = ToolbarGeometry.homeZone(ToolbarHome(edge: .right, ratio: 0.9), screen: main)
+        let below = DockGeometry.region(main, edge: .right, avoiding: high)
+        XCTAssertLessThanOrEqual(below.visible.y + below.visible.height, high.y)
+        let top = ToolbarGeometry.homeZone(ToolbarHome(edge: .top, ratio: 0.1), screen: main)
+        XCTAssertGreaterThanOrEqual(DockGeometry.region(main, edge: .top, avoiding: top).visible.x, top.x + top.width)
     }
 }

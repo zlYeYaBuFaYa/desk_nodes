@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 批量删除 selection mode.
     private var picker: NotePicker?
     private var pickMenuItem: NSMenuItem?
+    /// Filled each time it opens: recent days, the calendar and 最近删除.
+    private let historyMenu = NSMenu()
     private let log = Logger(subsystem: "local.desknodes.native", category: "app")
     private var expiryTimer: Timer?
     private var rolloverTimer: Timer?
@@ -56,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
             NoteType.size = PresentationDefaults.standard().noteTextSize
+            NoteType.face = PresentationDefaults.standard().noteFont
             if let actions {
                 surfaces = makeSurfaces(actions)
                 desk = makeDesk(actions)
@@ -143,8 +146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pick = NSMenuItem(title: "选择便签…", action: #selector(pickNotes(_:)), keyEquivalent: "")
         pick.target = self; menu.addItem(pick); pickMenuItem = pick
         menu.addItem(.separator())
-        add("历史记录…", to: menu, action: #selector(showHistory(_:)))
-        add("最近删除…", to: menu, action: #selector(showRecentlyDeleted(_:)))
+        let history = NSMenuItem(title: "历史记录", action: nil, keyEquivalent: "")
+        historyMenu.autoenablesItems = false; historyMenu.delegate = self
+        history.submenu = historyMenu; menu.addItem(history)
         add("设置…", to: menu, action: #selector(showSettings(_:)), key: ",")
         menu.addItem(.separator())
         add("退出 DeskNodes", to: menu, action: #selector(quit(_:)), key: "q")
@@ -235,6 +239,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setTextSize(_ size: NoteTextSize) {
         guard size != NoteType.size, !hasMarkedComposition else { return }
         NoteType.size = size; PresentationDefaults.standard().noteTextSize = size
+        restyleNotes()
+    }
+    /// The same restyle as 文字大小. Refused mid-composition, like a size change.
+    private func setNoteFont(_ face: NoteFont) {
+        guard face != NoteType.face, !hasMarkedComposition else { return }
+        NoteType.face = face; PresentationDefaults.standard().noteFont = face
+        restyleNotes()
+    }
+    private func restyleNotes() {
         surfaces?.cards.forEach { $0.applyTextSize() }
         refresh(.all)
         auxiliary.settings?.reload()
@@ -318,9 +331,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .peek: self?.desk?.togglePeek()
             case .arrange: self?.desk?.arrange()
             case .collapse: self?.desk?.toggleCollapse()
-            case .settings: self?.showSettings(nil)
             }
         }
+        desk.openSettings = { [weak self] in self?.showSettings(nil) }
+        desk.toolbarPreferencesChanged = { [weak self] in self?.auxiliary.settings?.reload() }
         surfaces?.hidden = { [weak desk] in desk?.isHidden($0) ?? false }
         surfaces?.selectionChanged = { [weak desk] in desk?.updateToolbar() }
         // An open settings window holds the toolbar open.
@@ -409,7 +423,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = message
         alert.runModal()
     }
-    @objc private func showHistory(_ sender: Any?) { auxiliary.show(.history, store: actions?.store) }
+    @objc private func showHistory(_ sender: Any?) { auxiliary.show(.history, store: actions?.store, historyMode: .calendar) }
+    @objc private func showHistoryDay(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String, let day = try? HistoryDay(key) else { return }
+        auxiliary.show(.history, store: actions?.store, historyMode: .calendar, day: day)
+    }
+    /// The latest sealed days, then the calendar and 最近删除. Read only as the submenu
+    /// opens: nothing is cached or polled.
+    private func fillHistoryMenu() {
+        let menu = historyMenu
+        menu.removeAllItems()
+        guard let actions else { return }
+        func note(_ title: String) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: ""); item.isEnabled = false; return item
+        }
+        do {
+            let today = try BusinessCalendar(timeZone: .current).day(at: Date(), settings: actions.store.settings())
+            let days = try actions.store.recentHistory(limit: 7)
+            if days.isEmpty { menu.addItem(note("暂无历史记录")) }
+            for snapshot in days {
+                let item = NSMenuItem(title: snapshot.day.shortLabel, action: #selector(showHistoryDay(_:)), keyEquivalent: "")
+                item.target = self; item.representedObject = snapshot.day.rawValue
+                item.attributedTitle = HistoryMenuRow.title(snapshot, today: today)
+                menu.addItem(item)
+            }
+        } catch {
+            log.error("history menu: \(String(describing: error), privacy: .public)")
+            menu.addItem(note("无法读取历史记录"))
+        }
+        menu.addItem(.separator())
+        add("打开日历…", to: menu, action: #selector(showHistory(_:)))
+        // An unreadable count leaves the entry usable; a zero count greys it out.
+        let count = try? actions.recentlyDeletedCount()
+        add(count.map { $0 > 0 ? "最近删除（\($0)）" : "最近删除" } ?? "最近删除", to: menu, action: #selector(showRecentlyDeleted(_:)))
+        menu.items.last?.isEnabled = count != 0
+    }
     @objc private func showRecentlyDeleted(_ sender: Any?) {
         auxiliary.show(.history, store: actions?.store, historyMode: .deleted)
     }
@@ -462,7 +510,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.desk?.setToolbarOrientation(orientation); self?.desk?.setToolbarAutoShrink(seconds)
                 }, toolbarCurrent: { [weak self] in
                     (self?.desk?.toolbar.orientation ?? .vertical, self?.desk?.toolbar.autoShrink ?? ToolbarMetrics.defaultAutoShrink)
-                }, textSize: { [weak self] in self?.setTextSize($0) })
+                }, toolbarHome: { [weak self] in self?.desk?.toolbarHome ?? .standard },
+                resetToolbarHome: { [weak self] in self?.desk?.setToolbarHome(.standard) },
+                textSize: { [weak self] in self?.setTextSize($0) },
+                noteFont: { [weak self] in self?.setNoteFont($0) })
         }
         auxiliary.show(.settings)
     }
@@ -522,6 +573,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === historyMenu { fillHistoryMenu(); return }
         guard menu === statusItem?.menu else { return }
         peekMenuItem?.isEnabled = desk?.peeking == true || desk?.canPeek == true
         pickMenuItem?.isEnabled = desk?.canPeek == true

@@ -172,7 +172,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         titleEditor.textColor = NoteTheme.primary; titleEditor.delegate = self
         count.textColor = NoteTheme.secondary; count.alignment = .right
         collapsedLabel.textColor = NoteTheme.primary
-        collapsedLabel.font = .systemFont(ofSize: NoteMetrics.titleSize - 2, weight: .semibold)
+        collapsedLabel.font = NoteType.font(ofSize: NoteMetrics.titleSize - 2, weight: .semibold)
         collapsedLabel.lineBreakMode = .byTruncatingTail
         grip.resize = true
         let finish: (NoteFrame, Bool) -> Void = { [weak self] frame, resize in
@@ -190,13 +190,15 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     }
     required init?(coder: NSCoder) { fatalError() }
     /// Applies `NoteType` (文字大小) to this card and its rows; the folded bar keeps its size.
+    /// 文字大小 and 字体. The count stays in system digits so fractions line up.
     func applyTextSize() {
-        titleEditor.font = .systemFont(ofSize: NoteType.titleSize, weight: .semibold)
+        titleEditor.font = NoteType.font(ofSize: NoteType.titleSize, weight: .semibold)
+        collapsedLabel.font = NoteType.font(ofSize: NoteMetrics.titleSize - 2, weight: .semibold)
         // A quiet placeholder: an untitled note is normal, not a missing field.
         titleEditor.placeholderAttributedString = NSAttributedString(string: "标题",
-            attributes: [.font: NSFont.systemFont(ofSize: NoteType.titleSize, weight: .regular), .foregroundColor: NoteTheme.tertiary])
+            attributes: [.font: NoteType.font(ofSize: NoteType.titleSize), .foregroundColor: NoteTheme.tertiary])
         addButton.attributedTitle = NSAttributedString(string: "＋ 添加事项", attributes: [
-            .font: NSFont.systemFont(ofSize: NoteType.secondarySize + 1), .foregroundColor: NoteTheme.secondary])
+            .font: NoteType.font(ofSize: NoteType.secondarySize + 1), .foregroundColor: NoteTheme.secondary])
         count.font = .monospacedDigitSystemFont(ofSize: NoteType.secondarySize, weight: .regular)
         for row in orderedRows { row.applyTextSize() }
         needsLayout = true
@@ -662,7 +664,7 @@ final class ItemRow: NSView, NSTextViewDelegate, NSDraggingSource {
         let rect = (editor.string as NSString).boundingRect(
             with: NSSize(width: max(1, width - Self.textX - CGFloat(NoteMetrics.rowTrailing)), height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: NSFont.systemFont(ofSize: NoteType.itemSize), .paragraphStyle: paragraph])
+            attributes: [.font: NoteType.font(ofSize: NoteType.itemSize), .paragraphStyle: paragraph])
         return max(NoteType.rowHeight, ceil(rect.height) + NoteType.rowPadding * 2)
     }
     func synchronize(_ text: String) {

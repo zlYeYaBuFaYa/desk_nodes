@@ -96,7 +96,7 @@ final class NoteTextView: NSTextView, NSLayoutManagerDelegate {
                        lineFragmentUsedRect: UnsafeMutablePointer<NSRect>, baselineOffset: UnsafeMutablePointer<CGFloat>,
                        in textContainer: NSTextContainer, forGlyphRange glyphRange: NSRange) -> Bool {
         baselineOffset.pointee = Self.centredBaseline(lineHeight: lineFragmentRect.pointee.height,
-                                                      font: font ?? .systemFont(ofSize: NoteType.itemSize))
+                                                      font: font ?? NoteType.font(ofSize: NoteType.itemSize))
         return true
     }
 
@@ -141,10 +141,10 @@ final class NoteTextView: NSTextView, NSLayoutManagerDelegate {
         applyTextSize()
         setAccessibilityLabel("事项")
     }
-    /// Font and fixed line height at the current 文字大小. Mid-composition text keeps its
-    /// marked range: `applyLineStyle` skips it and the next edit restyles.
+    /// Font and fixed line height at the current 文字大小 and 字体. Mid-composition text keeps
+    /// its marked range: `applyLineStyle` skips it and the next edit restyles.
     func applyTextSize() {
-        font = .systemFont(ofSize: NoteType.itemSize)
+        font = NoteType.font(ofSize: NoteType.itemSize)
         // Item rows pad each side so one line fills a row and wrapped lines stay close.
         textContainerInset = NSSize(width: 0, height: centredLines ? NoteType.rowPadding : 0)
         minSize = NSSize(width: 0, height: NoteType.rowHeight)

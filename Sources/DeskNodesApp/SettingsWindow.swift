@@ -20,15 +20,25 @@ final class SettingsPresentation: ObservableObject {
     /// Toolbar layout and idle shrink; Mac display preferences, not part of the backup.
     let toolbar: (ToolbarOrientation, Int) -> Void
     let toolbarCurrent: () -> (ToolbarOrientation, Int)
+    /// Where an idle toolbar goes; only dragging its entry or "恢复默认" moves it.
+    let toolbarHomeCurrent: () -> ToolbarHome
+    let resetToolbarHome: () -> Void
     /// New-note size and 文字大小 are Mac display preferences too.
     let presentation: PresentationDefaults
     let textSize: (NoteTextSize) -> Void
+    let noteFont: (NoteFont) -> Void
     @Published var noteTextSize = NoteTextSize.standard
+    @Published var noteFace = NoteFont.system
+    /// 圆体 while macOS downloads it; the notes keep their current font meanwhile.
+    @Published var downloading: NoteFont?
+    /// Faces this Mac cannot show yet, checked on reload rather than on every render.
+    @Published private(set) var unavailable: Set<NoteFont> = []
     @Published var noteWidth = NoteMetrics.width
     /// 0 follows the content.
     @Published var noteHeight = 0.0
     @Published var toolbarOrientation = ToolbarOrientation.vertical
     @Published var toolbarShrink = ToolbarMetrics.defaultAutoShrink
+    @Published var toolbarHome = ToolbarHome.standard
     @Published var settings = Settings()
     @Published var preferences = NativePreferences()
     @Published var shortcut = "Control+Option+N"
@@ -46,19 +56,26 @@ final class SettingsPresentation: ObservableObject {
          canImport: @escaping () -> Bool = { true },
          toolbar: @escaping (ToolbarOrientation, Int) -> Void = { _, _ in },
          toolbarCurrent: @escaping () -> (ToolbarOrientation, Int) = { (.vertical, ToolbarMetrics.defaultAutoShrink) },
+         toolbarHome: @escaping () -> ToolbarHome = { .standard },
+         resetToolbarHome: @escaping () -> Void = {},
          textSize: @escaping (NoteTextSize) -> Void = { _ in },
+         noteFont: @escaping (NoteFont) -> Void = { _ in },
          presentation: PresentationDefaults? = nil) {
         self.actions = actions; self.login = login; self.changed = changed
         self.hotkey = hotkey; self.peekHotkey = peekHotkey; self.export = export; self.importBackup = importBackup; self.canImport = canImport
-        self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent; self.textSize = textSize
+        self.toolbar = toolbar; self.toolbarCurrent = toolbarCurrent; self.textSize = textSize; self.noteFont = noteFont
+        self.toolbarHomeCurrent = toolbarHome; self.resetToolbarHome = resetToolbarHome
         self.presentation = presentation ?? .standard()
         reload()
     }
     func reload() {
         (toolbarOrientation, toolbarShrink) = toolbarCurrent()
+        toolbarHome = toolbarHomeCurrent()
         let size = presentation.newNoteSize
         noteWidth = size.width; noteHeight = size.height ?? 0
         noteTextSize = presentation.noteTextSize
+        noteFace = presentation.noteFont
+        unavailable = Set(NoteFont.allCases.filter { !NoteFonts.isAvailable($0) })
         do {
             settings = try actions.store.settings(); preferences = try actions.store.preferences()
             shortcut = preferences.hotkey; peekShortcut = preferences.peekHotkey
@@ -70,6 +87,26 @@ final class SettingsPresentation: ObservableObject {
         reload()
     }
     func saveToolbar() { toolbar(toolbarOrientation, toolbarShrink) }
+    /// A face this Mac lacks is downloaded first (圆体); a failed download, or a build
+    /// without the bundled 文楷, keeps the old one and says why.
+    func chooseFont(_ face: NoteFont) {
+        guard downloading == nil else { return }
+        message = nil
+        if NoteFonts.isAvailable(face) { noteFont(face); reload(); return }
+        guard face == .rounded else { message = "这个版本没有包含\(face.name)字体，便签保持当前字体。"; return }
+        downloading = face
+        NoteFonts.download(face) { [weak self] failure in
+            guard let self else { return }
+            self.downloading = nil
+            if let failure { self.message = failure } else { self.noteFont(face) }
+            self.reload()
+        }
+    }
+    /// The bundled OFL text, else the project's published copy.
+    func openFontLicense() {
+        let bundled = Bundle.main.url(forResource: "OFL", withExtension: "txt", subdirectory: "Fonts")
+        if let url = bundled ?? URL(string: "https://github.com/lxgw/LxgwWenKai/blob/main/OFL.txt") { NSWorkspace.shared.open(url) }
+    }
     func saveNoteSize() { presentation.newNoteSize = (noteWidth, noteHeight > 0 ? noteHeight : nil) }
     func quit() { NSApp.terminate(nil) }
     func saveHotkey() {
@@ -191,6 +228,24 @@ struct SettingsView: View {
             extra()
         }
     }
+    /// Each choice named in its own face; 圆体 notes when it still has to be downloaded.
+    private func fontChoice(_ face: NoteFont) -> some View {
+        let selected = model.noteFace == face
+        let status: String? = model.downloading == face ? "下载中…"
+            : !model.unavailable.contains(face) ? nil : face == .rounded ? "需下载" : "未包含"
+        return Button { model.chooseFont(face) } label: {
+            VStack(spacing: 2) {
+                Text("文 Aa").font(Font(NoteFonts.font(face, size: 17, weight: .semibold)))
+                Text(face.name).font(Font(NoteFonts.font(face, size: 11, weight: .regular))).foregroundStyle(.secondary)
+                Text(status ?? " ").font(.system(size: 9)).foregroundStyle(.tertiary)
+            }.frame(width: 72, height: 62)
+                .background(Color(nsColor: NoteTheme.dynamic("F7F6F3", "3A3835")), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Color.accentColor : Color.primary.opacity(0.1),
+                                                                   lineWidth: selected ? 2 : 1))
+        }.buttonStyle(.plain).disabled(model.downloading != nil)
+            .accessibilityLabel("字体：\(face.name)\(status.map { "，\($0)" } ?? "")")
+            .accessibilityAddTraits(selected ? .isSelected : [])
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -220,16 +275,25 @@ struct SettingsView: View {
                         }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
                     }
                     Divider()
+                    row("字体") {
+                        HStack(spacing: 8) {
+                            ForEach(NoteFont.allCases, id: \.self) { face in fontChoice(face) }
+                        }
+                    }.padding(.vertical, 6)
+                    Divider()
                     HStack(spacing: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxGap))) {
                         Circle().stroke(Color.primary.opacity(0.42), lineWidth: 1.4)
                             .frame(width: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxSize)),
                                    height: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxSize)))
-                        Text("示例事项：周五前交季度复盘").font(.system(size: CGFloat(model.noteTextSize.itemSize)))
+                        Text("示例事项：周五前交季度复盘 Review")
+                            .font(Font(NoteFonts.font(model.noteFace, size: CGFloat(model.noteTextSize.itemSize), weight: .regular)))
                         Spacer()
                     }.frame(minHeight: 44).padding(.horizontal, 14).accessibilityHidden(true)
                 }
-                Text("对所有便签生效，宽度不变。也可以在便签里按 ⌘+、⌘−、⌘0 调整。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
+                HStack(spacing: 4) {
+                    Text("对所有便签生效，宽度不变。也可以在便签里按 ⌘+、⌘−、⌘0 调整大小。文楷为霞鹜文楷，SIL Open Font License 1.1，")
+                    Button("字体授权") { model.openFontLicense() }.buttonStyle(.link)
+                }.font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("工具条") {
                     row("排列方向") {
                         Picker("排列方向", selection: Binding(get: { model.toolbarOrientation }, set: {
@@ -239,15 +303,22 @@ struct SettingsView: View {
                         }.labelsHidden().pickerStyle(.segmented).frame(width: 160)
                     }
                     Divider()
-                    row("吸边后自动收缩") {
-                        Picker("吸边后自动收缩", selection: Binding(get: { model.toolbarShrink }, set: {
+                    row("闲置自动收缩") {
+                        Picker("闲置自动收缩", selection: Binding(get: { model.toolbarShrink }, set: {
                             model.toolbarShrink = $0; model.saveToolbar()
                         })) {
                             Text("关闭").tag(0); Text("10 秒").tag(10); Text("15 秒").tag(15); Text("30 秒").tag(30)
                         }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
                     }
+                    Divider()
+                    row("收缩位置") {
+                        ToolbarHomeDiagram(home: model.toolbarHome)
+                        Text(ToolbarHomeText.describe(model.toolbarHome)).foregroundStyle(.secondary)
+                        Button("恢复默认") { model.resetToolbarHome() } // the settings reload with the change
+                            .disabled(model.toolbarHome == .standard)
+                    }
                 }
-                Text("把工具条拖到屏幕边缘即可吸附；吸附后闲置到时，会缩成圆形入口，鼠标停在入口上即可展开。")
+                Text("工具条闲置到时会收缩到固定位置，默认在屏幕右侧偏下；鼠标移过去停一下即可展开。拖动收缩后的入口可以换位置。")
                     .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
                 group("新建便签") {
                     row("宽度") {
@@ -294,6 +365,45 @@ struct SettingsView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.reload() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in model.reload() }
             .onDisappear { model.stopRecording() }
+    }
+}
+
+/// A small screen with a dot where the entry rests.
+struct ToolbarHomeDiagram: View {
+    let home: ToolbarHome
+    var body: some View {
+        let width = 48.0, height = 30.0, inset = 3.0, dot = 6.0
+        // The ratio runs bottom-to-top and left-to-right; SwiftUI's y runs down.
+        let along = inset + dot / 2 + (home.edge == .left || home.edge == .right
+            ? (1 - home.ratio) * (height - inset * 2 - dot) : home.ratio * (width - inset * 2 - dot))
+        let point: CGPoint = switch home.edge {
+        case .left: CGPoint(x: inset + dot / 2, y: along)
+        case .right: CGPoint(x: width - inset - dot / 2, y: along)
+        case .top: CGPoint(x: along, y: inset + dot / 2)
+        case .bottom: CGPoint(x: along, y: height - inset - dot / 2)
+        }
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 4).stroke(Color.primary.opacity(0.35), lineWidth: 1)
+            Circle().fill(Color(nsColor: NoteTheme.accent)).frame(width: dot, height: dot)
+                .position(point)
+        }.frame(width: width, height: height).accessibilityHidden(true)
+    }
+}
+
+enum ToolbarHomeText {
+    /// "右侧 · 偏下": the edge, and roughly where along it.
+    static func describe(_ home: ToolbarHome) -> String {
+        let side = home.edge == .left || home.edge == .right
+        let edge = switch home.edge { case .left: "左侧"; case .right: "右侧"; case .top: "顶部"; case .bottom: "底部" }
+        let place: String
+        switch home.ratio {
+        case ..<0.2: place = side ? "靠下" : "靠左"
+        case ..<0.45: place = side ? "偏下" : "偏左"
+        case ...0.55: place = "居中"
+        case ...0.8: place = side ? "偏上" : "偏右"
+        default: place = side ? "靠上" : "靠右"
+        }
+        return "\(edge) · \(place)"
     }
 }
 

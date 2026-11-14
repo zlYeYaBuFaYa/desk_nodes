@@ -43,6 +43,24 @@ extension Store {
         }
     }
 
+    /// How many entries `recentlyDeleted(now:)` lists, counted in SQL without loading them:
+    /// deleted notes, plus non-blank, unarchived rows deleted from live notes. Blank means
+    /// only the whitespace Swift trims in practice (ASCII, NBSP and the ideographic space).
+    public func recentlyDeletedCount(now: Date) throws -> Int {
+        try locked {
+            let cutoff = SQLValue.date(now.addingTimeInterval(-Double(RecentlyDeleted.retentionDays) * 86_400))
+            let blank = "' ' || char(9, 10, 11, 12, 13, 160, 12288)"
+            let rows = try db.query("""
+                SELECT (SELECT COUNT(*) FROM notes WHERE deleted IS NOT NULL AND deleted>=?)
+                     + (SELECT COUNT(*) FROM items JOIN notes ON notes.id=items.note_id
+                        WHERE notes.deleted IS NULL AND items.deleted IS NOT NULL AND items.deleted>=?
+                          AND trim(items.text, \(blank)) <> ''
+                          AND NOT EXISTS (SELECT 1 FROM item_archives WHERE item_id=items.id))
+                """, [cutoff, cutoff])
+            return rows.first?[0].flatMap { Int($0) } ?? 0
+        }
+    }
+
     /// Brings a deleted note back with the rows deleted together with it. Rows deleted
     /// individually before the note stay deleted (they remain listed separately).
     public func restoreDeletedNote(_ id: NoteID) throws {

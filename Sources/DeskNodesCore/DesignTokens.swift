@@ -166,21 +166,40 @@ public enum NoteTextSize: String, CaseIterable, Sendable {
     }
 }
 
-/// The resident toolbar: a capsule laid out vertically or horizontally, which can shrink
-/// to a round entry while it is snapped to a display edge. All values are points.
+/// "字体" for every note. Each choice pairs a Latin face with a Chinese one, so mixed text
+/// reads as one style; size, rows and the checkbox follow "文字大小" either way.
+public enum NoteFont: String, CaseIterable, Sendable {
+    case system, rounded, serif, wenkai
+    public var name: String {
+        switch self {
+        case .system: return "默认"
+        case .rounded: return "圆体"
+        case .serif: return "宋体"
+        case .wenkai: return "文楷"
+        }
+    }
+}
+
+/// The resident toolbar: a capsule laid out vertically or horizontally, which shrinks to a
+/// rounded-square entry at its home on a display edge. All values are points.
 public enum ToolbarMetrics {
     /// The capsule's short side, in either orientation.
     public static let width = 64.0
     /// Half the short side: the ends are full semicircles.
     public static let cornerRadius = 32.0
-    public static let circleDiameter = 48.0
+    /// The shrunk entry: a rounded square, its hit area reaching out to the edge.
+    public static let entrySize = 56.0
+    public static let entryCornerRadius = 14.0
+    /// The home keeps the entry this far from either end of its edge, so its hit area never
+    /// reaches a screen corner (and a hot corner there).
+    public static let homeCornerClearance = 40.0
     /// Extra room at each end so the grip, count and pager stay clear of the end caps.
     public static let endCap = 10.0
     public static let gripHeight = 24.0
     /// A button's extent along the long axis: taller rows vertically, wider cells horizontally.
     public static let buttonHeight = 52.0
     public static let buttonWidth = 60.0
-    public static let buttonCount = 5.0
+    public static let buttonCount = 4.0
     public static let footerHeight = 32.0
     public static let footerWidth = 68.0
     /// Page switcher, present only while an arrangement overflows.
@@ -232,9 +251,14 @@ public enum MotionPolicy {
     public static let deletion = 0.18
     public static let arrangement = 0.26
     public static let gathering = 0.28
-    /// Toolbar snap, and the round entry's full expand or shrink.
+    /// Toolbar snap, and the entry's full expand or shrink.
     public static let toolbarSnap = 0.20
     public static let toolbarMorph = 0.26
+    /// Going home from elsewhere: shrink in place (controls fade first), then glide.
+    public static let toolbarHomeShrink = 0.20
+    public static func toolbarHomeGlide(distance: Double) -> Double {
+        min(max(0.30 + distance / 3000, 0.30), 0.50)
+    }
     /// Reduce Motion keeps only a very short cross-fade for spatial transitions.
     public static let reducedFade = 0.12
     public static func insertionDuration(reduceMotion: Bool) -> Double {

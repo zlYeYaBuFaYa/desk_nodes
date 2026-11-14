@@ -28,14 +28,15 @@ final class ToolbarPanel: NSPanel {
     }
 }
 
-/// The capsule toolbar and, while snapped to an edge, its round entry. Placement is owned
-/// by `DesktopController`; this class owns the shape, its motion, hit testing and idle timing.
+/// The capsule toolbar and, while snapped to an edge, its entry. Placement is owned by
+/// `DesktopController`; this class owns the shape, its motion, hit testing and idle timing.
+/// Idle, it goes home: wherever it is, it shrinks to the entry and glides to its home.
 ///
 /// Every frame is drawn from one state: the shell's screen rect plus the entry icon's and the
 /// controls' opacity. Interrupting a transition simply starts the next one from that state.
 @MainActor
 final class Toolbar {
-    enum Action: Int { case create, peek, arrange, collapse, settings }
+    enum Action: Int { case create, peek, arrange, collapse }
     enum Shape: Equatable { case expanded, collapsing, round, expanding }
     /// Resolved rest frames in screen points. `circle` exists only while snapped.
     struct Frames: Equatable {
@@ -57,7 +58,11 @@ final class Toolbar {
     var presented: (_ visible: NSRect, _ controls: CGFloat) -> Void = { _, _ in }
     /// Idle blockers owned elsewhere, such as a visible settings window.
     var busy: () -> Bool = { false }
-    /// Seconds before a snapped, idle toolbar shrinks; 0 is off.
+    /// Idle: the owner stores the home as the new rest place and returns its frames.
+    var homeFrames: () -> Frames? = { nil }
+    /// Right-click or Control-click on the grip, the background or the entry.
+    var contextMenu: () -> NSMenu? = { nil }
+    /// Seconds before an idle toolbar shrinks and goes home; 0 is off.
     var autoShrink = ToolbarMetrics.defaultAutoShrink {
         didSet {
             if autoShrink == 0 && (shape == .round || shape == .collapsing) { expand() }
@@ -86,6 +91,8 @@ final class Toolbar {
     private var intentTimer: Timer?
     /// Opened by hovering and not used yet: leaving shrinks it after a short grace.
     private var hoverOpened = false
+    /// Hovered or clicked while gliding home: it arrives first, then opens.
+    private var pendingExpand = false
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var voiceOver: NSKeyValueObservation?
 
@@ -203,6 +210,43 @@ final class Toolbar {
         shape = .collapsing
         start(.collapse(from: shell, to: circle, target: frames.target, icon: iconAlpha, controls: controlsAlpha))
     }
+    /// Idle anywhere: already home, it shrinks in place; elsewhere it shrinks at its grip
+    /// end and glides home. Reduce Motion fades out here and in there.
+    private func goHome() {
+        // No home right now (displays mid-change): wait a full period and try again.
+        guard let home = homeFrames(), let circle = home.circle else { restartIdle(); return }
+        let from = shell, atHome = Self.near(from, home.target)
+        frames = home
+        hoverOpened = false; pendingExpand = false
+        if atHome || Motion.reduced { collapse(force: true); return }
+        shape = .collapsing
+        start(.home(from: from, entry: Self.gripEntry(of: from, orientation: orientation), to: circle,
+                    icon: iconAlpha, controls: controlsAlpha))
+    }
+    private static func near(_ a: NSRect, _ b: NSRect) -> Bool {
+        abs(a.minX - b.minX) <= 1 && abs(a.minY - b.minY) <= 1 && abs(a.width - b.width) <= 1 && abs(a.height - b.height) <= 1
+    }
+    /// The entry square at the capsule's grip end: the top of a column, the left of a row.
+    private static func gripEntry(of capsule: NSRect, orientation: ToolbarOrientation) -> NSRect {
+        let side = CGFloat(ToolbarMetrics.entrySize), inset = (CGFloat(ToolbarMetrics.width) - side) / 2
+        return orientation == .vertical
+            ? NSRect(x: capsule.midX - side / 2, y: capsule.maxY - inset - side, width: side, height: side)
+            : NSRect(x: capsule.minX + inset, y: capsule.midY - side / 2, width: side, height: side)
+    }
+    private var homing: Bool { animation?.glide != nil }
+    /// A new home while shrunk or on the way there: the entry glides over. An expanded
+    /// toolbar stays put and goes to the new home when next idle.
+    func rehome(_ new: Frames) {
+        guard shape == .round || shape == .collapsing, !gesture, let circle = new.circle else { return }
+        frames = new
+        pendingExpand = false
+        if Motion.reduced || shell.size != circle.size { collapse(force: true); return }
+        start(.home(from: shell, entry: shell, to: circle, icon: iconAlpha, controls: controlsAlpha))
+    }
+    /// What a press is holding: the entry (or nearly), not a capsule caught mid-shrink.
+    private var holdsEntry: Bool {
+        shape != .expanded && max(shell.width, shell.height) < CGFloat(ToolbarMetrics.entrySize) * 2
+    }
     private func start(_ transition: Transition) {
         cancelIdle()
         animation = transition
@@ -227,7 +271,10 @@ final class Toolbar {
             stopAnimation()
             shape = shape == .collapsing ? .round : .expanded
             render()
-            restartIdle()
+            // Hovered on the way: open only if the pointer is still on the entry now it has arrived.
+            let open = shape == .round && pendingExpand && contains(NSEvent.mouseLocation)
+            pendingExpand = false
+            if open { expand(hover: true) } else { restartIdle() }
         } else { render() }
     }
 
@@ -243,11 +290,17 @@ final class Toolbar {
         let y = down ? shell.minY - 6 : shell.maxY - size.height + 6
         return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
+    /// The resting entry also takes the pointer in the gap out to its edge.
+    private var entryZone: NSRect? {
+        guard shape == .round, animation == nil, let edge = frames?.edge else { return nil }
+        return NSRect(ToolbarGeometry.hitZone(NoteFrame(shell), edge: edge))
+    }
     private func render() {
         guard let frames else { return }
         let badgeRect = badgeFrame
-        var window = animation?.window ?? shell
+        var window = animation.flatMap { $0.window(at: CACurrentMediaTime() - $0.began) } ?? shell
         if let badgeRect { window = window.union(badgeRect) }
+        if let entryZone { window = window.union(entryZone) }
         // Controls ride along with the shell only once it has the capsule's size.
         let capsule = shell.size == frames.target.size
         let controls = NSRect(origin: capsule ? shell.origin : frames.target.origin, size: frames.target.size)
@@ -263,10 +316,12 @@ final class Toolbar {
         panel.invalidateShadow()
         presented(shell, capsule ? controlsAlpha : 0)
     }
-    /// The visible stadium and badge, in screen points: the only area that takes the pointer.
+    /// The visible shape, the entry's reach to its edge and the badge, in screen points: the
+    /// only area that takes the pointer.
     func contains(_ point: NSPoint) -> Bool {
-        let radius = min(shell.width, shell.height) / 2
+        let radius = ToolbarRoot.cornerRadius(shell)
         if NSBezierPath(roundedRect: shell, xRadius: radius, yRadius: radius).contains(point) { return true }
+        if entryZone?.contains(point) == true { return true }
         return badgeFrame?.contains(point) ?? false
     }
     var visibleFrame: NSRect { shell }
@@ -278,10 +333,13 @@ final class Toolbar {
     func pointerChanged() {
         if contains(NSEvent.mouseLocation) {
             reconsiderIdle()
-            if shape == .collapsing && !gesture { expand() }
+            if shape == .collapsing && !gesture {
+                // Gliding home keeps going; it opens once there.
+                if homing { pendingExpand = true } else { expand() }
+            }
             else if shape == .round && intentTimer == nil { armIntent(ToolbarMetrics.hoverIntent) }
         } else {
-            cancelIntent()
+            cancelIntent(); pendingExpand = false
             restartIdle()
         }
     }
@@ -304,6 +362,12 @@ final class Toolbar {
         hoverOpened = false
         cancelIdle()
     }
+    func showMenu(_ event: NSEvent, in view: NSView) {
+        guard !gesture, let menu = contextMenu() else { return }
+        cancelIntent(); cancelIdle()
+        NSMenu.popUpContextMenu(menu, with: event, for: view) // returns once the menu closes
+        restartIdle()
+    }
 
     /// One press on the grip (`activate == false`) or on the entry and its transition.
     /// The press is locked to this gesture: the motion pauses, travel past the threshold
@@ -314,6 +378,7 @@ final class Toolbar {
         animation = nil; link?.invalidate(); link = nil
         render()
         let start = NSEvent.mouseLocation, origin = shell.origin
+        let entry = holdsEntry
         var dragging = false
         while let next = panel.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             let point = NSEvent.mouseLocation
@@ -329,22 +394,26 @@ final class Toolbar {
                     moved.origin = NSPoint(x: clamped.x, y: clamped.y)
                 }
                 if moved != shell { shell = moved; render() }
-                preview.show(snapPreview(shell, shape != .expanded, point), below: panel)
+                preview.show(snapPreview(shell, entry, point), below: panel)
             }
             if next.type == .leftMouseUp { break }
         }
         preview.orderOut(nil)
         if dragging { NSCursor.pop() }
         gesture = false
-        if dragging, let frames = released(shell, shape != .expanded, NSEvent.mouseLocation) { self.frames = frames }
-        if dragging || activate || shape != .expanded { expand(force: true) } else { render(); restartIdle() }
+        if dragging, let frames = released(shell, entry, NSEvent.mouseLocation) { self.frames = frames }
+        // A dragged entry settles at its new home; a click on it, or a moved capsule, opens.
+        // A capsule caught while shrinking is moved as a capsule: the home stays as it was.
+        pendingExpand = false
+        if dragging && entry { collapse(force: true) }
+        else if dragging || activate || shape != .expanded { expand(force: true) } else { render(); restartIdle() }
     }
 
     // MARK: Idle shrink
 
-    /// Every condition but the pointer's position.
+    /// Every condition but the pointer's position. Free or snapped alike: idle means home.
     private var idleEligible: Bool {
-        shape == .expanded && animation == nil && !gesture && frames?.edge != nil && autoShrink > 0
+        shape == .expanded && animation == nil && !gesture && autoShrink > 0
             && panel.isVisible && !busy() && !NSWorkspace.shared.isVoiceOverEnabled
     }
     private var idleAllowed: Bool { idleEligible && !contains(NSEvent.mouseLocation) }
@@ -376,7 +445,7 @@ final class Toolbar {
                 guard let self else { return }
                 self.idleTimer = nil
                 // Check again at expiry: never trust the last enter/exit event.
-                if self.idleAllowed { self.collapse() } else { self.reconsiderIdle() }
+                if self.idleAllowed { self.goHome() } else { self.reconsiderIdle() }
             }
         }
     }
@@ -436,10 +505,24 @@ private struct Transition {
     /// Fixed window for the whole transition when the size changes: the union of both
     /// shapes, released as soon as the transition ends. A plain move follows the shell.
     var window: NSRect?
-    var duration: Double { max(shellStart + shellDuration, icon.end, controls.end) }
+    /// Going home: after reaching `to`, the entry moves on to `glide.to` without resizing.
+    var glide: (to: NSRect, start: Double, duration: Double)? = nil
+    var duration: Double { max(shellStart + shellDuration, icon.end, controls.end, glide.map { $0.start + $0.duration } ?? 0) }
 
+    /// The glide follows the entry with its own window, so the panel never spans the screen.
+    func window(at t: Double) -> NSRect? {
+        if let glide, t >= glide.start { return nil }
+        return window
+    }
     func shell(at t: Double) -> NSRect {
-        let raw = shellDuration <= 0 ? (t >= shellStart ? 1 : 0) : min(1, max(0, (t - shellStart) / shellDuration))
+        if let glide, t >= glide.start {
+            return Self.mix(to, glide.to, progress: glide.duration <= 0 ? 1 : (t - glide.start) / glide.duration)
+        }
+        return Self.mix(from, to, progress: shellDuration <= 0 ? (t >= shellStart ? 1 : 0) : (t - shellStart) / shellDuration)
+    }
+    /// A straight line with ease-in-out timing.
+    private static func mix(_ from: NSRect, _ to: NSRect, progress: Double) -> NSRect {
+        let raw = min(1, max(0, progress))
         let p = raw < 0.5 ? 2 * raw * raw : 1 - pow(-2 * raw + 2, 2) / 2
         func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * CGFloat(p) }
         return NSRect(x: mix(from.minX, to.minX), y: mix(from.minY, to.minY),
@@ -479,6 +562,18 @@ private struct Transition {
         return Transition(from: from, to: to, shellStart: pre, shellDuration: shell, icon: iconTrack, controls: controlsTrack,
                           window: from.union(to))
     }
+    /// From elsewhere to home: the controls fade, the capsule shrinks to `entry` at its grip
+    /// end, then the entry glides to `to`, taking longer for longer trips.
+    @MainActor static func home(from: NSRect, entry: NSRect, to: NSRect, icon: CGFloat, controls: CGFloat) -> Transition {
+        var iconTrack = Track(initial: icon), controlsTrack = Track(initial: controls)
+        let pre = controls > 0 ? fade * Double(controls) : 0
+        if controls > 0 { controlsTrack.segments.append((0, pre, controls, 0)) }
+        let shrink = from.size == entry.size ? 0 : max(0, MotionPolicy.toolbarHomeShrink - fade)
+        if icon < 1 { iconTrack.segments.append((pre + shrink / 2, shrink / 2, icon, 1)) }
+        let distance = Double(hypot(to.midX - entry.midX, to.midY - entry.midY))
+        return Transition(from: from, to: entry, shellStart: pre, shellDuration: shrink, icon: iconTrack, controls: controlsTrack,
+                          window: from.union(entry), glide: (to, pre + shrink, MotionPolicy.toolbarHomeGlide(distance: distance)))
+    }
     @MainActor static func collapse(from: NSRect, to: NSRect, target: NSRect, icon: CGFloat, controls: CGFloat) -> Transition {
         let reduced = Motion.reduced
         var iconTrack = Track(initial: icon), controlsTrack = Track(initial: controls)
@@ -514,7 +609,7 @@ final class SnapPreview: NSPanel {
 
 private final class SnapOutline: NSView {
     override func draw(_ dirtyRect: NSRect) {
-        let rect = bounds.insetBy(dx: 1, dy: 1), radius = min(rect.width, rect.height) / 2
+        let rect = bounds.insetBy(dx: 1, dy: 1), radius = ToolbarRoot.cornerRadius(rect)
         let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
         NoteTheme.accent.withAlphaComponent(0.14).setFill(); path.fill()
         path.lineWidth = 1.5; path.setLineDash([5, 4], count: 2, phase: 0)
@@ -551,14 +646,21 @@ final class ToolbarRoot: NSView {
     required init?(coder: NSCoder) { fatalError() }
     func arrange(shell rect: NSRect, controls: NSRect, controlsAlpha: CGFloat, badge badgeRect: NSRect?, iconAlpha: CGFloat) {
         shell.frame = rect
-        shell.layer?.cornerRadius = min(rect.width, rect.height) / 2
+        shell.layer?.cornerRadius = Self.cornerRadius(rect)
         if content.frame != controls { content.frame = controls }
         content.alphaValue = controlsAlpha; content.isHidden = controlsAlpha <= 0
-        let side = ToolbarMetrics.circleDiameter
+        let side = ToolbarMetrics.entrySize
         entry.frame = NSRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side)
         entry.alphaValue = iconAlpha; entry.isHidden = iconAlpha <= 0
         if let badgeRect { badge.frame = badgeRect }
         badge.alphaValue = iconAlpha; badge.isHidden = badgeRect == nil
+    }
+    /// A capsule's ends are semicircles and the entry a soft square; sizes between ease from one to the other.
+    static func cornerRadius(_ rect: NSRect) -> CGFloat {
+        let half = min(rect.width, rect.height) / 2, long = max(rect.width, rect.height)
+        let entry = CGFloat(ToolbarMetrics.entrySize), square = min(half, CGFloat(ToolbarMetrics.entryCornerRadius))
+        let p = min(1, max(0, (long - entry) / entry))
+        return square + (half - square) * p
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -569,9 +671,16 @@ final class ToolbarRoot: NSView {
         return interactive ? (super.hitTest(point) ?? self) : self
     }
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
         // A stable capsule only moves by its grip; elsewhere the press belongs to the entry.
         guard !interactive else { return }
         owner?.track(activate: true)
+    }
+    /// Buttons keep a right-click to themselves; the grip, the background and the entry offer the menu.
+    override func rightMouseDown(with event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        if interactive, super.hitTest(convert(local, to: superview)) is NSControl { return }
+        owner?.showMenu(event, in: self)
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -592,7 +701,7 @@ final class ToolbarRoot: NSView {
     }
 }
 
-/// The round entry's note icon. Accessibility sees a button that expands the toolbar.
+/// The entry's note icon. Accessibility sees a button that expands the toolbar.
 final class ToolbarEntry: NSView {
     var activate: () -> Void = {}
     override init(frame: NSRect) {
@@ -604,7 +713,7 @@ final class ToolbarEntry: NSView {
     override func accessibilityPerformPress() -> Bool { activate(); return true }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
     override func draw(_ dirtyRect: NSRect) {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 19, weight: .medium).applying(.init(paletteColors: [NoteTheme.toolbarInk]))
+        let configuration = NSImage.SymbolConfiguration(pointSize: 22, weight: .medium).applying(.init(paletteColors: [NoteTheme.toolbarInk]))
         guard let image = NSImage(systemSymbolName: "note.text", accessibilityDescription: nil)?.withSymbolConfiguration(configuration) else { return }
         let size = image.size
         image.draw(in: NSRect(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2, width: size.width, height: size.height))
@@ -636,8 +745,7 @@ final class ToolbarView: NSView {
         ToolbarButton(symbol: "plus", label: "新建", help: "新建便签"),
         ToolbarButton(symbol: "rectangle.stack", label: "浮起", help: "临时把全部便签浮到最前，包括全屏应用"),
         ToolbarButton(symbol: "square.grid.2x2", label: "整理", help: "把便签按屏幕从左到右排整齐"),
-        ToolbarButton(symbol: "arrow.down.right.and.arrow.up.left", label: "收起", help: "把全部便签收拢到工具条旁"),
-        ToolbarButton(symbol: "gearshape", label: "设置", help: "打开设置")
+        ToolbarButton(symbol: "arrow.down.right.and.arrow.up.left", label: "收起", help: "把全部便签收拢到工具条旁")
     ]
     let pager = ToolbarPager()
     let count = NSTextField(labelWithString: "")
@@ -731,7 +839,10 @@ final class ToolbarGrip: NSView {
             }
         }
     }
-    override func mouseDown(with event: NSEvent) { pressed() }
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { nextResponder?.rightMouseDown(with: event); return }
+        pressed()
+    }
 }
 
 /// Icon plus a short label; hover and press are quiet tints, disabled is dimmed.

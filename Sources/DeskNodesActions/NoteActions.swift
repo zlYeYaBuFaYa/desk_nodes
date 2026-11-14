@@ -166,6 +166,7 @@ public final class NoteActions {
     }
     /// The "最近删除" list as of now (the injected clock).
     public func recentlyDeleted() throws -> RecentlyDeleted { try store.recentlyDeleted(now: clock()) }
+    public func recentlyDeletedCount() throws -> Int { try store.recentlyDeletedCount(now: clock()) }
     /// Restores from the recently-deleted list; a toast entry for the same deletion is retired
     /// so a later Command-Z cannot fail on an already restored row.
     public func restoreDeletedNote(_ id: NoteID) throws {

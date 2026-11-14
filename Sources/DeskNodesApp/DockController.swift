@@ -25,7 +25,7 @@ final class DockController: NSObject {
     private var pages: [String: Int] = [:]
     /// Global collapse: strips keep their geometry but their overflow tab windows close.
     var suppressed = false
-    /// The toolbar's full expanded frame and its display; strips there keep clear of it.
+    /// The toolbar's home zone and its display; strips there keep clear of it.
     var toolbar: () -> (display: String, frame: NoteFrame)? = { nil }
     private func region(_ edge: DockEdge, occupied: Set<DockEdge>, screen: DockScreen) -> DockScreen {
         let base = DockGeometry.region(edge: edge, occupied: occupied, screen: screen)
@@ -203,8 +203,8 @@ final class DockController: NSObject {
             guard let more else { return }
             let menu = NSMenu()
             for note in notes {
-                let item = NSMenuItem(title: title(note), action: #selector(DockMenuChoice.performChoice), keyEquivalent: "")
-                let target = DockMenuChoice { choose(note.id) }
+                let item = NSMenuItem(title: title(note), action: #selector(MenuChoice.performChoice), keyEquivalent: "")
+                let target = MenuChoice { choose(note.id) }
                 item.representedObject = target; item.target = target; menu.addItem(item)
             }
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: more.bounds.height), in: more)
@@ -351,7 +351,8 @@ private final class DockTab: NSButton {
             withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NoteTheme.primary, .paragraphStyle: paragraph])
     }
 }
-private final class DockMenuChoice: NSObject {
+/// A menu item's action as a closure; the item retains it through `representedObject`.
+final class MenuChoice: NSObject {
     let choose: () -> Void
     init(_ choose: @escaping () -> Void) { self.choose = choose }
     @objc func performChoice() { choose() }

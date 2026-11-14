@@ -20,6 +20,17 @@ public enum ToolbarAnchor: Equatable, Sendable {
     }
 }
 
+/// Where the toolbar goes when idle: a fixed point on one edge of whichever display it is
+/// on. `ratio` runs along the entry's home span in AppKit's direction (bottom to top on the
+/// side edges, left to right on the others), so it survives resolution changes.
+public struct ToolbarHome: Equatable, Sendable {
+    public var edge: ToolbarEdge
+    public var ratio: Double
+    public init(edge: ToolbarEdge, ratio: Double) { self.edge = edge; self.ratio = min(max(ratio, 0), 1) }
+    /// The right side, a little below the middle.
+    public static let standard = ToolbarHome(edge: .right, ratio: 0.4)
+}
+
 /// The resolved frames for one anchor: the full expanded target (what notes avoid) and,
 /// when snapped, the round entry. Both are AppKit screen points.
 public struct ToolbarFrames: Equatable, Sendable {
@@ -36,7 +47,7 @@ public struct ToolbarFrames: Equatable, Sendable {
 /// stays where it is dropped and the capsule unfolds from it, so nothing jumps on release.
 public enum ToolbarGeometry {
     static let gap = ToolbarMetrics.edgeGap
-    static let radius = ToolbarMetrics.circleDiameter / 2
+    static let radius = ToolbarMetrics.entrySize / 2
 
     /// Expanded size. On a display too small for the whole capsule the long side shrinks
     /// and the content scrolls, with the grip fixed.
@@ -73,7 +84,7 @@ public enum ToolbarGeometry {
     }
 
     public static func circle(edge: ToolbarEdge, along c: Double, screen: DockScreen) -> NoteFrame {
-        let v = screen.visible, d = ToolbarMetrics.circleDiameter
+        let v = screen.visible, d = ToolbarMetrics.entrySize
         switch edge {
         case .left: return NoteFrame(x: v.x + gap, y: c - radius, width: d, height: d)
         case .right: return NoteFrame(x: v.x + v.width - gap - d, y: c - radius, width: d, height: d)
@@ -118,6 +129,65 @@ public enum ToolbarGeometry {
         let along = alongEdge(orientation, edge)
         if edge == .left || edge == .right { return along ? frame.y + frame.height - radius : frame.y + frame.height / 2 }
         return along ? frame.x + radius : frame.x + frame.width / 2
+    }
+
+    // MARK: Home
+
+    /// The entry's legal centres for a home: the snapped span less the corner clearance.
+    static func homeSpan(_ edge: ToolbarEdge, _ v: NoteFrame) -> (lo: Double, hi: Double) {
+        let s = circleSpan(edge, v), c = ToolbarMetrics.homeCornerClearance
+        return s.hi - s.lo > c * 2 ? (s.lo + c, s.hi - c) : ((s.lo + s.hi) / 2, (s.lo + s.hi) / 2)
+    }
+    private static func homeCentre(_ home: ToolbarHome, _ v: NoteFrame) -> Double {
+        let s = homeSpan(home.edge, v)
+        return s.lo + (s.hi - s.lo) * home.ratio
+    }
+    /// The home as it applies on `screen`: an edge that is a seam there (another display
+    /// continues past it, so a thrown pointer would not stop) gives way to the opposite
+    /// edge, else to another outer one, at the same ratio.
+    public static func home(_ home: ToolbarHome, on screen: DockScreen, among screens: [DockScreen]) -> ToolbarHome {
+        let outer = outerEdges(of: screen, among: screens)
+        guard !outer.contains(home.edge) else { return home }
+        let opposite: ToolbarEdge
+        switch home.edge {
+        case .left: opposite = .right
+        case .right: opposite = .left
+        case .top: opposite = .bottom
+        case .bottom: opposite = .top
+        }
+        let edge = outer.contains(opposite) ? opposite : [ToolbarEdge.right, .left, .bottom, .top].first(where: outer.contains) ?? home.edge
+        return ToolbarHome(edge: edge, ratio: home.ratio)
+    }
+    /// The snapped anchor a home stands for on `screen`.
+    public static func anchor(home: ToolbarHome, screen: DockScreen) -> ToolbarAnchor {
+        let c = homeCentre(home, screen.visible)
+        return .snapped(home.edge, ratio: ratio(along: c, edge: home.edge, screen: screen), display: screen.persistentID)
+    }
+    /// The home an entry dropped with its centre at `point` takes: the nearest outer edge,
+    /// at the projected position.
+    public static func home(at point: (x: Double, y: Double), screen: DockScreen, screens: [DockScreen]) -> ToolbarHome {
+        let v = screen.visible, outer = outerEdges(of: screen, among: screens)
+        let distances: [(ToolbarEdge, Double)] = [
+            (.left, point.x - v.x), (.right, v.x + v.width - point.x),
+            (.top, v.y + v.height - point.y), (.bottom, point.y - v.y)]
+        let edge = distances.filter { outer.contains($0.0) }.min { $0.1 < $1.1 }?.0 ?? ToolbarHome.standard.edge
+        let s = homeSpan(edge, v), along = edge == .left || edge == .right ? point.y : point.x
+        return ToolbarHome(edge: edge, ratio: s.hi > s.lo ? (along - s.lo) / (s.hi - s.lo) : 0.5)
+    }
+    /// The entry at a home plus the gap to its edge: what takes the pointer there, and
+    /// what docked strips keep clear of.
+    public static func homeZone(_ home: ToolbarHome, screen: DockScreen) -> NoteFrame {
+        hitZone(circle(edge: home.edge, along: homeCentre(home, screen.visible), screen: screen), edge: home.edge)
+    }
+    /// An entry grown out to its edge, and by half the gap along it.
+    public static func hitZone(_ entry: NoteFrame, edge: ToolbarEdge) -> NoteFrame {
+        let g = gap
+        switch edge {
+        case .left: return NoteFrame(x: entry.x - g, y: entry.y - g / 2, width: entry.width + g, height: entry.height + g)
+        case .right: return NoteFrame(x: entry.x, y: entry.y - g / 2, width: entry.width + g, height: entry.height + g)
+        case .top: return NoteFrame(x: entry.x - g / 2, y: entry.y, width: entry.width + g, height: entry.height + g)
+        case .bottom: return NoteFrame(x: entry.x - g / 2, y: entry.y - g, width: entry.width + g, height: entry.height + g)
+        }
     }
 
     /// Edges that face outward: an edge another display continues past is a seam, not an edge.
@@ -226,11 +296,13 @@ extension Arrangement {
 }
 
 extension DockGeometry {
-    /// Strips leave the toolbar's full expanded frame alone: when the toolbar reaches into
-    /// the band a strip would use, the strip takes the largest region clear of it.
-    public static func region(_ region: DockScreen, edge: DockEdge, avoiding toolbar: NoteFrame?) -> DockScreen {
-        guard let toolbar else { return region }
-        let a = region.available, v = region.visible
+    /// Strips leave the toolbar's home zone alone: a strip whose band the zone reaches into
+    /// keeps to the longer stretch of its edge beside the zone. The zone only moves with the
+    /// setting, so the toolbar coming and going never relays strips out.
+    public static func region(_ region: DockScreen, edge: DockEdge, avoiding zone: NoteFrame?) -> DockScreen {
+        guard let zone else { return region }
+        let a = region.available
+        var v = region.visible
         let depth = edge == .top ? (v.height < 700 ? 200.0 : 260.0) : sideWidth
         let band: NoteFrame
         switch edge {
@@ -238,8 +310,15 @@ extension DockGeometry {
         case .left: band = NoteFrame(x: a.x, y: a.y, width: depth, height: a.height)
         case .right: band = NoteFrame(x: a.x + a.width - depth, y: a.y, width: depth, height: a.height)
         }
-        let t = toolbar
-        guard t.x < band.x + band.width, t.x + t.width > band.x, t.y < band.y + band.height, t.y + t.height > band.y else { return region }
-        return DockScreen(id: region.id, visible: Arrangement.largestFree(v, avoiding: toolbar, gap: gap))
+        let z = zone
+        guard z.x < band.x + band.width, z.x + z.width > band.x, z.y < band.y + band.height, z.y + z.height > band.y else { return region }
+        if edge == .top {
+            let before = z.x - gap - v.x, after = v.x + v.width - (z.x + z.width + gap)
+            if before >= after { v.width = max(1, before) } else { v.x = z.x + z.width + gap; v.width = max(1, after) }
+        } else {
+            let below = z.y - gap - v.y, above = v.y + v.height - (z.y + z.height + gap)
+            if above >= below { v.y = z.y + z.height + gap; v.height = max(1, above) } else { v.height = max(1, below) }
+        }
+        return DockScreen(id: region.id, visible: v)
     }
 }

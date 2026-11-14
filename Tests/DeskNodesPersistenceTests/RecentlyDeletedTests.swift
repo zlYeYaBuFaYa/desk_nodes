@@ -72,4 +72,23 @@ final class RecentlyDeletedTests: XCTestCase {
         XCTAssertTrue(try db.recentlyDeleted(now: now.addingTimeInterval(30.1 * 86_400)).isEmpty)
         XCTAssertNotNil(try db.notes(includeDeleted: true).first?.deletedAt, "the tombstone itself is kept for history")
     }
+
+    func testCountMatchesTheListWithoutLoadingIt() throws {
+        func same(_ label: String) throws {
+            let list = try db.recentlyDeleted(now: now)
+            XCTAssertEqual(try db.recentlyDeletedCount(now: now), list.notes.count + list.items.count, label)
+        }
+        try same("empty")
+        let live = try db.createNote(title: "live")
+        let row = try db.createItem(in: live.id, text: "周报")
+        let blanks = try [" ", "\t\n", "\u{3000}", "\u{00A0} "].enumerated().map { try db.createItem(in: live.id, text: $1, order: $0 + 1) }
+        try db.deleteItem(row.id); for blank in blanks { try db.deleteItem(blank.id) }
+        try same("blank rows, ideographic space included, are not listed")
+        let gone = try db.createNote(title: "gone")
+        _ = try db.createItem(in: gone.id, text: "随便签删除")
+        now.addTimeInterval(1); try db.deleteNote(gone.id)
+        try same("rows of a deleted note count with the note")
+        now.addTimeInterval(31 * 86_400)
+        try same("expired")
+    }
 }

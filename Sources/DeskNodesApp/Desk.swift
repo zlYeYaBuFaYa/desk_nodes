@@ -34,6 +34,10 @@ final class DesktopController {
     private var toolbarDisplay: String?
     /// The reservation docked strips last saw; a change relays them out.
     private var reserved: NoteFrame?
+    /// The toolbar's context menu reaches these, which live with the app delegate.
+    var openSettings: () -> Void = {}
+    /// A toolbar preference changed outside the settings window.
+    var toolbarPreferencesChanged: () -> Void = {}
     /// The hint is mid-fade with the toolbar's controls; a settled capsule leaves it alone.
     private var hintFollows = false
 
@@ -43,8 +47,13 @@ final class DesktopController {
         pages = defaults.pages
         toolbar.released = { [weak self] visible, round, pointer in self?.toolbarReleased(visible, round: round, pointer: pointer) }
         toolbar.snapPreview = { [weak self] visible, round, pointer in
-            self?.release(visible, round: round, pointer: pointer).flatMap { $0.1.edge == nil ? nil : NSRect($0.1.target) }
+            guard let self else { return nil }
+            // A dragged entry previews its new home; a capsule previews where it would snap.
+            if round { return self.homeDrop(visible, pointer: pointer).map { NSRect($0.1.circle ?? $0.1.target) } }
+            return self.release(visible, round: false, pointer: pointer).flatMap { $0.1.edge == nil ? nil : NSRect($0.1.target) }
         }
+        toolbar.homeFrames = { [weak self] in self?.goHome() }
+        toolbar.contextMenu = { [weak self] in self?.toolbarMenu() }
         toolbar.presented = { [weak self] visible, controls in self?.toolbarPresented(visible, controls: controls) }
         toolbar.turnPage = { [weak self] delta in self?.turnPage(delta) }
         toolbar.autoShrink = defaults.toolbarAutoShrink
@@ -180,22 +189,96 @@ final class DesktopController {
         screens.first { $0.id == toolbarDisplay }
             ?? screens.first { DockGeometry.contains($0.visible, x: frame.x + frame.width / 2, y: frame.y + frame.height / 2) }
     }
-    /// The full expanded frame, even while the toolbar is shrunk to its entry: new notes,
-    /// "整理" and docked strips keep clear of it.
+    /// The full expanded frame, even while the toolbar is shrunk to its entry: new notes
+    /// and "整理" keep clear of it.
     private var toolbarFrame: NoteFrame {
         NoteFrame(toolbar.frames?.target ?? toolbar.panel.frame)
     }
-    /// What docked strips avoid on the toolbar's display.
+    /// What docked strips avoid on the toolbar's display: the home zone, not the toolbar,
+    /// so strips stay put while the toolbar moves, shrinks and expands.
     var toolbarReservation: (display: String, frame: NoteFrame)? {
-        guard toolbar.frames != nil, let display = toolbarDisplay else { return nil }
-        return (display, toolbarFrame)
+        let screens = DockController.screens()
+        guard toolbar.frames != nil, let display = toolbarDisplay,
+              let screen = screens.first(where: { $0.id == display }) else { return nil }
+        return (display, ToolbarGeometry.homeZone(ToolbarGeometry.home(defaults.toolbarHome, on: screen, among: screens), screen: screen))
     }
     /// Placement can be re-solved from inside a refresh (the pager appearing), so strips
     /// relay out on the next turn rather than re-entering it.
     private func reservationChanged() {
-        guard toolbarFrame != reserved else { return }
-        reserved = toolbarFrame
+        let zone = toolbarReservation?.frame
+        guard zone != reserved else { return }
+        reserved = zone
         DispatchQueue.main.async { [weak self] in self?.refresh(.layout) }
+    }
+
+    // MARK: Home
+
+    var toolbarHome: ToolbarHome { defaults.toolbarHome }
+    /// Idle: the toolbar's rest place becomes its home on the display it is on.
+    private func goHome() -> Toolbar.Frames? {
+        let screens = DockController.screens()
+        guard let screen = toolbarScreen(toolbarFrame, screens: screens) ?? screens.first else { return nil }
+        let home = ToolbarGeometry.home(defaults.toolbarHome, on: screen, among: screens)
+        let anchor = ToolbarGeometry.anchor(home: home, screen: screen)
+        guard let frames = ToolbarGeometry.resolve(anchor, orientation: defaults.toolbarOrientation,
+                                                   paged: toolbar.paged, screens: [screen]) else { return nil }
+        defaults.toolbarAnchor = anchor
+        toolbarDisplay = frames.screen.id
+        DispatchQueue.main.async { [weak self] in self?.reservationChanged() }
+        return Toolbar.Frames(frames)
+    }
+    /// The home a dropped entry takes, and its frames: the display under the pointer, else the last one.
+    private func homeDrop(_ visible: NSRect, pointer: NSPoint) -> (ToolbarHome, ToolbarFrames)? {
+        let screens = DockController.screens()
+        guard let screen = screens.first(where: { DockGeometry.contains($0.visible, x: pointer.x, y: pointer.y) })
+                ?? screens.first(where: { $0.id == toolbarDisplay }) ?? screens.first else { return nil }
+        let home = ToolbarGeometry.home(at: (visible.midX, visible.midY), screen: screen, screens: screens)
+        let anchor = ToolbarGeometry.anchor(home: home, screen: screen)
+        return ToolbarGeometry.resolve(anchor, orientation: defaults.toolbarOrientation, paged: toolbar.paged, screens: [screen])
+            .map { (home, $0) }
+    }
+    /// A new home moves a shrunk toolbar there; an expanded or opening one stays put and
+    /// goes there when next idle.
+    func setToolbarHome(_ home: ToolbarHome) {
+        defaults.toolbarHome = home
+        if toolbar.shape == .round || toolbar.shape == .collapsing, let frames = goHome() { toolbar.rehome(frames) }
+        reservationChanged()
+        toolbarPreferencesChanged()
+    }
+
+    // MARK: Toolbar menu
+
+    private func toolbarMenu() -> NSMenu {
+        let menu = NSMenu()
+        func item(_ title: String, on: Bool = false, enabled: Bool = true, _ action: @escaping () -> Void) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: #selector(MenuChoice.performChoice), keyEquivalent: "")
+            let choice = MenuChoice(action)
+            item.target = choice; item.representedObject = choice
+            item.state = on ? .on : .off; item.isEnabled = enabled
+            return item
+        }
+        let settings = item("设置…") { [weak self] in self?.openSettings() }
+        settings.keyEquivalent = ","; settings.keyEquivalentModifierMask = .command
+        menu.addItem(settings)
+        menu.addItem(.separator())
+        let orientation = NSMenuItem(title: "排列方向", action: nil, keyEquivalent: ""), orientations = NSMenu()
+        for (title, value) in [("竖向", ToolbarOrientation.vertical), ("横向", .horizontal)] {
+            orientations.addItem(item(title, on: defaults.toolbarOrientation == value) { [weak self] in
+                self?.setToolbarOrientation(value); self?.toolbarPreferencesChanged()
+            })
+        }
+        orientation.submenu = orientations; menu.addItem(orientation)
+        let shrink = NSMenuItem(title: "自动收缩", action: nil, keyEquivalent: ""), shrinks = NSMenu()
+        for seconds in ToolbarMetrics.autoShrinkChoices {
+            shrinks.addItem(item(seconds == 0 ? "关闭" : "\(seconds) 秒", on: toolbar.autoShrink == seconds) { [weak self] in
+                self?.setToolbarAutoShrink(seconds); self?.toolbarPreferencesChanged()
+            })
+        }
+        shrink.submenu = shrinks; menu.addItem(shrink)
+        menu.addItem(item("恢复默认收缩位置", enabled: defaults.toolbarHome != .standard) { [weak self] in
+            self?.setToolbarHome(.standard)
+        })
+        return menu
     }
     private func release(_ visible: NSRect, round: Bool, pointer: NSPoint) -> (ToolbarAnchor, ToolbarFrames)? {
         ToolbarGeometry.release(NoteFrame(visible), round: round, pointer: (pointer.x, pointer.y),
@@ -203,7 +286,15 @@ final class DesktopController {
                                 orientation: defaults.toolbarOrientation, paged: toolbar.paged, screens: DockController.screens())
     }
     private func toolbarReleased(_ visible: NSRect, round: Bool, pointer: NSPoint) -> Toolbar.Frames? {
-        guard let (anchor, frames) = release(visible, round: round, pointer: pointer) else { return nil }
+        // A dragged entry chooses a new home and rests there.
+        if round, let (home, frames) = homeDrop(visible, pointer: pointer) {
+            defaults.toolbarHome = home
+            defaults.toolbarAnchor = ToolbarGeometry.anchor(home: home, screen: frames.screen)
+            toolbarDisplay = frames.screen.id
+            DispatchQueue.main.async { [weak self] in self?.reservationChanged(); self?.toolbarPreferencesChanged() }
+            return Toolbar.Frames(frames)
+        }
+        guard let (anchor, frames) = release(visible, round: false, pointer: pointer) else { return nil }
         defaults.toolbarAnchor = anchor
         toolbarDisplay = frames.screen.id
         let resolved = Toolbar.Frames(frames)

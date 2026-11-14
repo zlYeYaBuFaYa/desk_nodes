@@ -136,6 +136,16 @@ final class DesktopRedesignTests: XCTestCase {
         XCTAssertEqual(PresentationDefaults(raw).toolbarAutoShrink, 0)
         defaults.toolbarAnchor = .free(centerX: 52, centerY: 660, display: nil)
         XCTAssertEqual(PresentationDefaults(raw).toolbarAnchor, .free(centerX: 52, centerY: 660, display: nil))
+        XCTAssertEqual(reopened.noteFont, .system)
+        defaults.noteFont = .wenkai
+        XCTAssertEqual(PresentationDefaults(raw).noteFont, .wenkai)
+        raw.set("comic", forKey: "note.font")
+        XCTAssertEqual(PresentationDefaults(raw).noteFont, .system)
+        XCTAssertEqual(reopened.toolbarHome, .standard)
+        defaults.toolbarHome = ToolbarHome(edge: .left, ratio: 0.8)
+        XCTAssertEqual(PresentationDefaults(raw).toolbarHome, ToolbarHome(edge: .left, ratio: 0.8))
+        raw.set(["edge": "nowhere", "ratio": 0.5], forKey: "toolbar.home") // unreadable: back to the default
+        XCTAssertEqual(PresentationDefaults(raw).toolbarHome, .standard)
         raw.set(7, forKey: "toolbar.autoShrink") // not an offered choice
         XCTAssertEqual(PresentationDefaults(raw).toolbarAutoShrink, ToolbarMetrics.defaultAutoShrink)
         // New notes default to 240pt; someone who chose "随内容" keeps it.
@@ -244,7 +254,7 @@ final class DesktopRedesignTests: XCTestCase {
         defer { surfaces.discardAll() }
         defer { desk.toolbar.invalidate() }
         desk.sync(try store.notes())
-        XCTAssertEqual(desk.toolbar.buttons.count, 5)
+        XCTAssertEqual(desk.toolbar.buttons.count, 4)
         XCTAssertEqual(surfaces.panels[plain.id]?.collectionBehavior.contains(.fullScreenNone), true)
         XCTAssertEqual(surfaces.panels[pinned.id]?.level, .floating)
 

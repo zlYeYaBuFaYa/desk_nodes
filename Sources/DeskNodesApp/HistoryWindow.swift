@@ -39,6 +39,18 @@ final class HistoryPresentation: ObservableObject {
         guard let next = month.offset(offset) else { return }
         month = next; selected = next.first; reload()
     }
+    /// Shows `day` selected, turning to its month when needed.
+    func select(_ day: HistoryDay) {
+        let target = HistoryMonth(containing: day)
+        selected = day
+        if target != month { month = target; reload() }
+    }
+    /// Arrow keys move the selection by days, never past today.
+    func step(days: Int) {
+        guard let next = selected.adding(days: days) else { return }
+        select(min(next, today))
+    }
+    func showToday() { select(today) }
     var daily: DailySnapshot? { snapshots.first { $0.day == selected } }
     func reloadDeleted() {
         guard let loadDeleted else { return }
@@ -54,14 +66,76 @@ final class HistoryPresentation: ObservableObject {
 }
 
 enum HistoryColors {
+    static let progressInk = NoteTheme.dynamic("4F7A64", "8CB69D")
+    static let trackInk = NoteTheme.dynamic("E4E1DA", "4D4942")
     static let background = Color(nsColor: NoteTheme.dynamic("FBFAF8", "242321"))
     static let quiet = Color(nsColor: NoteTheme.dynamic("EFEDE8", "35332F"))
     static let selected = Color(nsColor: NoteTheme.dynamic("2F2C27", "EDEBE6"))
     static let selectedInk = Color(nsColor: NoteTheme.dynamic("FFFFFF", "242321"))
-    static let progress = Color(nsColor: NoteTheme.dynamic("4F7A64", "8CB69D"))
-    static let track = Color(nsColor: NoteTheme.dynamic("E4E1DA", "4D4942"))
+    static let progress = Color(nsColor: progressInk)
     static let carryInk = Color(nsColor: NoteTheme.dynamic("6B5A2E", "E4CF8D"))
     static let carryFill = Color(nsColor: NoteTheme.dynamic("F3E9C9", "494025"))
+    static func fill(_ heat: HistoryHeat) -> Color {
+        switch heat {
+        case .none: return .clear
+        case .empty: return quiet
+        case .low: return progress.opacity(0.18)
+        case .mid: return progress.opacity(0.38)
+        case .full: return progress.opacity(0.62)
+        }
+    }
+}
+
+/// One day in the status menu's 历史记录 submenu: its label, a small completion bar and
+/// "done/total", the same numbers the calendar shows for that day.
+enum HistoryMenuRow {
+    /// "昨天 · 11月12日", "周三 · 11月11日" within the week, else "11月3日". Business days.
+    static func label(_ day: HistoryDay, today: HistoryDay) -> String {
+        if day.adding(days: 1) == today { return "昨天 · " + day.shortLabel }
+        if let week = today.adding(days: -7), day > week { return day.weekdayLabel + " · " + day.shortLabel }
+        return day.shortLabel
+    }
+    static func title(_ snapshot: DailySnapshot, today: HistoryDay) -> NSAttributedString {
+        let counts = HistoryCompletion(notes: snapshot.notes)
+        let font = NSFont.menuFont(ofSize: 0)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: 236)]
+        let title = NSMutableAttributedString(string: label(snapshot.day, today: today) + "\t",
+                                              attributes: [.font: font, .paragraphStyle: paragraph])
+        let bar = NSTextAttachment()
+        bar.image = image(counts.rate)
+        bar.bounds = CGRect(x: 0, y: (font.capHeight - 4) / 2, width: 28, height: 4)
+        title.append(NSAttributedString(attachment: bar))
+        title.append(NSAttributedString(string: "  \(counts.completed)/\(counts.total)", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: font.pointSize - 1, weight: .regular),
+            .foregroundColor: NSColor.secondaryLabelColor]))
+        return title
+    }
+    /// Drawn on demand, so it follows light and dark appearance.
+    private static func image(_ rate: Double?) -> NSImage {
+        NSImage(size: NSSize(width: 28, height: 4), flipped: false) { rect in
+            HistoryColors.trackInk.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2).fill()
+            let done = NSRect(x: 0, y: 0, width: rect.width * CGFloat(rate ?? 0), height: rect.height)
+            HistoryColors.progressInk.setFill()
+            NSBezierPath(roundedRect: done, xRadius: 2, yRadius: 2).fill()
+            return true
+        }
+    }
+}
+
+/// How full a day cell is tinted: by completion rate, so a month reads at a glance.
+enum HistoryHeat: Equatable {
+    /// No snapshot: the day was never sealed.
+    case none
+    /// Sealed, but nothing on it or nothing done.
+    case empty
+    case low, mid, full
+    init(_ snapshot: DailySnapshot?) {
+        guard let snapshot else { self = .none; return }
+        guard let rate = HistoryCompletion(notes: snapshot.notes).rate, rate > 0 else { self = .empty; return }
+        self = rate < 0.5 ? .low : rate < 1 ? .mid : .full
+    }
 }
 
 @MainActor
@@ -101,6 +175,10 @@ struct HistoryView: View {
             HStack {
                 Text(model.month.title).font(.system(size: 20, weight: .semibold))
                 Spacer()
+                Button { model.showToday() } label: {
+                    Text("今天").font(.system(size: 12)).padding(.horizontal, 9).frame(height: 28)
+                        .background(HistoryColors.quiet, in: RoundedRectangle(cornerRadius: 7))
+                }.buttonStyle(.plain).disabled(model.selected == model.today).help("回到今天（⌘T）")
                 navigation("chevron.left", label: "上个月", offset: -1)
                 navigation("chevron.right", label: "下个月", offset: 1)
             }
@@ -131,27 +209,23 @@ struct HistoryView: View {
         }.buttonStyle(.plain).accessibilityLabel(label).disabled(model.month.offset(offset) == nil)
     }
     private func dayCell(_ day: HistoryDay) -> some View {
-        let selected = day == model.selected
+        let selected = day == model.selected, today = day == model.today
         let snapshot = model.snapshots.first { $0.day == day }
         let counts = HistoryCompletion(notes: snapshot?.notes ?? [])
         let ink = selected ? HistoryColors.selectedInk : Color(nsColor: NoteTheme.primary)
         return Button { model.selected = day } label: {
-            VStack(spacing: 5) {
-                Text(String(Int(day.rawValue.suffix(2))!))
-                    .font(.system(size: 13, weight: selected || day == model.today ? .semibold : .regular))
-                    .foregroundStyle(snapshot == nil && !selected ? Color.secondary : ink)
-                ZStack(alignment: .leading) {
-                    Capsule().fill(selected ? ink.opacity(0.25) : HistoryColors.track)
-                    Capsule().fill(selected ? ink : HistoryColors.progress).frame(width: 22 * (counts.rate ?? 0))
-                }.frame(width: 22, height: 3).opacity(counts.rate == nil ? 0 : 1)
-            }.frame(maxWidth: .infinity).frame(height: 46)
-                .background(selected ? HistoryColors.selected : todayFill(day), in: RoundedRectangle(cornerRadius: 9))
+            Text(String(Int(day.rawValue.suffix(2))!))
+                .font(.system(size: 13, weight: selected || today ? .semibold : .regular))
+                .foregroundStyle(snapshot == nil && !selected ? Color.secondary : ink)
+                .frame(maxWidth: .infinity).frame(height: 46)
+                .overlay(alignment: .bottom) {
+                    if today { Circle().fill(ink).frame(width: 4, height: 4).padding(.bottom, 6) }
+                }
+                .background(selected ? HistoryColors.selected : HistoryColors.fill(HistoryHeat(snapshot)),
+                            in: RoundedRectangle(cornerRadius: 9))
         }.buttonStyle(.plain)
             .accessibilityLabel("\(day.rawValue)，\(snapshot == nil ? "无历史记录" : "完成 \(counts.completed) / \(counts.total)")")
             .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-    private func todayFill(_ day: HistoryDay) -> Color {
-        return day == model.today ? HistoryColors.quiet : .clear
     }
     private var detail: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -172,21 +246,27 @@ struct HistoryView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.id(model.selected)
             } else {
-                Text("当天没有历史记录").foregroundStyle(.secondary)
-                Text("每日结束后保存快照；未记录的日期不会补造数据。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.clock").font(.system(size: 32)).foregroundStyle(.tertiary)
+                    Text("当天没有历史记录").fontWeight(.semibold)
+                    Text("每个业务日结束后保存快照；未记录的日期不会补造数据。")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Spacer(minLength: 0)
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
     private func group(_ note: SnapshotNote) -> some View {
         VStack(alignment: .leading, spacing: 2) {
+            // A header in the note's own colour, as it looked on the desk.
             HStack(spacing: 8) {
-                Circle().fill(Color(nsColor: NoteTheme.background(note.color)))
-                    .overlay(Circle().stroke(Color.primary.opacity(0.2), lineWidth: 1)).frame(width: 10, height: 10)
-                Text(note.historyTitle).fontWeight(.semibold).lineLimit(2)
+                Text(note.historyTitle).fontWeight(.semibold).lineLimit(1)
                 if note.deletedAt != nil { badge("已删除", carry: false) }
-            }.padding(.bottom, 4)
+                Spacer(minLength: 0)
+            }.padding(.horizontal, 10).frame(height: 28)
+                .background(Color(nsColor: NoteTheme.background(note.color)), in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.08)))
+                .padding(.bottom, 4)
             ForEach(note.items, id: \.id) { item in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .top, spacing: 10) {

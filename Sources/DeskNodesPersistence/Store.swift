@@ -293,6 +293,17 @@ public final class Store {
             }
         }
     }
+    /// The latest `limit` sealed days, newest first; days never captured are not invented.
+    public func recentHistory(limit: Int) throws -> [DailySnapshot] {
+        try locked {
+            try db.query("SELECT day FROM days ORDER BY day DESC LIMIT ?", [.integer(Int64(max(0, limit)))]).map { row in
+                guard let key = row[0], let value = try snapshot(day: HistoryDay(key)) else {
+                    throw StoreError.corrupt("history day")
+                }
+                return value
+            }
+        }
+    }
     public func rolloverCheckpoint() throws -> RolloverCheckpoint? {
         try locked {
             guard let row = try db.query("SELECT active_day,high_water FROM rollover_state WHERE id=1").first,
