@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeskNodes 第二轮原型</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css">
+<style>
+/* Proposal prototype for PROPOSAL.md (T1–T4). Not a behavior spec; tokens follow DesignTokens.swift / Theme.swift. */
+:root{
+  --bg:#f1f0ec;--panel:#fbfaf8;--ink:#1f1f1f;--sub:#5f5a52;--faint:#8a857c;--line:#dcdad3;--quiet:#e9e7e1;
+  --accent:#6e9a68;--progress:#4f7a64;--track:#e4e1da;--sel:#2f2c27;--selink:#ffffff;
+  --desk1:#b9c3bb;--desk2:#8e9c97;--desk3:#d8d3c4;
+  --toolbar:#f6f5f1;--tink:#24282d;--tsub:#5c636b;--tline:#d1d2ce;
+  --menu:rgba(242,241,238,.96);--menuline:rgba(0,0,0,.12);--hi:#2f6fd6;--hiink:#fff;--danger:#d23b2f;
+  --shadow:0 5px 16px rgba(0,0,0,.09);--lift:0 18px 40px rgba(0,0,0,.22);--nborder:rgba(0,0,0,.06);
+  --lemon:#faf0c8;--mint:#e2f0e8;--mist:#e3ecf5;--cherry:#f7e1e4;--lavender:#ece6f5;--apricot:#fbe7d6;--paper:#f6f1e7;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#1c1d1c;--panel:#242523;--ink:#edebe6;--sub:#b3ada2;--faint:#8e897f;--line:#3d3e3a;--quiet:#35332f;
+  --accent:#8db887;--progress:#8cb69d;--track:#4d4942;--sel:#edebe6;--selink:#242321;
+  --desk1:#2c3530;--desk2:#1b2220;--desk3:#3a3529;
+  --toolbar:#272a2e;--tink:#f2f4f6;--tsub:#bdc4cc;--tline:#50555c;
+  --menu:rgba(44,45,48,.96);--menuline:rgba(255,255,255,.12);--hi:#3a7be0;--danger:#ff6b5e;
+  --shadow:0 5px 16px rgba(0,0,0,.35);--lift:0 18px 40px rgba(0,0,0,.5);--nborder:rgba(255,255,255,.08);
+  --lemon:#35301a;--mint:#1e2e26;--mist:#1f2a36;--cherry:#3a2328;--lavender:#2a2536;--apricot:#3a2a20;--paper:#2b2822;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1c1d1c;--panel:#242523;--ink:#edebe6;--sub:#b3ada2;--faint:#8e897f;--line:#3d3e3a;--quiet:#35332f;
+  --accent:#8db887;--progress:#8cb69d;--track:#4d4942;--sel:#edebe6;--selink:#242321;
+  --desk1:#2c3530;--desk2:#1b2220;--desk3:#3a3529;
+  --toolbar:#272a2e;--tink:#f2f4f6;--tsub:#bdc4cc;--tline:#50555c;
+  --menu:rgba(44,45,48,.96);--menuline:rgba(255,255,255,.12);--hi:#3a7be0;--danger:#ff6b5e;
+  --shadow:0 5px 16px rgba(0,0,0,.35);--lift:0 18px 40px rgba(0,0,0,.5);--nborder:rgba(255,255,255,.08);
+  --lemon:#35301a;--mint:#1e2e26;--mist:#1f2a36;--cherry:#3a2328;--lavender:#2a2536;--apricot:#3a2a20;--paper:#2b2822;
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;padding:20px 16px 40px}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+.page{max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
+.eyebrow{font-size:11px;letter-spacing:.14em;color:var(--sub);margin-bottom:6px}
+h1{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
+.lede{margin:0;color:var(--sub);font-size:13px;line-height:1.6;max-width:72ch}
+.lede a{color:var(--hi)}
+.seg{display:inline-flex;background:var(--quiet);border:1px solid var(--line);border-radius:8px;padding:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:5px 12px;border-radius:6px;font-size:12px;color:var(--sub)}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+.tabs .seg button{font-size:13px;padding:7px 16px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:12px;color:var(--sub)}
+.bar label{display:inline-flex;gap:6px;align-items:center}
+.bar select{font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--panel)}
+.note-box{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:12px 16px;font-size:13px;line-height:1.7;color:var(--sub)}
+.note-box b{color:var(--ink)}
+.note-box ul{margin:4px 0 0;padding-left:18px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums;background:var(--quiet);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--ink);min-width:170px}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+.pill.run i{background:var(--accent)}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--panel)}
+
+/* ---------- Desktop stage (T1 + T4) ---------- */
+.wrap{position:relative;width:100%;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.stage{position:absolute;left:0;top:0;width:1440px;height:860px;transform-origin:0 0;overflow:hidden;user-select:none;-webkit-user-select:none;
+  background:radial-gradient(1100px 700px at 70% 20%,var(--desk3),transparent 60%),linear-gradient(160deg,var(--desk1),var(--desk2))}
+.menubar{position:absolute;left:0;top:0;right:0;height:24px;background:color-mix(in srgb,var(--toolbar) 82%,transparent);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:13px;color:var(--tink);z-index:50}
+.menubar .l{display:flex;gap:18px}.menubar .r{display:flex;gap:16px;color:var(--tsub)}
+.dock{position:absolute;left:50%;transform:translateX(-50%);bottom:6px;height:60px;width:560px;border-radius:18px;background:color-mix(in srgb,var(--toolbar) 55%,transparent);backdrop-filter:blur(16px);border:1px solid var(--menuline);display:flex;gap:10px;align-items:center;justify-content:center;z-index:3}
+.dock span{width:44px;height:44px;border-radius:11px;background:color-mix(in srgb,var(--tsub) 30%,transparent)}
+.vis{position:absolute;border:1px dashed color-mix(in srgb,var(--tink) 30%,transparent);pointer-events:none;z-index:1}
+.vis em{position:absolute;right:6px;bottom:4px;font-size:11px;font-style:normal;color:var(--tink);opacity:.6}
+.dnote{position:absolute;border-radius:13px;background:var(--nb);border:1px solid var(--nborder);box-shadow:var(--shadow);padding:14px 18px;color:var(--ink);font-size:14px;z-index:4}
+.dnote h4{margin:0 0 10px;font-size:16px}
+.dnote p{margin:0;height:32px;display:flex;align-items:center;gap:11px}
+.dnote p::before{content:"";width:14px;height:14px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--ink) 42%,transparent);flex:none}
+.dnote .tag{position:absolute;top:8px;right:12px;font-size:11px;color:var(--sub)}
+.tb{position:absolute;z-index:40;background:var(--toolbar);border:1px solid var(--tline);box-shadow:0 8px 24px rgba(0,0,0,.18);color:var(--tink);overflow:hidden}
+.tb .ctl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.tb.v .ctl{flex-direction:column;padding:16px 6px}
+.tb.h .ctl{flex-direction:row;padding:6px 16px}
+.grip{flex:none;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--tsub)}
+.tb.v .grip{width:52px;height:24px}.tb.h .grip{width:24px;height:52px}
+.grip::before{content:"";width:18px;height:4px;border-top:1.5px solid currentColor;border-bottom:1.5px solid currentColor;opacity:.7}
+.tb.h .grip::before{width:4px;height:18px;border:0;border-left:1.5px solid currentColor;border-right:1.5px solid currentColor}
+.tbtn{flex:none;border:0;background:transparent;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:500;color:var(--tink)}
+.tb.v .tbtn{width:52px;height:52px}.tb.h .tbtn{width:60px;height:52px}
+.tbtn:hover{background:color-mix(in srgb,var(--tink) 8%,transparent)}
+.tbtn svg{width:18px;height:18px}
+.tcount{flex:none;font-size:11px;color:var(--tsub);display:flex;align-items:center;justify-content:center}
+.tb.v .tcount{height:32px}.tb.h .tcount{width:68px}
+.tb .entry{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.tb .entry svg{width:22px;height:22px}
+.ghost{position:absolute;z-index:30;border:1.5px dashed var(--hi);border-radius:999px;pointer-events:none;background:color-mix(in srgb,var(--hi) 8%,transparent)}
+.path{position:absolute;inset:0;z-index:29;pointer-events:none}
+.homezone{position:absolute;z-index:28;border-radius:14px;cursor:pointer}
+.homezone.show{border:1.5px dashed var(--hi);background:color-mix(in srgb,var(--hi) 6%,transparent)}
+.homezone em{position:absolute;left:-20px;right:-20px;top:-18px;text-align:center;font-size:11px;font-style:normal;color:var(--hi);white-space:nowrap;display:none}
+.homezone.show em,.homezone.cand em{display:block}
+.homezone.cand{pointer-events:none;border:1.5px dashed color-mix(in srgb,var(--tink) 45%,transparent);z-index:27}
+.homezone.cand em{color:var(--tink)}
+.homezone.cand.on{border-color:var(--hi);background:color-mix(in srgb,var(--hi) 16%,transparent)}
+.homezone.cand.on em{color:var(--hi)}
+.ebadge{position:absolute;top:3px;right:3px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--danger);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
+
+.ctx{position:absolute;z-index:60;min-width:200px;background:var(--menu);backdrop-filter:blur(20px);border:1px solid var(--menuline);border-radius:9px;box-shadow:var(--lift);padding:5px;font-size:13px;color:var(--ink)}
+.mi{position:relative;display:flex;align-items:center;gap:8px;height:24px;padding:0 10px 0 24px;border-radius:5px;white-space:nowrap;cursor:default}
+.mi:hover,.mi.open{background:var(--hi);color:var(--hiink)}
+.mi:hover .k,.mi.open .k{color:var(--hiink)}
+.mi .ck{position:absolute;left:8px;font-size:12px}
+.mi .k{margin-left:auto;color:var(--faint);font-size:12px;padding-left:24px}
+.mi.dis{color:var(--faint)}
+.mi.dis:hover{background:transparent;color:var(--faint)}
+.sep{height:1px;background:var(--menuline);margin:5px 8px}
+.sub{position:absolute;left:100%;top:-6px;margin-left:2px;display:none}
+.mi.open>.sub{display:block}
+.toast{position:absolute;left:50%;top:44px;transform:translateX(-50%);z-index:70;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:10px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+
+/* ---------- History (T2) ---------- */
+.hgrid{display:grid;grid-template-columns:540px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1100px){.hgrid{grid-template-columns:minmax(0,1fr)}}
+.menuwrap{position:relative;min-height:360px}
+.menuwrap .ctx{position:relative;width:236px}
+.menuwrap .sub{min-width:280px}
+.dayrow{display:grid;grid-template-columns:1fr 30px 34px;gap:8px;align-items:center;padding-right:10px!important}
+.dayrow .bar4{width:28px;height:4px;border-radius:2px;background:var(--track);overflow:hidden}
+.dayrow:hover .bar4{background:rgba(255,255,255,.35)}
+.dayrow .bar4 b{display:block;height:100%;background:var(--progress)}
+.dayrow:hover .bar4 b{background:#fff}
+.dayrow .n{text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:var(--faint)}
+.dayrow:hover .n{color:var(--hiink)}
+.win{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel);box-shadow:var(--shadow);min-width:0}
+.win:focus{outline:none}.win:focus-visible{outline:2px solid var(--hi)}
+.wtitle{height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--quiet);position:relative}
+.wtitle i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.wtitle i+i{background:#febc2e}.wtitle i+i+i{background:#28c840}
+.wtitle .seg{position:absolute;left:50%;transform:translateX(-50%)}
+.wbody{display:grid;grid-template-columns:400px minmax(0,1fr);min-height:600px;font-variant-numeric:tabular-nums}
+@media (max-width:820px){.wbody{grid-template-columns:minmax(0,1fr)}}
+.cal{padding:24px 28px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:16px}
+.calh{display:flex;align-items:center;gap:6px}
+.calh h3{margin:0;font-size:20px;font-weight:600;flex:1}
+.qbtn{border:0;background:var(--quiet);border-radius:7px;height:28px;min-width:28px;padding:0 9px;font-size:12px}
+.qbtn:disabled{opacity:.45;cursor:default}
+.wk,.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wk span{text-align:center;font-size:11px;color:var(--sub)}
+.day{position:relative;height:46px;border:0;border-radius:9px;background:transparent;font-size:13px;display:flex;align-items:center;justify-content:center}
+.day.none{color:var(--faint)}
+.day.l0{background:var(--quiet)}
+.day.l1{background:color-mix(in srgb,var(--progress) 18%,transparent)}
+.day.l2{background:color-mix(in srgb,var(--progress) 38%,transparent)}
+.day.l3{background:color-mix(in srgb,var(--progress) 62%,transparent)}
+.day.today{font-weight:700}
+.day.today::after{content:"";position:absolute;bottom:6px;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:currentColor}
+.day.sel{background:var(--sel);color:var(--selink);font-weight:600}
+.legend{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--sub)}
+.legend .day{height:14px;width:14px;border-radius:4px;flex:none}
+.month{margin-top:auto}
+.month small{display:block;font-size:12px;color:var(--sub)}
+.month strong{display:block;font-size:24px;font-weight:600;margin:2px 0}
+.det{padding:24px 32px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.deth{display:flex;align-items:baseline;gap:12px}
+.deth h3{margin:0;font-size:20px;font-weight:600;flex:1}
+.deth span{color:var(--sub)}
+.grp{display:flex;flex-direction:column;gap:2px}
+.grph{height:28px;border-radius:7px;background:var(--nb);display:flex;align-items:center;padding:0 10px;font-weight:600;margin-bottom:4px;border:1px solid var(--nborder)}
+.it{display:flex;gap:10px;align-items:flex-start;min-height:28px;padding:4px 0 4px 10px}
+.it .c{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--faint);flex:none;margin-top:2px;display:flex;align-items:center;justify-content:center}
+.it.done .c{background:var(--faint);border-color:var(--faint)}
+.it.done .c::after{content:"";width:6px;height:3px;border-left:1.5px solid var(--panel);border-bottom:1.5px solid var(--panel);transform:rotate(-45deg) translate(1px,-1px)}
+.badge{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--quiet);color:var(--sub);margin-left:6px}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--sub);text-align:center}
+.empty svg{width:32px;height:32px;opacity:.55}
+.empty b{color:var(--ink);font-weight:600}
+.empty small{font-size:12px}
+
+/* ---------- Fonts (T3) ---------- */
+.fgrid{display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1100px){.fgrid{grid-template-columns:minmax(0,1fr)}}
+.settings{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+.settings h3{margin:0 0 2px 4px;font-size:12px;font-weight:600;color:var(--sub)}
+.srow{background:var(--quiet);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.srow .lbl{display:flex;align-items:center;justify-content:space-between;font-size:13px}
+.fopts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media (max-width:560px){.fopts{grid-template-columns:repeat(2,1fr)}}
+.fopt{position:relative;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.fopt .big{font-size:22px;line-height:1.2}
+.fopt .nm{font-size:12px;color:var(--sub);font-family:var(--sans)}
+.fopt.on{border-color:var(--hi);box-shadow:0 0 0 1px var(--hi)}
+.fopt .st{font-size:10px;color:var(--faint);font-family:var(--sans);min-height:14px;display:flex;gap:4px;align-items:center}
+.spin{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--line);border-top-color:var(--hi);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sample{display:flex;align-items:center;min-height:44px;padding:0 4px}
+.err{font-size:12px;color:var(--danger);font-family:var(--mono)}
+.card{border-radius:13px;background:var(--nb);border:1px solid var(--nborder);box-shadow:var(--shadow);padding:0 18px;color:var(--ink);width:288px;flex:none}
+.card .ch{display:flex;align-items:center;justify-content:space-between}
+.card .ch b{font-weight:var(--tw)}
+.card .ch span{color:var(--sub)}
+.card .row{display:flex;align-items:flex-start}
+.card .cb{border-radius:50%;border:1.5px solid color-mix(in srgb,var(--ink) 42%,transparent);flex:none}
+.card .row.done .cb{background:var(--accent);border-color:var(--accent)}
+.card .row.done .tx{color:var(--sub);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--sub) 60%,transparent)}
+.card .ft{border-top:1px solid var(--nborder);display:flex;align-items:center;color:var(--sub);font-family:var(--sans)}
+.cards{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.cardcap{font-size:12px;color:var(--sub);margin:0 0 6px 2px}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div>
+      <div class="eyebrow">DESKNODES · 第二轮提案原型 · 2026-11-13</div>
+      <h1>工具条、历史记录与字体</h1>
+      <p class="lede">配合 <a href="PROPOSAL.md">PROPOSAL.md</a> 查看。这里只演示交互与视觉，数值以提案为准；浏览器无法模拟原生菜单、系统字体下载和多显示器。</p>
+    </div>
+    <div class="bar">
+      <span>外观</span>
+      <div class="seg" id="theme"><button data-v="auto" class="on">跟随系统</button><button data-v="light">浅色</button><button data-v="dark">深色</button></div>
+    </div>
+  </header>
+
+  <nav class="tabs"><div class="seg" id="tabs">
+    <button data-v="tb" class="on">T1 + T4 · 工具条</button>
+    <button data-v="hist">T2 · 历史记录</button>
+    <button data-v="font">T3 · 字体</button>
+  </div></nav>
+
+  <!-- ================= T1 + T4 ================= -->
+  <section id="tab-tb">
+    <div class="bar" style="margin-bottom:10px">
+      <label>演示方案
+        <select id="plan">
+          <option value="1">1 固定收缩位置（采用）</option>
+          <option value="2">2 原地缩成迷你块（对比）</option>
+          <option value="3">3 原地变半透明（对比）</option>
+        </select></label>
+      <span>收缩位置：<b id="homeTxt" style="color:var(--ink)">—</b></span> <button class="qbtn" id="homeReset">恢复默认</button>
+      <label>闲置时长
+        <select id="idle"><option value="3">3 秒（演示）</option><option value="10">10 秒</option><option value="15">15 秒</option><option value="0">关闭</option></select></label>
+      <label><input type="checkbox" id="slow"> 慢放 ×4</label>
+      <label><input type="checkbox" id="reduce"> 减少动态效果</label>
+      <label><input type="checkbox" id="ghost" checked> 显示收缩位置和路线</label>
+      <label><input type="checkbox" id="badgeOn"> 便签已全部收起（显示角标）</label>
+      <span class="pill" id="idlePill"><i></i><span>—</span></span>
+      <button class="qbtn" id="reset">复位</button>
+    </div>
+    <div class="wrap" id="wrap"><div class="stage" id="stage">
+      <div class="menubar"><div class="l"><b></b><b>Finder</b><span>文件</span><span>编辑</span><span>显示</span></div><div class="r"><span>▦</span><span>周五 11月13日 14:20</span></div></div>
+      <div class="vis" id="vis"><em>可见区域（不含菜单栏和 Dock）</em></div>
+      <div class="dock"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div id="notes"></div>
+      <svg class="path" id="path" width="1440" height="860"></svg>
+      <div class="homezone" id="hz" hidden><em>收缩位置</em></div>
+      <div id="corners"></div>
+      <div class="tb v" id="tb">
+        <div class="ctl" id="ctl"></div>
+        <div class="entry" id="entry"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="3.5" width="13" height="13" rx="3"/><path d="M7 8h6M7 11h6M7 14h3"/></svg><span class="ebadge" id="ebadge" hidden>6</span></div>
+      </div>
+      <div class="ctx" id="ctx" hidden></div>
+      <div class="toast" id="toast"></div>
+    </div></div>
+    <div class="note-box" style="margin-top:12px">
+      <b>怎么看（方案 1）：</b>
+      <ul>
+        <li>拖住手柄把工具条放到任意位置，鼠标移开后开始计时。到时它先<b>原地缩成 56pt 入口</b>，再<b>滑回固定的收缩位置</b>。默认位置在<b>屏幕右侧、偏下</b>（从上往下 60%）。蓝色虚线框是收缩位置，也是入口的点击范围，一直延伸到屏幕边上。</li>
+        <li>入口：鼠标停留 140ms 或单击即可展开，展开时手柄端停在入口处，向下展开（下方放不下时整体上移）。悬停展开后不点击就移开，1.5 秒后收缩。工具条已经在收缩位置时，收缩和展开都在原地完成。</li>
+        <li><b>拖动入口到任意屏幕边的任意位置</b>，就是更改收缩位置（松手处显示「新位置」框）。入口离屏幕角至少 40pt，所以不会碰到系统的触发角。右键菜单或上方「恢复默认」可以回到默认位置。</li>
+        <li>右侧的停靠便签会避开收缩位置：把收缩位置拖到右侧偏上，停靠便签就会移到它下方。</li>
+        <li><b>T1</b>：工具条只剩 4 个按钮（竖向 296pt）。在手柄、空白处或入口上<b>右键</b>：设置… / 排列方向 / 自动收缩 / 恢复默认收缩位置。按钮上右键不弹菜单。</li>
+        <li>「演示方案」可切到 2、3 做对比：2 原地缩成 64pt 方块、不移动；3 不变形，只变半透明。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= T2 ================= -->
+  <section id="tab-hist" hidden>
+    <div class="bar" style="margin-bottom:10px">
+      <label>历史数据 <span class="seg" id="hstate"><button data-v="ok" class="on">正常</button><button data-v="empty">无快照</button><button data-v="fail">读取失败</button></span></label>
+      <label>最近删除 <span class="seg" id="hdel"><button data-v="3" class="on">3 项</button><button data-v="0">0 项</button></span></label>
+      <span>窗口获得焦点后：<kbd>←</kbd><kbd>→</kbd> 换天，<kbd>↑</kbd><kbd>↓</kbd> 换周，<kbd>⌥←</kbd><kbd>⌥→</kbd> 换月，<kbd>⌘T</kbd> 或 <kbd>T</kbd> 回到今天</span>
+    </div>
+    <div class="hgrid">
+      <div>
+        <div class="cardcap">菜单栏 DeskNodes 菜单（悬停「历史记录」展开子菜单）</div>
+        <div class="menuwrap"><div class="ctx" id="smenu"></div></div>
+      </div>
+      <div class="win" id="win" tabindex="0" aria-label="历史记录窗口">
+        <div class="wtitle"><i></i><i></i><i></i>
+          <div class="seg" id="hmode"><button data-v="cal" class="on">日历</button><button data-v="del">最近删除</button></div>
+        </div>
+        <div class="wbody" id="wbody"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= T3 ================= -->
+  <section id="tab-font" hidden>
+    <div class="bar" style="margin-bottom:10px">
+      <label>模拟圆体-简 <span class="seg" id="ystate"><button data-v="missing" class="on">未安装</button><button data-v="installed">已安装</button><button data-v="fail">下载失败</button></span></label>
+      <span>「App 自带」指字体打包在 DeskNodes 里；「系统字体 · 首次需下载」指 macOS 提供、但不一定预装，选中时由系统从 Apple 下载。浏览器近似：字体按本机已安装的字体渲染，未安装时会退回普通字体；文楷通过 CDN 加载，离线时退回系统楷体；网页版没有 Medium，标题用其 Bold 近似。</span>
+    </div>
+    <div class="fgrid">
+      <div class="settings">
+        <h3>外观</h3>
+        <div class="srow">
+          <div class="lbl"><span>文字大小</span>
+            <span class="seg" id="fsize"><button data-v="0">小</button><button data-v="1" class="on">标准</button><button data-v="2">大</button><button data-v="3">特大</button></span></div>
+        </div>
+        <div class="srow">
+          <div class="lbl"><span>字体</span><span style="font-size:12px;color:var(--sub)">只影响便签</span></div>
+          <div class="fopts" id="fopts"></div>
+          <div class="sample" id="fsample"></div>
+          <div class="err" id="ferr" hidden></div>
+        </div>
+        <p style="margin:0 4px;font-size:12px;color:var(--sub)">霞鹜文楷 · SIL Open Font License 1.1 <a href="#" style="color:var(--hi)" onclick="return false">字体授权</a></p>
+      </div>
+      <div>
+        <div class="cardcap">当前设置下的便签</div>
+        <div id="fcur"></div>
+        <div class="cardcap" style="margin-top:24px">四种字体对比（同一字号）</div>
+        <div class="cards" id="fall"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+function seg(el,cb){el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;el.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));cb(b.dataset.v)})}
+seg($('#theme'),v=>{if(v==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.dataset.theme=v});
+seg($('#tabs'),v=>{['tb','hist','font'].forEach(t=>$('#tab-'+t).hidden=t!==v);if(v==='tb')fit()});
+
+/* =====================================================================
+   T1 + T4 toolbar — fixed home on an edge (default: right side, a little below middle)
+   ===================================================================== */
+const ICON={
+ create:'<path d="M10 4v12M4 10h12"/>',
+ peek:'<rect x="4" y="7" width="12" height="9" rx="2"/><path d="M7 4.5h6"/>',
+ arrange:'<rect x="4" y="4" width="5" height="5" rx="1"/><rect x="11" y="4" width="5" height="5" rx="1"/><rect x="4" y="11" width="5" height="5" rx="1"/><rect x="11" y="11" width="5" height="5" rx="1"/>',
+ collapse:'<path d="M4 4l4.5 4.5M8.5 5v3.5H5M16 16l-4.5-4.5M11.5 15v-3.5H15"/>'};
+const ACTIONS=[['create','新建'],['peek','浮起'],['arrange','整理'],['collapse','收起']];
+const M={w:64,entry:56,entryR:14,mini:64,miniR:16,gap:8,corner:40,snap:81,vlen:296,hlen:364,hover:140,grace:1500};
+const V={x:0,y:24,w:1440,h:790-24};   // visible frame: below menu bar, above Dock
+const DEFAULT_HOME={edge:'right',ratio:.6};
+const EDGES={right:'右侧',left:'左侧',top:'顶部',bottom:'底部'};
+const stage=$('#stage'),tb=$('#tb'),ctl=$('#ctl'),entry=$('#entry'),hz=$('#hz'),pathSvg=$('#path');
+let S, HOME={...DEFAULT_HOME}, anim=null, pointerIn=false, dragging=null, menuOpen=false, hoverTimer=null, idleLeft=0, lastTick=performance.now(), hoverOpened=false;
+
+const plan=()=>$('#plan').value, idleSec=()=>+$('#idle').value, slow=()=>$('#slow').checked?4:1;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const center=r=>({x:r.x+r.w/2,y:r.y+r.h/2});
+const ease=t=>1-Math.pow(1-t,3), easeIO=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const mix=(a,b,p)=>a+(b-a)*p, mixR=(a,b,p)=>({x:mix(a.x,b.x,p),y:mix(a.y,b.y,p),w:mix(a.w,b.w,p),h:mix(a.h,b.h,p)});
+const sameR=(a,b)=>a&&b&&['x','y','w','h'].every(k=>Math.abs(a[k]-b[k])<1);
+const side=e=>e==='left'||e==='right';
+function fullSize(){return S.orient==='v'?{w:M.w,h:M.vlen}:{w:M.hlen,h:M.w}}
+
+/* Home geometry: a point on one edge, given as a ratio of that edge (top→bottom, left→right).
+   The entry keeps M.corner clear of both ends, so its hit zone never reaches a screen corner. */
+function homeCenter(h=HOME){
+  const g=M.gap,d=M.entry,lo=(side(h.edge)?V.y:V.x)+g+d/2+M.corner,hi=(side(h.edge)?V.y+V.h:V.x+V.w)-g-d/2-M.corner;
+  const along=clamp((side(h.edge)?V.y+V.h*h.ratio:V.x+V.w*h.ratio),lo,hi);
+  const across={left:V.x+g+d/2,right:V.x+V.w-g-d/2,top:V.y+g+d/2,bottom:V.y+V.h-g-d/2}[h.edge];
+  return side(h.edge)?{x:across,y:along}:{x:along,y:across};
+}
+function homeEntry(h=HOME){const c=homeCenter(h),d=M.entry;return {x:c.x-d/2,y:c.y-d/2,w:d,h:d}}
+/* Hit zone: the entry plus the gap to the edge (64×64). */
+function homeHit(h=HOME){const e=homeEntry(h),g=M.gap;
+  return {left:{x:V.x,y:e.y-g/2,w:e.w+g,h:e.h+g},right:{x:e.x,y:e.y-g/2,w:e.w+g,h:e.h+g},
+          top:{x:e.x-g/2,y:V.y,w:e.w+g,h:e.h+g},bottom:{x:e.x-g/2,y:e.y,w:e.w+g,h:e.h+g}}[h.edge]}
+/* Expanded toolbar at home — the existing snapped rule: along the edge the grip end stays on the
+   entry and the capsule unfolds away from it (shifted back if it would leave the screen); across
+   the edge it is centred on the entry and unfolds into the display. */
+function homeFull(h=HOME){
+  const g=M.gap,sz=fullSize(),e=homeEntry(h),c=center(e),inset=(M.w-M.entry)/2;
+  let x,y;
+  if(side(h.edge)){
+    x=h.edge==='left'?V.x+g:V.x+V.w-g-sz.w;
+    y=S.orient==='v'?e.y-inset:c.y-sz.h/2;
+  } else {
+    y=h.edge==='top'?V.y+g:V.y+V.h-g-sz.h;
+    x=S.orient==='h'?e.x-inset:c.x-sz.w/2;
+  }
+  return {x:clamp(x,V.x+g,V.x+V.w-g-sz.w),y:clamp(y,V.y+g,V.y+V.h-g-sz.h),...sz};
+}
+/* The home a dropped entry would take: nearest edge, projected position. */
+function homeFrom(p){
+  const d={left:p.x-V.x,right:V.x+V.w-p.x,top:p.y-V.y,bottom:V.y+V.h-p.y};
+  const edge=Object.keys(d).reduce((a,b)=>d[b]<d[a]?b:a);
+  return {edge,ratio:side(edge)?(p.y-V.y)/V.h:(p.x-V.x)/V.w};
+}
+const gripEntry=f=>({x:f.x+(M.w-M.entry)/2,y:f.y+(M.w-M.entry)/2,w:M.entry,h:M.entry});
+const miniAt=f=>({x:f.x,y:f.y,w:M.mini,h:M.mini});
+const homeLabel=()=>`${EDGES[HOME.edge]} · ${side(HOME.edge)?'从上往下':'从左往右'} ${Math.round(HOME.ratio*100)}%`;
+
+function reset(){
+  HOME={...DEFAULT_HOME};drawNotes();
+  S={orient:'v',shape:'expanded',shell:null,full:null,alpha:1,icon:0,fade:1};
+  S.full={x:640,y:250,...fullSize()}; S.shell={...S.full};
+  anim=null; idleLeft=idleSec()*1000; buildCtl(); closeCtx(); render();
+}
+function buildCtl(){
+  tb.className='tb '+S.orient;
+  ctl.innerHTML='<div class="grip" data-grip title="拖动"></div>'+ACTIONS.map(([k,l])=>
+    `<button class="tbtn" data-act="${l}"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>${l}</button>`).join('')+
+    '<div class="tcount">6 张</div>';
+}
+function radius(r){
+  const long=Math.max(r.w,r.h),short=Math.min(r.w,r.h)/2,sq=plan()==='2'?M.miniR:M.entryR;
+  if(long<=M.mini+.5) return sq;
+  if(long<120) return mix(sq,short,(long-M.mini)/(120-M.mini));
+  return short;
+}
+function render(){
+  const r=S.shell;
+  Object.assign(tb.style,{left:r.x+'px',top:r.y+'px',width:r.w+'px',height:r.h+'px',borderRadius:radius(r)+'px',opacity:S.fade});
+  const usable=(S.shape==='expanded'||S.shape==='dim')&&!anim;
+  ctl.style.opacity=S.alpha; ctl.style.pointerEvents=usable?'auto':'none';
+  entry.style.opacity=S.icon;
+  $('#ebadge').hidden=!$('#badgeOn').checked;
+  tb.style.cursor=S.shape==='entry'?'pointer':'default';
+  $('#homeTxt').textContent=homeLabel();
+  guides();
+}
+function guides(){
+  const show=$('#ghost').checked&&plan()==='1';
+  hz.hidden=plan()!=='1'; hz.classList.toggle('show',show);
+  hz.style.pointerEvents=S.shape==='entry'?'auto':'none';
+  {const h=homeHit();Object.assign(hz.style,{left:h.x+'px',top:h.y+'px',width:h.w+'px',height:h.h+'px'})}
+  pathSvg.innerHTML='';
+  if(show&&S.shape==='expanded'&&!anim&&!dragging&&idleSec()>0&&!sameR(S.full,homeFull())){
+    const a=center(gripEntry(S.full)),b=center(homeEntry());
+    pathSvg.innerHTML=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="var(--hi)" stroke-width="1.5" stroke-dasharray="4 5" opacity=".7"/>`;
+  }
+  // where a dragged entry would land
+  const pv=dragging&&dragging.entry&&dragging.moved&&plan()==='1'?homeHit(homeFrom(center(S.shell))):null;
+  $('#corners').innerHTML=pv?`<div class="homezone cand on" style="left:${pv.x}px;top:${pv.y}px;width:${pv.w}px;height:${pv.h}px"><em>新位置</em></div>`:'';
+}
+
+/* --- transitions --- */
+function run(kind,dur,step,done){anim={t0:performance.now(),kind,dur,step,done}}
+function collapseIdle(){
+  hoverOpened=false;
+  const from={...S.shell},p=plan();
+  if(p==='3'){S.shape='dimming';run('dim',300*slow(),q=>{S.fade=mix(1,.35,ease(q))},()=>{S.shape='dim'});return}
+  if(p==='2'){const to=miniAt(S.full);S.shape='collapsing';
+    if($('#reduce').checked){S.shell=to;S.alpha=0;S.icon=1;S.shape='entry';render();return}
+    run('collapse',260*slow(),(q,ms)=>{S.shell=mixR(from,to,ease(q));S.alpha=Math.max(0,1-ms/(80*slow()));S.icon=clamp((q-.6)/.4,0,1)},()=>{S.shape='entry'});return}
+  // plan 1
+  const target=homeEntry(), atHome=sameR(S.full,homeFull());
+  S.shape='collapsing';
+  if($('#reduce').checked){
+    run('fade',240*slow(),q=>{if(q<.5)S.fade=1-q*2;else{S.shell={...target};S.alpha=0;S.icon=1;S.fade=(q-.5)*2}},
+      ()=>{S.fade=1;arrive()});return}
+  const shrinkTo=atHome?target:gripEntry(from), shrinkMs=(atHome?260:200)*slow(), ctlOut=80*slow();
+  const dist=Math.hypot(center(shrinkTo).x-center(target).x,center(shrinkTo).y-center(target).y);
+  const glideMs=dist<1?0:clamp(300+dist/3,300,500)*slow();
+  run(glideMs?'home':'collapse',shrinkMs+glideMs,(q,ms)=>{
+    if(ms<=shrinkMs){const k=ms/shrinkMs;S.shell=mixR(from,shrinkTo,ease(k));S.alpha=Math.max(0,1-ms/ctlOut);S.icon=clamp((k-.5)/.5,0,1)}
+    else{S.alpha=0;S.icon=1;S.shell=mixR(shrinkTo,target,easeIO((ms-shrinkMs)/glideMs))}
+  },arrive);
+}
+function arrive(){S.shape='entry';if(plan()==='1')S.full=homeFull();if(S.pendingExpand){S.pendingExpand=false;expand(false)}}
+function glideHome(){ // entry already shrunk; the home moved
+  const from={...S.shell},to=homeEntry();S.full=homeFull();
+  if($('#reduce').checked||sameR(from,to)){S.shell=to;S.shape='entry';render();return}
+  S.shape='collapsing';run('home',300*slow(),q=>{S.shell=mixR(from,to,easeIO(q))},()=>{S.shape='entry'});
+}
+function expand(byHover){
+  if(S.shape==='expanded') return;
+  if(S.shape==='dim'||S.shape==='dimming'){anim=null;const f0=S.fade;S.shape='expanding';
+    run('undim',150,q=>{S.fade=mix(f0,1,q)},()=>{S.shape='expanded';idleLeft=byHover?M.grace:idleSec()*1000;hoverOpened=byHover});return}
+  if(anim){S.pendingExpand=true;return}
+  const from={...S.shell},to=plan()==='1'?homeFull():S.full;S.full=to;hoverOpened=byHover;
+  if($('#reduce').checked){S.shell={...to};S.alpha=1;S.icon=0;S.shape='expanded';idleLeft=byHover?M.grace:idleSec()*1000;render();return}
+  const shellMs=180*slow(),ctlMs=80*slow();S.shape='expanding';
+  run('expand',shellMs+ctlMs,(q,ms)=>{const k=clamp(ms/shellMs,0,1);S.shell=mixR(from,to,ease(k));S.icon=1-k;S.alpha=clamp((ms-shellMs)/ctlMs,0,1)},
+    ()=>{S.shape='expanded';idleLeft=byHover?M.grace:idleSec()*1000});
+}
+function frame(now){
+  const dt=now-lastTick;lastTick=now;
+  if(anim){const ms=now-anim.t0,q=clamp(ms/anim.dur,0,1);anim.step(q,ms);if(q>=1){const a=anim;anim=null;a.done()}render()}
+  const sec=idleSec(),pill=$('#idlePill');
+  const eligible=sec>0&&S.shape==='expanded'&&!anim&&!dragging&&!menuOpen;
+  if(!eligible||pointerIn){if(S.shape==='expanded'&&!hoverOpened)idleLeft=sec*1000;if(pointerIn&&hoverOpened){hoverOpened=false;idleLeft=sec*1000}}
+  else{idleLeft-=dt;if(idleLeft<=0)collapseIdle()}
+  pill.classList.toggle('run',eligible&&!pointerIn);
+  pill.lastElementChild.textContent=sec===0?'自动收缩已关闭':
+    S.shape==='entry'?(plan()==='1'?'已收缩到收缩位置':'已收缩（原地）'):
+    S.shape==='dim'?'已变半透明':
+    anim?({expand:'展开中…',undim:'恢复中…',home:'收缩并回到收缩位置…',collapse:'收缩中…',fade:'淡出／淡入中…',dim:'变淡中…'}[anim.kind]):
+    menuOpen?'右键菜单打开，暂停计时':dragging?'拖动中，暂停计时':pointerIn?'指针在工具条上，暂停计时':
+    `闲置 ${(Math.max(0,idleLeft)/1000).toFixed(1)} 秒后收缩${hoverOpened?'（悬停宽限）':''}`;
+  if(!anim&&!dragging)guides();
+  requestAnimationFrame(frame);
+}
+
+/* --- pointer --- */
+let scale=1;
+function fit(){const w=$('#wrap').clientWidth;scale=w/1440;stage.style.transform=`scale(${scale})`;$('#wrap').style.height=860*scale+'px';
+  Object.assign($('#vis').style,{left:V.x+'px',top:V.y+'px',width:V.w+'px',height:V.h+'px'})}
+addEventListener('resize',fit);
+function sp(e){const r=stage.getBoundingClientRect();return {x:(e.clientX-r.left)/scale,y:(e.clientY-r.top)/scale}}
+const collapsedish=()=>['entry','collapsing'].includes(S.shape);
+function onEnter(){pointerIn=true;
+  if(S.shape==='dim'||S.shape==='dimming'){expand(true);return}
+  if(collapsedish()){clearTimeout(hoverTimer);hoverTimer=setTimeout(()=>{if(dragging)return;if(S.shape==='collapsing')S.pendingExpand=true;else expand(true)},M.hover*slow())}}
+function onLeave(){pointerIn=false;clearTimeout(hoverTimer)}
+tb.addEventListener('mouseenter',onEnter);tb.addEventListener('mouseleave',onLeave);
+hz.addEventListener('mouseenter',()=>{if(S.shape==='entry')onEnter()});hz.addEventListener('mouseleave',onLeave);
+hz.addEventListener('click',()=>{if(S.shape==='entry'){clearTimeout(hoverTimer);expand(false)}});
+tb.addEventListener('click',e=>{
+  if(dragging&&dragging.moved)return;
+  const b=e.target.closest('[data-act]');
+  if(b&&(S.shape==='expanded'||S.shape==='dim')&&!anim){toast('「'+b.dataset.act+'」（演示）');hoverOpened=false;idleLeft=idleSec()*1000;return}
+  if(S.shape==='entry'){clearTimeout(hoverTimer);expand(false)}
+  else if(S.shape==='collapsing')S.pendingExpand=true;
+});
+tb.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;
+  const onGrip=e.target.closest('[data-grip]'),ent=collapsedish();
+  if(!onGrip&&!ent)return;
+  e.preventDefault();closeCtx();
+  dragging={start:sp(e),orig:{...S.shell},moved:false,entry:ent};hoverOpened=false;
+});
+addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  const p=sp(e),dx=p.x-dragging.start.x,dy=p.y-dragging.start.y;
+  if(!dragging.moved&&Math.max(Math.abs(dx),Math.abs(dy))<4)return;
+  if(!dragging.moved){dragging.moved=true;clearTimeout(hoverTimer);
+    if(anim){anim=null;S.shape='entry';S.alpha=0;S.icon=1;S.fade=1;dragging.orig={...S.shell}}}
+  S.shell={...dragging.orig,x:dragging.orig.x+dx,y:dragging.orig.y+dy};
+  if(!dragging.entry)S.full={...S.shell};
+  render();
+  if(!dragging.entry){const sn=snapTarget(S.shell);pathSvg.innerHTML=sn?`<rect x="${sn.x}" y="${sn.y}" width="${sn.w}" height="${sn.h}" rx="32" fill="none" stroke="var(--hi)" stroke-width="1.5" stroke-dasharray="5 4"/>`:''}
+});
+addEventListener('mouseup',()=>{
+  if(!dragging)return;
+  const d=dragging;setTimeout(()=>{dragging=null;render()},0);
+  if(!d.moved)return;
+  if(d.entry){
+    if(plan()==='1'){const h=homeFrom(center(S.shell));dragging=null;setHome(h);toast('收缩位置改为 '+homeLabel())}
+    else S.full={...S.full,x:S.shell.x,y:S.shell.y};
+  } else {const sn=snapTarget(S.shell);if(sn){S.full=sn;S.shell={...sn}}}
+  idleLeft=idleSec()*1000;render();
+});
+/* Manual placement: a released capsule within 81pt of an edge snaps to it (existing rule). */
+function snapTarget(r){
+  const d={left:r.x-V.x,right:V.x+V.w-(r.x+r.w),top:r.y-V.y,bottom:V.y+V.h-(r.y+r.h)};
+  let best=null;for(const e in d)if(d[e]<=M.snap&&(!best||d[e]<d[best]))best=e;
+  if(!best)return null;const g=M.gap,c=center(r);
+  if(side(best))return {x:best==='left'?V.x+g:V.x+V.w-g-r.w,y:clamp(c.y-r.h/2,V.y+g,V.y+V.h-g-r.h),w:r.w,h:r.h};
+  return {x:clamp(c.x-r.w/2,V.x+g,V.x+V.w-g-r.w),y:best==='top'?V.y+g:V.y+V.h-g-r.h,w:r.w,h:r.h};
+}
+
+/* --- context menu (T1) --- */
+const ctx=$('#ctx');
+tb.addEventListener('contextmenu',e=>{e.preventDefault();if(e.target.closest('[data-act]'))return;openCtx(sp(e))});
+function openCtx(p){
+  const sec=idleSec(),ck=b=>b?'<span class="ck">✓</span>':'';
+  const isDefault=HOME.edge===DEFAULT_HOME.edge&&Math.abs(HOME.ratio-DEFAULT_HOME.ratio)<.005;
+  ctx.innerHTML=`
+   <div class="mi" data-c="settings">设置…<span class="k">⌘,</span></div>
+   <div class="sep"></div>
+   <div class="mi" data-sub>排列方向<span class="k">▸</span>
+     <div class="sub ctx" style="position:absolute">
+       <div class="mi" data-c="o:v">${ck(S.orient==='v')}竖向</div>
+       <div class="mi" data-c="o:h">${ck(S.orient==='h')}横向</div></div></div>
+   <div class="mi" data-sub>自动收缩<span class="k">▸</span>
+     <div class="sub ctx" style="position:absolute">
+       ${[[0,'关闭'],[3,'3 秒（演示）'],[10,'10 秒'],[15,'15 秒']].map(([v,l])=>`<div class="mi" data-c="s:${v}">${ck(sec===v)}${l}</div>`).join('')}</div></div>
+   <div class="mi ${isDefault?'dis':''}" data-c="${isDefault?'':'home-reset'}">恢复默认收缩位置</div>`;
+  ctx.hidden=false;menuOpen=true;
+  const left=p.x>1440-440;  // open submenus leftwards near the right edge
+  ctx.querySelectorAll('.sub').forEach(s=>{if(left){s.style.left='auto';s.style.right='100%';s.style.marginRight='2px'}});
+  Object.assign(ctx.style,{left:Math.min(p.x,1440-220)+'px',top:Math.min(p.y,860-150)+'px'});
+}
+function closeCtx(){ctx.hidden=true;menuOpen=false;if(S)idleLeft=idleSec()*1000}
+ctx.addEventListener('mouseover',e=>{const m=e.target.closest('.mi');if(!m)return;
+  ctx.querySelectorAll(':scope>.mi[data-sub]').forEach(x=>x.classList.toggle('open',x===m||x.contains(m)))});
+ctx.addEventListener('click',e=>{
+  const m=e.target.closest('[data-c]');if(!m||!m.dataset.c)return;e.stopPropagation();
+  const c=m.dataset.c;
+  if(c==='settings')toast('打开设置窗口（与菜单栏「设置…」、⌘, 相同）');
+  else if(c.startsWith('o:'))setOrient(c.slice(2));
+  else if(c.startsWith('s:')){$('#idle').value=c.slice(2);if(c==='s:0'&&S.shape!=='expanded')expand(false)}
+  else if(c==='home-reset')setHome({...DEFAULT_HOME});
+  closeCtx();
+});
+addEventListener('mousedown',e=>{if(!ctx.hidden&&!ctx.contains(e.target))closeCtx()});
+function setOrient(o){
+  const wasHome=sameR(S.full,homeFull());S.orient=o;const sz=fullSize();
+  S.full=wasHome?homeFull():{x:S.full.x,y:S.full.y,...sz};
+  if(S.shape==='expanded'||S.shape==='dim')S.shell={...S.full};
+  buildCtl();render();
+}
+function setHome(h){HOME={edge:h.edge,ratio:h.ratio};drawNotes();if(S.shape==='entry'&&plan()==='1')glideHome();render()}
+$('#homeReset').addEventListener('click',()=>setHome({...DEFAULT_HOME}));
+let toastT;function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('on'),1600)}
+
+/* --- decoration notes --- */
+function drawNotes(){
+  // A docked column keeps clear of the home zone on its edge: it takes the larger free side
+  // (the existing DockGeometry.region rule, fed the fixed home zone instead of the toolbar).
+  let top=V.y;
+  if(HOME.edge==='right'&&plan()==='1'){const z=homeHit(),above=z.y-V.y,below=V.y+V.h-(z.y+z.h);if(below>above)top=z.y+z.h+M.gap}
+  const notes=[{x:120,y:90,w:288,c:'--lemon',t:'今天',i:['回复设计评审意见','整理 Q4 预算表','订周六的餐厅']},
+    {x:220,y:520,w:288,c:'--mist',t:'本周',i:['发版前回归测试','和财务对账']},
+    {x:760,y:110,w:260,c:'--mint',t:'读书',i:['《设计心理学》第 5 章']},
+    {x:V.x+V.w-288,y:top,w:288,c:'--cherry',t:'固定清单',i:['每日站会','周报'],tag:'停靠 · 右侧'},
+    {x:V.x+V.w-288,y:top+190,w:288,c:'--lavender',t:'灵感',i:['首页插画换季'],tag:'停靠 · 右侧'}];
+  $('#notes').innerHTML=notes.map(n=>`<div class="dnote" style="left:${n.x}px;top:${n.y}px;width:${n.w}px;--nb:var(${n.c})">${n.tag?`<span class="tag">${n.tag}</span>`:''}<h4>${n.t}</h4>${n.i.map(x=>`<p>${x}</p>`).join('')}</div>`).join('');
+}
+$('#idle').addEventListener('change',()=>{idleLeft=idleSec()*1000;if(idleSec()===0&&S.shape!=='expanded')expand(false)});
+$('#reset').addEventListener('click',reset);
+$('#plan').addEventListener('change',()=>{drawNotes();if(S.shape!=='expanded'){anim=null;S.shape='expanded';S.alpha=1;S.icon=0;S.fade=1;S.shell={...S.full}}idleLeft=idleSec()*1000;render()});
+$('#badgeOn').addEventListener('change',render);
+$('#ghost').addEventListener('change',render);
+
+/* =====================================================================
+   T2 history
+   ===================================================================== */
+const TODAY=new Date(2026,10,13);
+const WD='日一二三四五六';
+const key=d=>`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+function rng(seed){return()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff}}
+const POOL=[['今天','--lemon',['回复设计评审意见','整理 Q4 预算表','订周六的餐厅','给妈妈打电话','提交报销单']],
+            ['本周','--mist',['发版前回归测试','和财务对账','更新 README','准备周会材料']],
+            ['工作','--mint',['季度复盘初稿','对齐埋点口径','面试两位候选人','review 登录模块 PR']],
+            ['生活','--apricot',['取快递','健身 40 分钟','买咖啡豆']]];
+const SNAP={};
+(function gen(){
+  const r=rng(42);
+  for(let d=new Date(2026,9,1);d<TODAY;d.setDate(d.getDate()+1)){
+    if(r()<.12) continue;  // no snapshot that day
+    const notes=[];const n=1+Math.floor(r()*3);
+    for(let k=0;k<n;k++){const [t,c,items]=POOL[(k+Math.floor(r()*4))%4];
+      const cnt=2+Math.floor(r()*3);
+      notes.push({t,c,items:items.slice(0,cnt).map(x=>({x,done:r()<.62,carry:r()<.08}))})}
+    SNAP[key(d)]=notes;
+  }
+})();
+const H={state:'ok',del:3,mode:'cal',sel:new Date(2026,10,12),month:new Date(2026,10,1)};
+function snapOf(d){if(H.state!=='ok')return null;return SNAP[key(d)]||null}
+function counts(notes){let t=0,c=0;(notes||[]).forEach(n=>n.items.forEach(i=>{t++;if(i.done)c++}));return {t,c}}
+function level(notes){if(!notes)return 'none';const {t,c}=counts(notes);if(!t)return 'l0';const p=c/t;return p===0?'l0':p<.5?'l1':p<1?'l2':'l3'}
+const same=(a,b)=>key(a)===key(b);
+function dayLabel(d){const diff=Math.round((TODAY-d)/864e5);
+  if(diff===1)return `昨天 · ${d.getMonth()+1}月${d.getDate()}日`;
+  if(diff<7)return `周${WD[d.getDay()]} · ${d.getMonth()+1}月${d.getDate()}日`;
+  return `${d.getMonth()+1}月${d.getDate()}日`}
+function renderMenu(){
+  const recent=[];
+  if(H.state==='ok') for(let d=new Date(TODAY);recent.length<7;){d.setDate(d.getDate()-1);const s=snapOf(d);if(s)recent.push([new Date(d),s]);if(d<new Date(2026,9,1))break}
+  let sub;
+  if(H.state==='fail') sub='<div class="mi dis">无法读取历史记录</div>';
+  else if(!recent.length) sub='<div class="mi dis">暂无历史记录</div>';
+  else sub=recent.map(([d,s])=>{const {t,c}=counts(s);return `<div class="mi dayrow" data-day="${key(d)}"><span>${dayLabel(d)}</span><span class="bar4"><b style="width:${t?c/t*100:0}%"></b></span><span class="n">${c}/${t}</span></div>`}).join('');
+  $('#smenu').innerHTML=`
+    <div class="mi">新建便签</div><div class="mi">显示工具条</div><div class="mi">浮起便签</div><div class="mi">选择便签…</div>
+    <div class="sep"></div>
+    <div class="mi open" data-sub>历史记录<span class="k">▸</span>
+      <div class="sub ctx" style="position:absolute">${sub}<div class="sep"></div>
+        <div class="mi" data-open="cal">打开日历…</div>
+        <div class="mi ${H.del?'':'dis'}" data-open="del">最近删除${H.del?`（${H.del}）`:''}</div></div></div>
+    <div class="mi">设置…<span class="k">⌘,</span></div>
+    <div class="sep"></div><div class="mi">退出 DeskNodes<span class="k">⌘Q</span></div>`;
+}
+$('#smenu').addEventListener('click',e=>{
+  const d=e.target.closest('[data-day]'),o=e.target.closest('[data-open]');
+  if(d){const [y,m,dd]=d.dataset.day.split('-').map(Number);select(new Date(y,m-1,dd));setMode('cal');$('#win').focus()}
+  else if(o&&!o.classList.contains('dis')){setMode(o.dataset.open);$('#win').focus()}
+});
+function setMode(m){H.mode=m;$$('#hmode button').forEach(b=>b.classList.toggle('on',b.dataset.v===m));renderWin()}
+seg($('#hmode'),v=>{H.mode=v;renderWin()});
+seg($('#hstate'),v=>{H.state=v;renderMenu();renderWin()});
+seg($('#hdel'),v=>{H.del=+v;renderMenu();renderWin()});
+function select(d){
+  const min=new Date(2026,0,1);if(d<min||d>TODAY)return;
+  H.sel=d;H.month=new Date(d.getFullYear(),d.getMonth(),1);renderWin()}
+function renderWin(){
+  const body=$('#wbody');
+  if(H.mode==='del'){
+    body.style.gridTemplateColumns='1fr';
+    body.innerHTML=`<div class="det"><div class="deth"><h3>最近删除</h3><span>${H.del} 项可恢复</span></div>${H.del?
+      ['周报（便签 · 2 项）','给物业打电话（事项）','订机票（事项）'].map(t=>`<div class="it"><span style="flex:1">${t}</span><button class="qbtn">恢复</button></div>`).join(''):
+      `<div class="empty">${trashSvg}<b>没有最近删除的内容</b><small>删除后 30 天内可以在这里恢复。</small></div>`}</div>`;
+    return;
+  }
+  body.style.gridTemplateColumns='';
+  const m=H.month,first=new Date(m),lead=(first.getDay()+6)%7,dim=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
+  let cells='';for(let i=0;i<lead;i++)cells+='<span></span>';
+  const all=[];
+  for(let i=1;i<=dim;i++){const d=new Date(m.getFullYear(),m.getMonth(),i);const s=snapOf(d);if(s)all.push(...s);
+    const cls=['day',level(s),same(d,TODAY)?'today':'',same(d,H.sel)?'sel':''].join(' ');
+    const {t,c}=counts(s);
+    cells+=`<button class="${cls}" data-d="${i}" aria-label="${m.getMonth()+1}月${i}日，${s?`完成 ${c} / ${t}`:'无历史记录'}" ${d>TODAY?'disabled':''}>${i}</button>`}
+  const mc=counts(all);
+  const sel=snapOf(H.sel),sc=counts(sel);
+  let detail;
+  if(H.state==='fail') detail=`<div class="empty">${calSvg}<b>无法读取历史记录</b><small>数据库暂时不可用。</small><button class="qbtn" style="margin-top:6px">重试</button></div>`;
+  else if(!sel) detail=`<div class="empty">${calSvg}<b>当天没有历史记录</b><small>每个业务日结束后保存快照；没有记录的日期不会补造数据。</small></div>`;
+  else detail=sel.map(n=>`<div class="grp"><div class="grph" style="--nb:var(${n.c})">${n.t}</div>${n.items.map(i=>`<div class="it ${i.done?'done':''}"><span class="c"></span><span>${i.x}${i.carry?'<span class="badge" style="background:color-mix(in srgb,#c9a93a 25%,transparent)">顺延至次日</span>':''}</span></div>`).join('')}</div>`).join('');
+  const isToday=same(H.sel,TODAY);
+  body.innerHTML=`
+    <div class="cal">
+      <div class="calh"><h3>${m.getFullYear()}年${m.getMonth()+1}月</h3>
+        <button class="qbtn" data-nav="today" ${isToday?'disabled':''}>今天</button>
+        <button class="qbtn" data-nav="-1" aria-label="上个月">‹</button><button class="qbtn" data-nav="1" aria-label="下个月" ${m.getMonth()===TODAY.getMonth()&&m.getFullYear()===TODAY.getFullYear()?'disabled':''}>›</button></div>
+      <div class="wk">${'一二三四五六日'.split('').map(x=>`<span>${x}</span>`).join('')}</div>
+      <div class="days">${cells}</div>
+      <div class="legend">完成率 <span class="day l0"></span>0 <span class="day l1"></span>&lt;50% <span class="day l2"></span>&lt;100% <span class="day l3"></span>100%</div>
+      <div class="month"><small>本月完成率</small><strong>${mc.t?Math.round(mc.c/mc.t*100)+'%':'—'}</strong><small>共 ${mc.t} 项，完成 ${mc.c} 项</small></div>
+    </div>
+    <div class="det">
+      <div class="deth"><h3>${H.sel.getMonth()+1}月${H.sel.getDate()}日 周${WD[H.sel.getDay()]}</h3>${sel?`<span>完成 ${sc.c} / ${sc.t}</span>`:''}</div>
+      ${detail}
+    </div>`;
+}
+const calSvg='<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="6" width="24" height="22" rx="4"/><path d="M4 12h24M10 3v5M22 3v5"/><circle cx="22" cy="22" r="5" fill="var(--panel)"/><path d="M22 19.5V22l1.6 1.2"/></svg>';
+const trashSvg='<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 9h20M12 9V6h8v3M8 9l1.5 18h13L24 9"/></svg>';
+$('#wbody').addEventListener('click',e=>{
+  const d=e.target.closest('[data-d]'),n=e.target.closest('[data-nav]');
+  if(d){select(new Date(H.month.getFullYear(),H.month.getMonth(),+d.dataset.d))}
+  else if(n){if(n.dataset.nav==='today')select(new Date(TODAY));else{const m=new Date(H.month.getFullYear(),H.month.getMonth()+ +n.dataset.nav,1);if(m>TODAY)return;H.month=m;H.sel=new Date(m);renderWin()}}
+});
+$('#win').addEventListener('keydown',e=>{
+  if(H.mode!=='cal')return;
+  const d=new Date(H.sel);let ok=true;
+  if(e.key==='ArrowLeft'&&e.altKey)d.setMonth(d.getMonth()-1,1);
+  else if(e.key==='ArrowRight'&&e.altKey)d.setMonth(d.getMonth()+1,1);
+  else if(e.key==='ArrowLeft')d.setDate(d.getDate()-1);
+  else if(e.key==='ArrowRight')d.setDate(d.getDate()+1);
+  else if(e.key==='ArrowUp')d.setDate(d.getDate()-7);
+  else if(e.key==='ArrowDown')d.setDate(d.getDate()+7);
+  else if(e.key==='t'||e.key==='T'){d.setTime(TODAY.getTime())}
+  else ok=false;
+  if(ok){e.preventDefault();select(d>TODAY?new Date(TODAY):d)}
+});
+
+/* =====================================================================
+   T3 fonts
+   ===================================================================== */
+const FONTS=[
+  {id:'system',name:'默认',stack:"-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif",tw:600,sub:'SF Pro + 苹方'},
+  {id:'rounded',name:'圆体',stack:"ui-rounded,'SF Pro Rounded','Yuanti SC','PingFang SC',sans-serif",tw:700,sub:'SF Rounded + 圆体-简'},
+  {id:'serif',name:'宋体',stack:"ui-serif,'New York','Songti SC','STSong',serif",tw:700,sub:'New York + 宋体-简'},
+  {id:'wenkai',name:'文楷',stack:"'LXGW WenKai','Kaiti SC','STKaiti',serif",tw:700,sub:'霞鹜文楷 Regular + Medium（随 App 打包）'}];
+const SIZES=[{i:13,t:15,s:11},{i:14,t:16,s:12},{i:16,t:18,s:14},{i:18,t:20,s:15}];
+const F={font:'system',size:1,yuanti:'missing',downloading:false,err:''};
+seg($('#fsize'),v=>{F.size=+v;renderFonts()});
+seg($('#ystate'),v=>{F.yuanti=v;F.err='';renderFonts()});
+function pick(id){
+  if(F.downloading) return;
+  F.err='';
+  if(id==='rounded'&&F.yuanti!=='installed'){
+    F.downloading=true;renderFonts();
+    setTimeout(()=>{F.downloading=false;
+      if(F.yuanti==='fail'){F.err='无法下载“圆体-简”：网络连接已中断（NSURLErrorDomain -1005）。已保留之前的字体。'}
+      else{F.yuanti='installed';$$('#ystate button').forEach(b=>b.classList.toggle('on',b.dataset.v==='installed'));F.font='rounded'}
+      renderFonts()},1800);
+    return;
+  }
+  F.font=id;renderFonts();
+}
+function card(f,sz){
+  const k=sz.i/14,r=n=>Math.round(n*k);
+  const items=[['周五前交季度复盘',0],['Review the Q4 roadmap 和预算',0],['回复 Lisa 的邮件',1]];
+  return `<div class="card" style="--nb:var(--lemon);--tw:${f.tw};font-family:${f.stack}">
+    <div class="ch" style="height:${r(50)}px;font-size:${sz.t}px"><b>今天 Today</b><span style="font-size:${sz.s}px;font-family:var(--sans)">1/3</span></div>
+    ${items.map(([t,d])=>`<div class="row ${d?'done':''}" style="min-height:${r(32)}px;padding:${r(5)}px 0;gap:${r(11)}px;font-size:${sz.i}px;line-height:${r(22)}px">
+      <span class="cb" style="width:${r(16)}px;height:${r(16)}px;margin-top:${(r(22)-r(16))/2}px"></span><span class="tx">${t}</span></div>`).join('')}
+    <div class="ft" style="height:${r(44)}px;font-size:${sz.s+1}px">＋ 添加事项</div></div>`;
+}
+function renderFonts(){
+  const sz=SIZES[F.size];
+  $('#fopts').innerHTML=FONTS.map(f=>{
+    let st='';
+    if(f.id==='rounded'){st=F.downloading?'<span class="spin"></span>下载中…':F.yuanti==='installed'?'':'系统字体 · 首次需下载'}
+    if(f.id==='wenkai') st='App 自带';
+    return `<button class="fopt ${F.font===f.id?'on':''}" data-f="${f.id}" aria-pressed="${F.font===f.id}" style="font-family:${f.stack}">
+      <span class="big" style="font-weight:${f.tw}">文 Aa</span><span class="nm" style="font-family:${f.stack}">${f.name}</span><span class="st">${st}</span></button>`}).join('');
+  const cur=FONTS.find(f=>f.id===F.font);
+  $('#fsample').innerHTML=`<div style="display:flex;align-items:center;gap:${Math.round(11*sz.i/14)}px;font-family:${cur.stack};font-size:${sz.i}px"><span class="cb" style="display:inline-block;width:${Math.round(16*sz.i/14)}px;height:${Math.round(16*sz.i/14)}px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--ink) 42%,transparent)"></span>示例事项：周五前交季度复盘</div>`;
+  $('#ferr').hidden=!F.err;$('#ferr').textContent=F.err;
+  $('#fcur').innerHTML=card(cur,sz);
+  $('#fall').innerHTML=FONTS.map(f=>`<div><div class="cardcap">${f.name} · ${f.sub}</div>${card(f,sz)}</div>`).join('');
+}
+$('#fopts').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b)pick(b.dataset.f)});
+
+/* boot */
+drawNotes();reset();fit();requestAnimationFrame(t=>{lastTick=t;frame(t)});
+renderMenu();renderWin();renderFonts();
+{const t=location.hash.slice(1);const b=document.querySelector(`#tabs [data-v="${t}"]`);if(b)b.click()}
+</script>
+</body>
+</html>

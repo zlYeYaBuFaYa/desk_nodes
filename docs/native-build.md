@@ -20,7 +20,7 @@ xcrun swift test
 open build/DeskNodes.app
 ```
 
-[构建脚本](../scripts/build-macos.sh) 生成当前主机架构的 release，打包二进制、Info.plist 与图标，默认 ad-hoc 签名并验证后替换仓库 build/DeskNodes.app。不会安装应用、证书或执行公证。需要其他签名身份时使用已有身份：
+[构建脚本](../scripts/build-macos.sh) 生成当前主机架构的 release，打包二进制、Info.plist、图标与便签字体霞鹜文楷（首次构建由 [fetch-fonts.sh](../scripts/fetch-fonts.sh) 按固定版本下载到不入库的 `Resources/Fonts/` 并校验 SHA-256，之后离线可用），默认 ad-hoc 签名并验证后替换仓库 build/DeskNodes.app。不会安装应用、证书或执行公证。需要其他签名身份时使用已有身份：
 
 ```sh
 /usr/bin/security find-identity -v -p codesigning
