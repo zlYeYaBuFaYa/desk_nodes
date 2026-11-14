@@ -2,7 +2,9 @@
 """Final static resource/contracts audit. No SDK typecheck or native visual claim."""
 from pathlib import Path
 import plistlib
+import re
 import struct
+from urllib.parse import unquote, urlsplit
 import zlib
 
 root = Path(__file__).resolve().parents[1]
@@ -56,12 +58,29 @@ assert 'toastDismissal' in read('Sources/DeskNodesApp/DeletionToast.swift')
 assert 'guard canMutate() else { return }' in read('Sources/DeskNodesApp/DockController.swift')
 # The maintained documentation replaces the retired milestone/spec snapshots.
 for name in ['README.md', 'REQUIREMENTS.md', 'TECHNICAL_DESIGN.md', 'UI_SPEC.md',
-             'INTERACTIONS.md', 'ACCEPTANCE.md', 'native-build.md']:
+             'ACCEPTANCE.md', 'native-build.md']:
     document = read(f'docs/{name}')
     assert document.startswith('# '), name
 prototype = read('docs/UI_PROTOTYPE.html')
 assert '<html lang="zh-CN">' in prototype
-for scene in ['desktop', 'peek', 'history', 'deleted', 'settings']:
-    assert f'data-scene="{scene}"' in prototype, scene
+for element in ['stage', 'notes', 'menu', 'selbar', 'win', 'toast']:
+    assert f'id="{element}"' in prototype, element
 assert '<script src=' not in prototype
+assert 'data-ver=' not in prototype  # one current demo, no competing old/new specification
+# Relative links and explicit section anchors must survive document consolidation.
+documents = [root / 'README.md', *sorted((root / 'docs').rglob('*.md')),
+             *sorted((root / 'docs').rglob('*.html'))]
+for document in documents:
+    source = document.read_text()
+    links = (re.findall(r'\[[^\]]*\]\(([^)]+)\)', source) if document.suffix == '.md'
+             else re.findall(r'href=[\"\x27]([^\"\x27]+)', source))
+    for link in links:
+        url = urlsplit(link)
+        if url.scheme or url.netloc:
+            continue
+        target = (document.parent / unquote(url.path)).resolve() if url.path else document
+        assert target.exists(), f'{document.relative_to(root)}: missing {link}'
+        if url.fragment:
+            ids = re.findall(r'\bid=[\"\x27]([^\"\x27]+)', target.read_text())
+            assert unquote(url.fragment) in ids, f'{document.relative_to(root)}: missing anchor {link}'
 print('N10 resource/source/current documentation checks passed; no Mac acceptance implied.')

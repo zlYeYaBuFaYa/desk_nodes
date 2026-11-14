@@ -1,8 +1,11 @@
-# 本机 Mac 构建、运行与恢复
+# 本机构建、运行与恢复
 
-本指南保留本机构建、签名、安装与离线恢复的具体操作。实际已执行的检查与限制见 [验收记录](ACCEPTANCE.md)，操作清单本身不代表已全部验证通过。运行目标为 macOS 14+；构建主机还必须满足所选 Xcode 自身的系统要求。使用已安装的完整 Xcode 自带 macOS SDK 和默认 Swift 工具链；Apple 的 [Xcode 兼容表](https://developer.apple.com/xcode/system-requirements) 是工具链／主机要求的依据，不能把 macOS 14 运行下限当作 Xcode 的主机下限。更换工具链后应重新完成 SDK 编译和 native tests。SwiftPM manifest 使用 Swift tools 5.9 / Swift 5 language mode，没有承诺 Swift 6 strict-language-mode 编译或通用二进制。
+这里只维护操作步骤。环境与工程机制见 [技术设计](TECHNICAL_DESIGN.md#architecture)，应用行为见 [功能与交互](REQUIREMENTS.md)，验证结果见 [验收](ACCEPTANCE.md)。
 
-在仓库根目录，选择**已安装**的 Xcode 路径；环境变量只影响当前终端，不修改系统选择：
+<a id="build"></a>
+## 构建与验证
+
+在安装了完整兼容 Xcode 的 Mac 上，从仓库根目录执行。DEVELOPER_DIR 只影响当前终端，无需修改系统选择：
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -10,28 +13,36 @@ export TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault
 xcodebuild -version
 xcrun swift --version
 xcrun --sdk macosx --show-sdk-path
-xcrun swift package clean
 xcrun swift test
 ./scripts/build-macos.sh
 /usr/bin/plutil -lint build/DeskNodes.app/Contents/Info.plist
 /usr/bin/codesign --verify --strict --verbose=2 build/DeskNodes.app
-/usr/bin/codesign -dv --verbose=4 build/DeskNodes.app
-/usr/bin/codesign -d --entitlements :- build/DeskNodes.app
 open build/DeskNodes.app
 ```
 
-记录每条命令的退出码和输出。Mac 的 `swift test` 应编译全部目标，包括 AppKit 应用和原生 XCTest；必须在有图形登录会话的 Mac 上执行并报告实际发现／通过数，不能套用历史测试数量。测试使用临时 SQLite，不应修改个人库；native tests 会创建窗口，仍需手动验收真实输入法等行为。没有伪造 Darwin SDK、跨平台原生模拟或 Linux Mac 构建步骤。
-
-脚本设置部署目标 14.0，构建当前主机架构的 release 产品，把可执行文件、Info.plist 与 `Resources/DeskNodes.icns` 放入 `.app`，先签名验证再替换仓库内 `build/DeskNodes.app`。不生成 universal 包，不处理分发、公证、付费身份或沙盒 entitlement。默认 `codesign --sign - --timestamp=none` 只提供本地 ad-hoc 签名；签名通过仍不证明运行、登录项或视觉验收通过。`LSUIElement=true` 与 `.accessory` 应无 Dock 图标；Finder 图标来自 bundle 资源，不需要 Dock 图标来展示。
-
-已有适用的本地签名身份时，可以先查看并明确选择它；不会创建或安装身份：
+[构建脚本](../scripts/build-macos.sh) 生成当前主机架构的 release，打包二进制、Info.plist 与图标，默认 ad-hoc 签名并验证后替换仓库 build/DeskNodes.app。不会安装应用、证书或执行公证。需要其他签名身份时使用已有身份：
 
 ```sh
 /usr/bin/security find-identity -v -p codesigning
-DESKNODES_SIGNING_IDENTITY='已有本地签名身份的名称或 SHA-1' ./scripts/build-macos.sh
+DESKNODES_SIGNING_IDENTITY='已有身份名称或 SHA-1' ./scripts/build-macos.sh
 ```
 
-登录启动验收需要**一个稳定路径的签名 app**。先从菜单退出运行中的副本，确认 `~/Applications/DeskNodes.app` 不会覆盖想保留的版本，再复制并运行：
+自动检查还包括 `python3 scripts/check-n1.py`、`check-n7.py`、`check-n8.py`、`check-n9.py`、`check-n10.py`，它们只核对静态契约，不替代 Swift 编译与原生操作。
+
+如果受限环境阻止默认缓存写入，可将缓存放到可写临时目录重试，不修改用户工具链配置：
+
+```sh
+CLANG_MODULE_CACHE_PATH=/tmp/desknodes-clang-cache \
+SWIFTPM_MODULECACHE_OVERRIDE=/tmp/desknodes-swift-cache \
+xcrun swift test --disable-sandbox --cache-path /tmp/desknodes-spm-cache
+```
+
+工具链须满足其自身主机要求；不承诺任意 Xcode 都能运行于应用的最低系统版本。记录实际命令、退出码和各 XCTest 目标结果；额外 runner 的“0 tests”不覆盖 XCTest 结果。
+
+<a id="installation"></a>
+## 稳定安装与登录项
+
+登录项需在稳定路径的签名应用上实测。先退出运行副本，确认目标不是要保留的旧安装，再执行：
 
 ```sh
 mkdir -p "$HOME/Applications"
@@ -40,19 +51,29 @@ mkdir -p "$HOME/Applications"
 open "$HOME/Applications/DeskNodes.app"
 ```
 
-同一时间只运行一个副本。之后保持标识符 `local.desknodes.native`、路径、签名身份稳定。先验证拒绝首次询问后不会注册／重问，再在隔离用户中测试明确同意、系统待批准／错误、退出重新登录启动和设置关闭。ad-hoc 被拒绝时记录实际 `SMAppService` 错误与 OS 状态；这是实际阻碍，不添加 LaunchAgent、私有 API 或新权限来绕过。没有本地签名身份不阻止审查源码，但可能阻止登录项验收。打开系统登录项页面只由用户主动操作触发。
+同一时间只运行一个副本，保持路径、Bundle ID 与签名身份稳定。登录项操作与状态判定见 [FR-12](REQUIREMENTS.md#fr-12)；ad-hoc 被系统拒绝时记录实际错误，不以其他启动服务绕过。
 
-## 隔离验证
+<a id="isolation"></a>
+## 隔离运行
 
-手动验收或截图时，可用 `DESKNODES_DATA_DIR=/某个临时目录 build/DeskNodes.app/Contents/MacOS/DeskNodes` 启动：数据库与自动备份写入该目录，工具条位置、全局收起与整理分页写入独立的 `local.desknodes.native.verification` 偏好域，不读写个人数据。工具条位置、新建便签尺寸、全局收起和整理分页属于本机展示偏好（UserDefaults），不进入 JSON 备份，导入备份也不会改变它们。
+手动验收或截图使用临时数据目录启动二进制，例如：
 
+```sh
+DESKNODES_DATA_DIR=/tmp/desknodes-verification build/DeskNodes.app/Contents/MacOS/DeskNodes
+```
+
+隔离库与偏好域的机制见 [存储](TECHNICAL_DESIGN.md#storage) 和 [展示偏好](TECHNICAL_DESIGN.md#presentation)。验证域在不同临时目录间共用；该变量不隔离系统登录项。不要并行启动验证副本与个人副本来测试全局快捷键。
+
+<a id="recovery"></a>
 ## 备份与恢复
 
-首选设置 → 数据 → **导出…** 保存 JSON，保留导出时间和应用版本。导出覆盖所有保留的 notes/items/tombstones、不可变历史、顺延／归档、顺序／自由恢复位置／显示器／层级、设置、快捷键／登录意愿、跨天检查点及待记录删除成员。尚未结束的输入法组词必须先正常完成；导出只刷新实际拥有焦点的已提交编辑，之后在同一事务内取快照。临时五秒撤销计时器、原生文字 undo、窗口焦点、系统登录项注册不是备份状态。
+### JSON
 
-恢复：先导出当前数据；设置 → 导入… 选择当前版本支持的原生 JSON（格式与版本校验见 `Sources/DeskNodesPersistence/Backup.swift`），阅读并明确确认替换全部数据。错误格式、损坏或未来版本、取消确认、组词中或快捷键冲突都应保留原数据和绑定。成功导入会清理旧编辑器／撤销，刷新历史；系统登录项不随 JSON 注册。检查便签、历史、顺延、设置，退出重开；**随后正常定时跨天可能推进导入的旧检查点**，这是正常行为。导入本身不补造历史。不编辑备份文件来转换 Tauri 格式。
+优先在设置 → 数据 → 导出… 保存备份，并标记导出时间和应用版本。恢复前先导出当前数据，再在同处导入… 选择原生 JSON，阅读并确认替换提示。恢复后检查便签、历史和布局，退出重开复核。兼容版本与载荷归属只见 [备份协议](TECHNICAL_DESIGN.md#backup)，失败与替换行为只见 [FR-13](REQUIREMENTS.md#fr-13)。
 
-需要原始库灾难恢复时，正常完成输入、从菜单退出，并确认进程结束，然后复制整个数据目录（包含 SQLite 可能存在的 journal/WAL/SHM 文件），不能只复制运行中的主 `.sqlite3` 文件：
+### SQLite 离线副本
+
+正常完成输入、从菜单退出并确认进程结束后，复制整个生产数据目录。位置见 [存储](TECHNICAL_DESIGN.md#storage)；示例：
 
 ```sh
 backup_root="$HOME/Desktop/DeskNodes-recovery-$(date +%Y%m%d-%H%M%S)"
@@ -60,6 +81,6 @@ mkdir -p "$backup_root"
 /usr/bin/ditto "$HOME/Library/Application Support/local.desknodes.native" "$backup_root/local.desknodes.native"
 ```
 
-恢复原始副本也必须在应用完全退出时进行。将当前数据目录改名保留，复制所选**整个离线目录**到 `~/Library/Application Support/local.desknodes.native`，再启动同 schema 的 app。不要混用新主库和旧 WAL/journal。示例中 `backup_root` 仅在当前终端有效，恢复时应使用实际保留的路径。JSON 是正常备份／导入入口；原始目录仅作离线恢复保障。强制终止或断电后的恢复未验收，不能把中断测试称为断电保证。
+恢复时同样先退出应用：将当前目录改名保留，再把所选整个离线目录复制回原位置，使用支持该 schema 的应用启动。不要只复制运行中的主库，也不要混用不同副本的 WAL／SHM／journal。
 
-完整手动验收见 [验收清单](ACCEPTANCE.md)。阻碍必须按实际证据记录：SDK 编译诊断、签名失败、登录项拒绝、显示器或输入法不可用都不算通过。无需为执行本项目更改系统时钟、Dock 设置、隐私授权或安装第三方工具。
+[自动 SQLite 副本](TECHNICAL_DESIGN.md#automatic-backup) 可在退出后用于恢复；保留当前目录，把所选完整副本作为 DeskNodes.sqlite3 放入新的数据目录，不带入旧库的侧文件。强制终止和断电恢复仍需独立验收，不能由正常导入或中断单元测试推断通过。

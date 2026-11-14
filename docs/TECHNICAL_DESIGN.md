@@ -1,204 +1,132 @@
-# DeskNodes 技术文档
+# DeskNodes 技术设计
 
-日期：2026-11-12；代码基线见 [总览](README.md)。本文描述实际代码，不提出框架迁移。
+只维护代码结构、数据契约和实现机制。产品规则见 [功能与交互](REQUIREMENTS.md)，数值见 [UI 规格](UI_SPEC.md)，构建命令见 [操作指南](native-build.md)。
 
-## 1. 技术栈与工程边界
+<a id="architecture"></a>
+## 工程与对象职责
 
-- Swift Package Manager，manifest 为 Swift tools 5.9，最低平台 macOS 14。
-- AppKit 管理应用、菜单、NSPanel、文字输入和窗口层级；SwiftUI 提供低频历史、最近删除和设置界面。
-- QuartzCore 提供图层动效，AppKit 动画上下文移动真实窗口；工具条使用显示刷新回调驱动形变。
-- Carbon `RegisterEventHotKey` 负责全局快捷键；ServiceManagement `SMAppService.mainApp` 负责登录项。
-- SQLite 通过系统库 `CSQLite` 的 module map 接入。无第三方 Swift 运行时依赖、无 WebView 主界面。
-- Bundle ID `local.desknodes.native`，版本 0.1.0 / 1，`LSUIElement=true`，入口设置 `.accessory`。构建脚本不加沙盒 entitlement。
+工程为 Swift Package（tools 5.9、Swift 5 language mode、macOS 14+），无第三方运行时依赖。AppKit 管理应用、NSPanel 与 TextKit，SwiftUI 承载设置和历史，Carbon 注册全局热键，ServiceManagement 管理登录项，QuartzCore／显示刷新回调驱动动画。
 
-## 2. 模块和依赖
+依赖方向：`DeskNodesApp → DeskNodesActions → DeskNodesPersistence → DeskNodesCore + CSQLite`，App 同时直接使用 Persistence 与 Core。Core 和 Persistence 发布 library product，Actions 是内部 target；非 macOS 不创建 App 及其测试目标。
 
-```text
-DeskNodes（可执行产品，仅 macOS）
-└─ DeskNodesApp
-   ├─ DeskNodesActions ── DeskNodesPersistence
-   ├─ DeskNodesPersistence ── DeskNodesCore + CSQLite
-   └─ DeskNodesCore
+- [Application.swift](../Sources/DeskNodesApp/Application.swift)：组合根，共享一个 Store／NoteActions，协调启动、刷新、系统服务、跨天、导入重建与退出。
+- [NoteSurfaces.swift](../Sources/DeskNodesApp/NoteSurfaces.swift)：NoteID 到窗口及渲染状态映射，普通选择、批量选择、差量刷新。
+- [NotePanel.swift](../Sources/DeskNodesApp/NotePanel.swift)、[NoteTextView.swift](../Sources/DeskNodesApp/NoteTextView.swift)：卡片布局、输入所有权、菜单、原生文字撤销。
+- [Desk.swift](../Sources/DeskNodesApp/Desk.swift)：整组展示、会话 peeking／picking、整理、分页与工具条占位；不编辑事项。
+- [Toolbar.swift](../Sources/DeskNodesApp/Toolbar.swift)：外壳、命中、手势、计时与动画；不持有业务库。
+- [SelectionOverlay.swift](../Sources/DeskNodesApp/SelectionOverlay.swift)：NotePicker、每屏覆盖层、矩形相交选择与底部 SelectionBar。
+- [DockController.swift](../Sources/DeskNodesApp/DockController.swift)：停靠布局、标签、拖出与屏幕校正。
+- [AuxiliaryWindows.swift](../Sources/DeskNodesApp/AuxiliaryWindows.swift)：按需创建并复用 SwiftUI 承载窗口。
+- [SystemServices.swift](../Sources/DeskNodesApp/SystemServices.swift)：GlobalHotkey、LoginService；Carbon 热键 ID 使用类级计数，避免两个实例互认。
 
-DeskNodesCore         独立设计常量与颜色算法
-DeskNodesPersistence  Foundation、模型、事务、SQLite、历史、备份
-DeskNodesActions      编辑命令、删除队列、布局与窗口状态的纯逻辑
-DeskNodesApp          AppKit / SwiftUI / Carbon / ServiceManagement 适配
-```
+Bundle 信息以 [Info.plist](../Resources/Info.plist) 为准。主 UI 协调在主 actor，Store 为同步串行仓库，不是异步后台 actor。
 
-`Package.swift` 在非 macOS 下不创建 App 及原生测试目标，因此便携测试通过不证明 AppKit 编译或交互正确。Core 和 Persistence 对外发布 library product；Actions 是内部 target。
+<a id="models"></a>
+## 数据模型
 
-## 3. 应用对象职责
+定义见 [Models.swift](../Sources/DeskNodesPersistence/Models.swift) 和 [Preferences.swift](../Sources/DeskNodesPersistence/Preferences.swift)。
 
-### 3.1 入口与协调
+- `StableID<Kind>`：UUID 类型包装，NoteID／ItemID 不能混用，不循环使用删除身份。
+- `Note`：title、color、placement、level、order、freeRestore、automaticHeight、collapsed 及时间戳。
+- `Placement`：dock(edge, displayID) 或 free(displayID, x, y, width, height)，屏幕坐标原点在左下；freeRestore 仅能是自由位置。
+- `Item`：noteID、text、completed、struck、order、archivedDay 及时间戳；Store 拒绝 completed 与 struck 同时为真。
+- `Settings`：单例 native-settings，跨天小时／分钟及 dockEdge、displayID、edgePreference。后三者保留持久化兼容，已删除整体停靠设置入口；displayID 仍参与旧位置的屏幕解析，不能删字段。
+- `NativePreferences`：hotkey、peekHotkey、loginDecision，属于业务库，与本机 UserDefaults 分开。
+- `DailySnapshot`：day、capturedAt、冻结的 SnapshotNote／SnapshotItem；包含删除、划掉与 carriedTo。
+- `HistoryDay`：严格校验的 YYYY-MM-DD 公历日期，不含时区偏移；`RolloverCheckpoint` 保存 activeDay 与 highWater。
 
-`Sources/DeskNodesApp/Application.swift` 的 `AppDelegate` 是组合根，持有一个共享 `Store` 和 `NoteActions`，组装以下对象：
+<a id="storage"></a>
+## SQLite 与事务
 
-- `NoteSurfaces`：以 NoteID 管理桌面便签窗口，记录最后渲染值、当前选择；差量刷新。
-- `DesktopController`（`Desk.swift`）：管理全局收起、置顶、浮起（会话态 `peeking`）、整理、分页、工具条占位与叠放提示，不编辑事项内容。
-- `Toolbar`：胶囊／圆形形态、手势、命中、计时和动画；不持有业务库。
-- `DockController`：兼容旧停靠条、标签、分页、拖出和显示器校正。
-- `AuxiliaryWindows`：按需创建并复用设置和历史 NSWindowController；用 NSHostingController 承载 SwiftUI。
-- `GlobalHotkey`（新建、浮起各一个实例，Carbon 热键 id 由类级计数分配，避免两个处理器互认）、`LoginService`：系统适配；`DeletionToast`、`NoticeToast`：非激活反馈。
+生产库为 `~/Library/Application Support/local.desknodes.native/DeskNodes.sqlite3`，目录创建权限 0700。非空 `DESKNODES_DATA_DIR` 重定向库目录；运行与隔离方式只在 [操作指南](native-build.md#isolation) 维护。
 
-App UI 协调主要在主 actor；Store 是同步串行仓库，不是后台 actor。不能把“有锁”理解成应用已经异步写盘。
+连接采用 SQLITE_OPEN_FULLMUTEX、busy timeout 5000ms、WAL、synchronous=FULL 和外键约束。Store 用 NSRecursiveLock 串行化；外层事务为 BEGIN IMMEDIATE，嵌套使用 savepoint，异常回滚当前作用域。事务闭包内不可 suspend 或切线程。
 
-### 3.2 启动与退出顺序
+### 当前 schema
 
-启动：安装编辑菜单和菜单栏 → 打开 SQLite／迁移 → 创建桌面协调器 → 应用置顶覆盖 → 注册屏幕监听 → 安装跨天监听并补检查 → 校正屏幕 → 全量刷新 → 显示完整工具条 → 注册新建与浮起快捷键 → 首次登录启动询问。
+[Schema.swift](../Sources/DeskNodesPersistence/Schema.swift) 当前版本为 8，application_id 为 `0x44534B4E`；拒绝无关库与未来版本。主要表：
 
-退出（菜单或设置页按钮）：检查全局 marked text → 提交桌面编辑 → 允许退出 → 停止热键和计时器、清理观察者、关闭 Store、移除菜单栏图标。组词未结束或提交失败会取消退出。
+- notes、items：实时与保留的删除记录，items 按 note_id／position／id 建索引。
+- settings、native_preferences：业务设置单例及原生偏好 JSON。
+- days、snapshot_notes、snapshot_items：封存日期与冻结成员。
+- rollover_state、item_archives：业务日检查点与事项归档映射。
+- pending_deleted_notes、pending_deleted_items：下一次快照仍需记录的删除身份。
 
-## 4. 数据模型
+迁移在 BEGIN EXCLUSIVE 中进行：v1 实时行 → v2 历史 → v3 自动高度 → v4 自由恢复位置 → v5 跨天／归档／待记录删除 → v6 边缘偏好 → v7 native_preferences → v8 items／snapshot_items 增加 struck。打开旧库时 graphite 映射为 paper，不单独升 schema；历史读取与备份解码也兼容旧颜色。
 
-模型定义于 `Sources/DeskNodesPersistence/Models.swift`。
+快照先写成员、最后写日期 header，依靠延迟外键提交。触发器拒绝封存行 UPDATE／DELETE 与日期封存后的成员插入；归档映射同样不能原地修改／删除。恢复只改实时 tombstone，不改封存内容。
 
-- `StableID<Kind>`：UUID 的类型包装，NoteID 与 ItemID 不能混用；删除后不循环使用身份。
-- `Note`：id、可选 title、七色 color、placement、level、order、freeRestore、automaticHeight、collapsed、createdAt、updatedAt、deletedAt。
-- `Placement`：`dock(edge, displayID)` 或 `free(displayID, x, y, width, height)`；位置是 AppKit 屏幕坐标 pt，原点在左下。
-- `freeRestore`：停靠前自由位置，只能是 free，可跨重启和撤销保存。
-- `Item`：id、noteID、text、completed、struck、order、archivedDay、createdAt、updatedAt、deletedAt。completed 与 struck 互斥（Store 拒绝同时为真）。
-- `Settings`：固定身份 `native-settings`，跨天小时／分钟、停靠边、目标屏幕、边缘偏好（遗留字段，界面已不使用）。
-- `NativePreferences`：hotkey、peekHotkey（空串表示未设置）与 loginDecision；缺少 peekHotkey 的旧载荷解码为默认 ⌃⌥F，若与新建快捷键相同则为空；在业务库中，区别于 UserDefaults 展示偏好。
-- `DailySnapshot`：day、capturedAt、SnapshotNote 列表；SnapshotItem 冻结文字、完成、划掉、排序、删除、carriedTo。
-- `HistoryDay`：严格 `YYYY-MM-DD` 公历日期，校验真实存在，不保存时区偏移。
-- `RolloverCheckpoint`：activeDay + highWater；后者为防时钟回拨的最高已见时间。
+<a id="editing"></a>
+## 编辑、刷新与撤销实现
 
-## 5. SQLite 结构与事务
+每个 NoteTextView 拥有自己的 NSTextStorage、选区、输入上下文和 UndoManager；标题 NoteTitleField 持有独立 field editor，避免跨便签撤销串线。
 
-### 5.1 存储与连接
+NoteCardView 用 pendingItems／pendingTitle 与 debounce 提交实际编辑器内容，marked text 跳过并重试。EditorSynchronization 判定活跃／被动编辑所有权，跨天或导出仅接纳正确所有者的已提交文字。完成样式使用 layout manager 临时属性，不替换正文或污染原生 undo。
 
-生产路径：`~/Library/Application Support/local.desknodes.native/DeskNodes.sqlite3`。目录创建权限 0700；不提供数据库加密功能。`DESKNODES_DATA_DIR` 非空时改用该目录，供隔离验收。
+NoteSurfaces.refresh 两次查询取得 notes 与分组实时事项，与 Rendered(note, items) 比较，仅触及改变的窗口。RefreshScope 的 changes 更新差量，layout 另排停靠，all 强制重做展示。suppressed 阻止收起／非当前页窗口被刷新重新显示。
 
-连接使用 `SQLITE_OPEN_FULLMUTEX`，设置 busy timeout 5000ms、WAL、`synchronous=FULL` 和外键约束。Store 使用 `NSRecursiveLock` 串行化；`transaction` 外层为 `BEGIN IMMEDIATE`，嵌套为 savepoint，异常回滚相应作用域。事务闭包内不可 suspend 或切到其他线程。
+文字撤销归编辑器；结构删除由 NoteActions 的 Deleted 内存栈处理。单张／事项保留原记录，批次保存多个 Note 与子记录，在同一事务删除和恢复；恢复失败回滚整批。从最近删除恢复批次中的一张时，过滤掉该成员，保留其余批次。时限和用户优先级只见 [FR-04](REQUIREMENTS.md#fr-04)。
 
-### 5.2 当前 schema 8 的表
+<a id="presentation"></a>
+## 展示状态、几何与本机偏好
 
-- `notes`：id 主键、title、color、placement JSON、level、position、collapsed、created、updated、deleted、automatic_height、free_restore JSON。
-- `items`：id 主键、note_id 外键、text、completed、position、created、updated、deleted、struck；有 `(note_id, position, id)` 索引。
-- `settings`：单例 id、hour、minute、dock_edge、display_id、edge_preference。
-- `days`：day 主键、captured，代表已封存的日期。
-- `snapshot_notes`：联合主键 `(day, note_id)`，冻结便签标题、颜色、顺序、删除时间。
-- `snapshot_items`：联合主键 `(day, item_id)`，关联 `(day, note_id)`，保存文字、完成、顺序、删除、carried_to 与 struck。
-- `rollover_state`：固定 `id=1`，active_day、high_water。
-- `item_archives`：item_id 主键、day，关联事项及对应快照成员；区分归档与用户删除。
-- `pending_deleted_notes`、`pending_deleted_items`：尚需进入下一次日快照的删除身份。
-- `native_preferences`：固定 `id=1`，JSON payload 保存快捷键与登录意愿。
+### 状态与窗口
 
-数据库时间列是 Unix 秒 Double；Swift JSONEncoder 默认日期是自 2001-01-01 起的秒数，不能把备份 JSON 日期当成 Unix 时间或 ISO 文本。稳定 ID 的 Codable 输出是包含 `rawValue` 的对象，不是所有位置都直接编码 UUID 字符串。
+整组 DeskPresentation 为 expanded／collapsing／collapsed／expanding；generation 使过期动画完成回调失效，resting frame 按 NoteID 关联。工具条独立维护 expanded／collapsing／round／expanding，不逐帧写库。
 
-### 5.3 迁移与封存
+多选集合 `picked: Set<NoteID>?` 与普通 selection 分开，nil 表示不在模式中。可选窗口过滤 suppressed 与 isVisible；窗口先拦截多选按下，再处理编辑。覆盖层位于 floating−1，框选与操作条位于 floating+1；键盘使用应用内 monitor，没有全局监听。
 
-`Schema.swift` 使用 `PRAGMA application_id = 0x44534B4E` 识别本应用数据库；拒绝无关库及超前版本。迁移在 `BEGIN EXCLUSIVE` 内进行：v1 live 行 → v2 历史 → v3 自动高度 → v4 自由恢复位置 → v5 跨天／归档／待记录删除 → v6 边缘偏好 → v7 native_preferences → v8 items／snapshot_items 增加 struck（ADD COLUMN 不触发封存触发器）。INSERT 均写明列名。跨天归档 `completed=1 OR struck=1` 的 live 事项，划掉事项不顺延。
+WindowModes 的有效 peek 为 `peeking || picking`，再按每张保存 level 解析。桌面层为 desktopIconWindow+1，普通为 normal，置顶为 floating；设置、历史与提示的 collectionBehavior 单独处理。旧 desk.topmost 由 retireGlobalTopmost 读取一次后移除。
 
-打开时将 notes 的旧 graphite 改为 paper，不升版本。历史触发器拒绝 UPDATE／DELETE；日期 header 写入后，拒绝该日再插 snapshot 子项。capture 先写子项、最后写 day header，依靠延迟外键检查提交。归档映射也禁止原地修改／删除。
+### 几何
 
-恢复删除只清 live tombstone，不改历史；这是“昨天显示已删除、今天可恢复”的一致性依据。当前没有 tombstone 定期物理删除。
+- [WindowState.swift](../Sources/DeskNodesActions/WindowState.swift)：frame 校验、尺寸约束、折叠投影。
+- [Arrangement.swift](../Sources/DeskNodesActions/Arrangement.swift)：最大避让区、列顶部数组、分页与新建级联。
+- [Docking.swift](../Sources/DeskNodesActions/Docking.swift)：各边停靠、溢出标签、保留带、离线屏幕解析。
+- [ToolbarGeometry.swift](../Sources/DeskNodesActions/ToolbarGeometry.swift)：外边筛选、磁吸优先级、方向与锚点求解。
 
-## 6. 编辑、刷新与撤销
+自动布局避让完整 target，命中与动画使用当前 visibleFrame。形变中的窗口可临时取两外框并集，结束后缩回；文字按最终几何布局。
 
-### 6.1 输入所有权
+### UserDefaults 字段
 
-每个事项由 `NoteTextView` 管理 NSTextStorage、选区、输入上下文和自己的 UndoManager；标题 `NoteTitleField` 持有独立 field editor，避免跨便签撤销串线。
+[PresentationDefaults.swift](../Sources/DeskNodesApp/PresentationDefaults.swift) 保存：
 
-`NoteCardView` 记录 pendingItems／pendingTitle，0.4 秒 debounce 后读取该卡片实际编辑器内容并写 Store。输入法 marked text 跳过提交并稍后重试。`EditorSynchronization` 防止被动副本刷新覆盖活跃／组词文字，跨天和导出只提交正确所有者的已提交内容。
+- desk.collapsed。
+- toolbar.place（旧位置）、toolbar.anchor、toolbar.orientation、toolbar.autoShrink。
+- note.newWidth、note.newHeight、note.textSize。
+- arrange.pages、arrange.page。
 
-事项行由真实 TextKit 布局计算高度；固定行高 22pt 加上下各 5pt，一行总 32pt，圆圈对齐第一行。完成样式使用 layout manager 临时属性，不替换正文或污染原生文字 undo。
+旧 toolbar.place 迁为自由锚点，不按距离推断吸边；自由锚点存中心，吸边锚点存边及沿边比例。note.newHeight 缺失时使用默认高度，显式 0 表示随内容。note.textSize 使用枚举原值。
 
-### 6.2 差量刷新
+上述键不属于业务库和 JSON。验证域为 local.desknodes.native.verification，不同验证目录共用此域。临时焦点、选择、peeking／picking、动画与撤销也不序列化。
 
-`NoteSurfaces.refresh` 一次读取 notes，一次批量读取 live items 分组，再与 `Rendered(note, items)` 比较。仅创建、更新或移除变化的窗口，选择跟随 NoteID，不依赖数组下标。
+<a id="rollover"></a>
+## 业务日实现
 
-RefreshScope：`changes` 触及变化内容；`layout` 还重排停靠；`all` 重做所有展示。每张便签只有一个卡片视图。全局收起／非当前页通过 `suppressed` 阻止窗口被普通刷新重新显示。
+BusinessCalendar 注入当前时区、公历和跨天设置；DST 缺失时段取下一个有效时间，重复时段取第一次。activeDay 与 highWater 联合阻止回拨。
 
-### 6.3 两种撤销
+Store.rollover 在一个事务中调用安全提交、封存、归档、清理待记录删除并推进检查点。Application 安装计时器与时钟／时区／唤醒通知，deferred 状态在编辑变更后重试；历史窗口只读 snapshot，不调用 capture。产品日期及统计口径统一见 [FR-10](REQUIREMENTS.md#fr-10) 和 [FR-11](REQUIREMENTS.md#fr-11)。
 
-文字撤销属于原生编辑器。结构删除撤销属于 `NoteActions` 的内存栈，保存原记录和删除时间，五秒内从新到旧恢复。开始输入会清除删除撤销优先标记；导入明确清空结构与原生旧上下文。最近删除是数据库范围查询，不依赖该内存栈。
+<a id="automatic-backup"></a>
+## 自动 SQLite 副本
 
-## 7. 窗口、几何与展示偏好
+[AutomaticBackup.swift](../Sources/DeskNodesPersistence/AutomaticBackup.swift) 使用 VACUUM INTO 写入 `.partial-UUID.sqlite3`，成功后移动为数据库目录下 `Backups/DeskNodes-YYYY-MM-DD.sqlite3`。同日文件不覆盖，按文件名保留最新 7 份。失败只日志记录，恢复步骤见 [操作指南](native-build.md#recovery)。
 
-### 7.1 层级
+<a id="backup"></a>
+## 原生 JSON 协议与替库
 
-`WindowModes` 计算有效层级；`peek`（会话态）为真时全部为置顶，否则使用每张便签保存的层级。旧 `desk.topmost` 由 `retireGlobalTopmost()` 在启动时读取一次并删除。桌面层为 `desktopIconWindow + 1`，普通为 `.normal`，置顶为 `.floating`。全部便签加入所有 Space；仅有效置顶使用 `.fullScreenAuxiliary`，其余 `.fullScreenNone`。
+[Backup.swift](../Sources/DeskNodesPersistence/Backup.swift) 的 NativeBackup：format 为 local.desknodes.native.backup，version 为 1，导出 schema 为当前数据库版本；导入接受 schema 7 与 8。
 
-ToolbarPanel 是不获取 key 的 nonactivating 浮动 NSPanel；工具条和 StackHint 允许全屏辅助显示。浮起不新建窗口：激活应用、让便签成为 key，用应用内 keyDown 监听处理 Esc，用 `didResignActiveNotification` 检测离开；不用全局监听。设置、历史为普通窗口，禁止辅助全屏行为。状态栏／系统高优先级窗口不在置顶层级保证范围。
+必需集合为 notes、items、history、pendingNotes、pendingItems，即使为空也必须存在；另有 settings、preferences、可选 checkpoint。notes／items 含删除及归档保留行，历史含冻结成员，业务布局随 Note 一起序列化；本机展示字段的归属见 [UserDefaults](#presentation)。
 
-### 7.2 几何职责
+旧 schema 7 缺少 struck 时为 false；缺少 peekHotkey 时默认值由 NativePreferences 解码，若与新建快捷键冲突则设为空串。旧 Tauri 格式不接受。
 
-- `WindowState.swift`：自由 frame 的有限数值、尺寸范围和折叠投影。
-- `Arrangement.swift`：每屏稳定布局、避让最大可用区、分页、新建级联、叠放提示。
-- `Docking.swift`：系统可用区、停靠条布局、标签与保留／脱离带。
-- `ToolbarGeometry.swift`：方向、外边筛选、磁吸优先级、圆形锚点和完整目标。
-- AppKit 层负责把这些纯几何结果应用到真实窗口。
+数据库日期为 Unix 秒 Double，Swift JSONEncoder 的 Date 默认为距 2001-01-01 秒数；StableID 编码为含 rawValue 的对象，Placement 使用 Swift enum 合成 Codable，不能手写猜测载荷。
 
-必须区分 toolbar 当前 visibleFrame 与完整 target；新建、整理和停靠避让 target，鼠标命中、叠放提示按当前可见轮廓。动画中窗口可临时为两外框并集，结束立即收回，不能留下永久热区。
+校验流程：模型约束、ID 唯一性、引用、顺序、时间、顺延及归档一致性 → 内存 staging Store 写入 → foreign_key_check／integrity_check → 经生产导出路径复核。先插快照子行再写 header，不导入 SQL 或触发器。
 
-### 7.3 UserDefaults
+确认替换后先释放浮起快捷键，尝试候选新建快捷键，持久化闭包中用 SQLite backup API 原子替库；失败时 backup_finish 回滚、保留旧句柄并重绑旧浮起快捷键。成功后按导入偏好绑定浮起键，失效旧编辑器、保存任务和撤销，再重建停靠与窗口。用户流程与部分失败语义统一见 [FR-13](REQUIREMENTS.md#fr-13)。
 
-`PresentationDefaults.swift` 保存：`desk.collapsed`、`toolbar.place`（旧位置）、`toolbar.anchor`、`toolbar.orientation`、`toolbar.autoShrink`、`arrange.pages`、`arrange.page`。
+## 维护边界
 
-旧 toolbar.place 迁为自由锚点，不按距离自动认定吸边。自由锚点保存中心，吸边锚点保存边和圆心沿边合法范围内的比例；目标 frame 每次求解，不存动画进度。隔离验证使用 `local.desknodes.native.verification` 偏好域；不同验证目录仍共用该验证域。
-
-这些键不进入 JSON 导入导出。业务便签的 placement 则在数据库、会被导入替换；不能笼统写成“导入不改变布局”。
-
-## 8. 跨天与历史统计
-
-`BusinessCalendar` 注入时区，Gregorian 日历按墙上时间划分业务日。DST 缺失时段取下一个有效时间，重复时段取第一次。高水位和 activeDay 同时阻止回拨破坏。
-
-`Store.rollover` 在同一事务内：计算当前日 → 初始化或比较检查点 → 请求安全提交 → 封存 activeDay、顺延到当前日 → 写已完成事项归档映射 → 清理待记录删除成员 → 推进检查点。跨多天不补空白中间日。已归档事项不会再作为 live 行读取。
-
-App 用 30 秒 timer（tolerance 2 秒）及启动、唤醒、时区／时钟通知触发。输入延迟依赖编辑变更后重试。成功推进后 `AutomaticBackup` 用 `VACUUM INTO` 写 `.partial-UUID.sqlite3` 再移动成 `Backups/DeskNodes-YYYY-MM-DD.sqlite3`，同日不覆盖，按文件名保留最近 7 份。备份失败只日志记录。
-
-历史读取只读 snapshot。月历按 Monday-first 排列；完成率是 frozen completed 的计数除以所有记录次数，含删除成员。历史日期不按当前时区重新解释。
-
-## 9. JSON 协议与导入一致性
-
-协议定义见 `Backup.swift`：
-
-```text
-NativeBackup
-  format: "local.desknodes.native.backup"
-  version: 1
-  schema: 7
-  notes: [Note]                    含删除记录
-  items: [Item]                    含删除与归档记录
-  history: [DailySnapshot]
-  settings: BackupSettings
-  preferences: NativePreferences   快捷键、登录意愿
-  checkpoint: BackupCheckpoint?    可无值
-  pendingNotes: [NoteID]
-  pendingItems: [ItemID]
-```
-
-以上是结构说明，不是可直接导入的 JSON 示例。非可选集合即使为空也必须存在；Placement 使用 Swift enum 的合成 Codable 编码，不应手写猜测其结构。
-
-导出：开启事务 → 检查组词并提交 → 读取全量保留行 → 校验模型 → prettyPrinted、sortedKeys 编码 → 保存面板 → 原子写文件。
-
-导入：文件选择 → JSON 解码 → 校验版本、唯一 ID、引用、顺序、时间、顺延与归档一致性 → 在内存 staging Store 写入全部结构并检查外键／完整性 → 重新经生产读路径导出验证 → 用户确认 → 结束浮起并释放浮起快捷键 → 先尝试注册候选新建快捷键 → 使用 SQLite backup API 原子替换目标库 → 绑定导入的浮起快捷键 → 清理旧编辑器、撤销、停靠控制器 → 全量刷新。
-
-候选快捷键失败或 persist 抛错时保留旧句柄；替换未完成时 SQLite backup_finish 回滚。导入不注册登录项、不即时跨天，不导入 SQL／触发器。旧石墨解码为 paper，当前接受 schema 7 与 8 的原生备份（schema 7 缺少的 struck／peekHotkey 取默认），不声称所有旧 schema JSON 可导入。
-
-## 10. 构建、测试与恢复
-
-在已有兼容 Xcode 的 Mac：
-
-```sh
-xcrun swift --version
-xcrun --sdk macosx --show-sdk-path
-xcrun swift test
-./scripts/build-macos.sh
-/usr/bin/codesign --verify --strict --verbose=2 build/DeskNodes.app
-open build/DeskNodes.app
-```
-
-构建脚本生成当前架构 release，打包可执行文件、Info.plist、ICNS，默认 ad-hoc 签名，验证后替换仓库 `build/DeskNodes.app`。可通过 `DESKNODES_SIGNING_IDENTITY` 指定已有身份；不安装证书、不公证、不承诺 universal 包。
-
-本次测试实际结果和缓存目录调整见 [验收文档](ACCEPTANCE.md)，不使用旧文档里的测试数作为证据。测试不等于签名应用真实运行、外接屏、中文输入或登录项通过。
-
-验收时用 `DESKNODES_DATA_DIR` 隔离数据库；登录项仍是系统集成，应在明确范围内测试。正常备份恢复优先使用应用 JSON。自动 SQLite 副本恢复前先退出应用、保留当前数据目录，然后替换主库并移除与旧库不匹配的 WAL／SHM；运行中的主库不能单独复制作为可靠离线备份。完整离线目录恢复方法见 [原构建与恢复说明](native-build.md)。
-
-## 11. 维护约束与风险入口
-
-不在动画帧写库；不以数组下标关联恢复位置；不对被动编辑副本执行强制提交；不清空已有数据来解决展示问题；不把登录意愿当系统注册状态；不以图层截图替代可点击窗口。
-
-工具条与便签三个状态机、屏幕变化、组词和导入重建是维护时最需要联合验证的边界。原边缘面板及其 spring 动画已随浮起方案移除。
+不得从被动编辑器强制提交、用数组下标恢复身份、在动画帧写库或清空用户数据来修复展示。输入法、导入重建、屏幕拓扑、多个展示状态叠加时优先确认所有权和过期回调；已知验证缺口集中见 [验收](ACCEPTANCE.md)。

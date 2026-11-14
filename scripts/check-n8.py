@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""N8 source/prototype contracts only; no native SDK or screenshot claim."""
+"""N8 history source/spec contracts only; no native SDK or screenshot claim."""
 from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 view = (root / 'Sources/DeskNodesApp/HistoryWindow.swift').read_text()
@@ -7,7 +7,6 @@ aux = (root / 'Sources/DeskNodesApp/AuxiliaryWindows.swift').read_text()
 app = (root / 'Sources/DeskNodesApp/Application.swift').read_text()
 store = (root / 'Sources/DeskNodesPersistence/Store.swift').read_text()
 model = (root / 'Sources/DeskNodesPersistence/History.swift').read_text()
-prototype = (root / 'docs/UI_PROTOTYPE.html').read_text()
 ui_spec = (root / 'docs/UI_SPEC.md').read_text()
 count = 0
 def check(value):
@@ -15,7 +14,7 @@ def check(value):
     assert value
     count += 1
 for text in ['本月完成率', '已删除', '顺延到', '上个月', '下个月']:
-    check(text in view + model and text in prototype)
+    check(text in view + model)
 for text in ['width: 400', 'height: 46', 'width: 22, height: 3', 'size: 20', 'size: 24', 'cornerRadius: 9', 'spacing: 18', '.horizontal, 28', '.horizontal, 32']:
     check(text in view)
 for color in ['FBFAF8', 'EFEDE8', '2F2C27', '4F7A64', 'E4E1DA', '6B5A2E', 'F3E9C9']:
@@ -40,4 +39,4 @@ check('Double(completed) / Double(total)' in model)
 check('items.filter(\\.completed).count' in model)
 check('total == 0 ? nil' in model)
 check('c.era == 1' in model)
-print(f'N8 source/prototype contracts: {count} passed (not native API/runtime verification)')
+print(f'N8 history source/spec contracts: {count} passed (not native API/runtime verification)')
