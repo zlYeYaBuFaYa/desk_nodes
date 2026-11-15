@@ -86,7 +86,7 @@ enum HistoryColors {
     }
 }
 
-/// One day in the status menu's 历史记录 submenu: its label, a small completion bar and
+/// One day in the toolbar menu's 历史记录 submenu: its label, a small completion bar and
 /// "done/total", the same numbers the calendar shows for that day.
 enum HistoryMenuRow {
     /// "昨天 · 11月12日", "周三 · 11月11日" within the week, else "11月3日". Business days.

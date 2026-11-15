@@ -44,6 +44,8 @@ public final class NoteActions {
     public func expireDeletion() { pending.removeAll { !recoverable($0.1) } }
     /// Typing makes Command-Z mean text undo again, before the debounced save lands.
     public func noteTyping() { prefersDeletionUndo = false }
+    /// The title every new note starts with; the user can rename or clear it.
+    public static let defaultTitle = "今日待办"
     /// `automaticHeight: false` keeps the frame's height instead of following the content.
     @discardableResult public func createNote(frame: NoteFrame? = nil, displayID: String? = nil, automaticHeight: Bool = true) throws -> Note {
         try store.transaction { store in
@@ -53,7 +55,7 @@ public final class NoteActions {
             let frame = try (frame ?? NoteFrame(x: 100, y: 100)).bounded()
             let color = NotePalette.next(inUse: retained.filter { $0.deletedAt == nil }.map(\.color),
                                          latest: retained.max { ($0.createdAt, $0.order) < ($1.createdAt, $1.order) }?.color)
-            var note = try store.createNote(color: color, placement: .free(frame, displayID: displayID), order: maximum + 1)
+            var note = try store.createNote(title: Self.defaultTitle, color: color, placement: .free(frame, displayID: displayID), order: maximum + 1)
             if !automaticHeight { note.automaticHeight = false; try store.update(note) }
             try store.createItem(in: note.id)
             return note

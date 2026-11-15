@@ -18,10 +18,8 @@ struct DeskNodesApplication {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var peekMenuItem: NSMenuItem?
     /// Esc while 浮起 is showing; installed only for its duration.
     private var peekKeys: Any?
-    private var statusItem: NSStatusItem?
     private var surfaces: NoteSurfaces?
     private var actions: NoteActions?
     private var docking: DockController?
@@ -31,9 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var desk: DesktopController?
     /// 批量删除 selection mode.
     private var picker: NotePicker?
-    private var pickMenuItem: NSMenuItem?
-    /// Filled each time it opens: recent days, the calendar and 最近删除.
-    private let historyMenu = NSMenu()
+    /// The toolbar menu's 历史记录 submenu, filled each time it opens: recent days, the
+    /// calendar and 最近删除. A new one per toolbar menu, since a submenu has one parent.
+    private weak var historyMenu: NSMenu?
     private let log = Logger(subsystem: "local.desknodes.native", category: "app")
     private var expiryTimer: Timer?
     private var rolloverTimer: Timer?
@@ -46,15 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
+        PresentationDefaults.standard().appearance.apply()
         auxiliary.configureHistory = { [weak self] in self?.configureHistory($0) }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let symbol = NSImage(systemSymbolName: "note.text", accessibilityDescription: "DeskNodes")
-        symbol?.isTemplate = true
-        item.button?.image = symbol
-        item.button?.toolTip = "DeskNodes"
-        item.menu = makeStatusMenu()
-        item.menu?.delegate = self
-        statusItem = item
         do {
             actions = NoteActions(store: try Store(url: NativeStorage.databaseURL()))
             NoteType.size = PresentationDefaults.standard().noteTextSize
@@ -136,22 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hasMarkedComposition: Bool {
         surfaces?.hasMarkedComposition == true
     }
-    private func makeStatusMenu() -> NSMenu {
+    private func makeHistoryMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.autoenablesItems = false
-        add("新建便签", to: menu, action: #selector(createNote(_:)))
-        add("显示工具条", to: menu, action: #selector(revealToolbar(_:)))
-        let peek = NSMenuItem(title: "浮起便签", action: #selector(togglePeek(_:)), keyEquivalent: "")
-        peek.target = self; menu.addItem(peek); peekMenuItem = peek
-        let pick = NSMenuItem(title: "选择便签…", action: #selector(pickNotes(_:)), keyEquivalent: "")
-        pick.target = self; menu.addItem(pick); pickMenuItem = pick
-        menu.addItem(.separator())
-        let history = NSMenuItem(title: "历史记录", action: nil, keyEquivalent: "")
-        historyMenu.autoenablesItems = false; historyMenu.delegate = self
-        history.submenu = historyMenu; menu.addItem(history)
-        add("设置…", to: menu, action: #selector(showSettings(_:)), key: ",")
-        menu.addItem(.separator())
-        add("退出 DeskNodes", to: menu, action: #selector(quit(_:)), key: "q")
+        menu.autoenablesItems = false; menu.delegate = self
+        historyMenu = menu
         return menu
     }
 
@@ -229,9 +208,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         catch { report(error) }
     }
-    @objc private func revealToolbar(_ sender: Any?) { desk?.revealToolbar() }
-    @objc private func togglePeek(_ sender: Any?) { desk?.togglePeek() }
-    @objc private func pickNotes(_ sender: Any?) { picker?.begin(with: nil) }
     @objc private func largerText(_ sender: Any?) { setTextSize(NoteType.size.stepped(1)) }
     @objc private func smallerText(_ sender: Any?) { setTextSize(NoteType.size.stepped(-1)) }
     @objc private func standardText(_ sender: Any?) { setTextSize(.standard) }
@@ -279,7 +255,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Entering activates DeskNodes so the lifted notes take clicks and keys at once.
     /// Leaving is Esc, the toggle again, or switching to another app: no global monitor.
     private func peekChanged(_ on: Bool) {
-        peekMenuItem?.title = on ? "放回便签" : "浮起便签"
         if let peekKeys { NSEvent.removeMonitor(peekKeys); self.peekKeys = nil }
         NotificationCenter.default.removeObserver(self, name: NSApplication.didResignActiveNotification, object: nil)
         guard on else { return }
@@ -334,6 +309,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         desk.openSettings = { [weak self] in self?.showSettings(nil) }
+        desk.pickNotes = { [weak self] in self?.picker?.begin(with: nil) }
+        desk.historyMenu = { [weak self] in self?.makeHistoryMenu() ?? NSMenu() }
+        desk.quit = { [weak self] in self?.quit(nil) }
         desk.toolbarPreferencesChanged = { [weak self] in self?.auxiliary.settings?.reload() }
         surfaces?.hidden = { [weak desk] in desk?.isHidden($0) ?? false }
         surfaces?.selectionChanged = { [weak desk] in desk?.updateToolbar() }
@@ -430,8 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     /// The latest sealed days, then the calendar and 最近删除. Read only as the submenu
     /// opens: nothing is cached or polled.
-    private func fillHistoryMenu() {
-        let menu = historyMenu
+    private func fillHistoryMenu(_ menu: NSMenu) {
         menu.removeAllItems()
         guard let actions else { return }
         func note(_ title: String) -> NSMenuItem {
@@ -566,16 +543,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         try? actions?.store.close()
-        if let item = statusItem { NSStatusBar.system.removeStatusItem(item) }
     }
 }
 
 
 extension AppDelegate: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu === historyMenu { fillHistoryMenu(); return }
-        guard menu === statusItem?.menu else { return }
-        peekMenuItem?.isEnabled = desk?.peeking == true || desk?.canPeek == true
-        pickMenuItem?.isEnabled = desk?.canPeek == true
+        if menu === historyMenu { fillHistoryMenu(menu) }
     }
 }

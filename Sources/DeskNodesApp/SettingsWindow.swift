@@ -27,6 +27,7 @@ final class SettingsPresentation: ObservableObject {
     let presentation: PresentationDefaults
     let textSize: (NoteTextSize) -> Void
     let noteFont: (NoteFont) -> Void
+    @Published var appearance = AppAppearance.system
     @Published var noteTextSize = NoteTextSize.standard
     @Published var noteFace = NoteFont.system
     /// 圆体 while macOS downloads it; the notes keep their current font meanwhile.
@@ -73,6 +74,7 @@ final class SettingsPresentation: ObservableObject {
         toolbarHome = toolbarHomeCurrent()
         let size = presentation.newNoteSize
         noteWidth = size.width; noteHeight = size.height ?? 0
+        appearance = presentation.appearance
         noteTextSize = presentation.noteTextSize
         noteFace = presentation.noteFont
         unavailable = Set(NoteFont.allCases.filter { !NoteFonts.isAvailable($0) })
@@ -108,7 +110,9 @@ final class SettingsPresentation: ObservableObject {
         if let url = bundled ?? URL(string: "https://github.com/lxgw/LxgwWenKai/blob/main/OFL.txt") { NSWorkspace.shared.open(url) }
     }
     func saveNoteSize() { presentation.newNoteSize = (noteWidth, noteHeight > 0 ? noteHeight : nil) }
-    func quit() { NSApp.terminate(nil) }
+    func setAppearance(_ value: AppAppearance) {
+        presentation.appearance = value; value.apply(); appearance = value
+    }
     func saveHotkey() {
         perform {
             let parsed = try Hotkey(shortcut)
@@ -213,6 +217,11 @@ struct SettingsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
         }
     }
+    /// Grey explanation under a group.
+    private func caption<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 2, content: content)
+            .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
+    }
     private func shortcutRow(_ title: String, value: String, target: SettingsPresentation.ShortcutTarget,
                              @ViewBuilder extra: () -> some View = { EmptyView() }) -> some View {
         row(title) {
@@ -250,6 +259,12 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 group("通用") {
+                    row("外观") {
+                        Picker("外观", selection: Binding(get: { model.appearance }, set: { model.setAppearance($0) })) {
+                            ForEach(AppAppearance.allCases, id: \.self) { Text($0.name).tag($0) }
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                    }
+                    Divider()
                     row("开机时自动启动") {
                         Toggle("开机时自动启动", isOn: Binding(get: { model.loginEnabled }, set: { model.toggleLogin($0) }))
                             .labelsHidden().toggleStyle(.switch)
@@ -262,10 +277,18 @@ struct SettingsView: View {
                             .environment(\.locale, Locale(identifier: "en_GB")) // 24-hour field
                     }
                 }
-                Text(model.loginExplanation + " 跨天范围 00:00–23:59，默认 04:00。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                Button("在系统设置中查看登录项…") { model.openLoginSettings() }
-                group("外观") {
+                caption {
+                    Text("外观作用于工具条、菜单和窗口，便签始终是浅色纸面。到跨天时间后，未完成事项顺延到新的一天，默认 04:00。")
+                    if !model.loginExplanation.isEmpty { Text(model.loginExplanation) }
+                    Button("在系统设置中查看登录项…") { model.openLoginSettings() }.buttonStyle(.link)
+                }
+                group("便签") {
+                    row("字体") {
+                        HStack(spacing: 8) {
+                            ForEach(NoteFont.allCases, id: \.self) { face in fontChoice(face) }
+                        }
+                    }.padding(.vertical, 6)
+                    Divider()
                     row("文字大小") {
                         Picker("文字大小", selection: Binding(get: { model.noteTextSize }, set: {
                             // Refused during IME composition: show the size actually in use.
@@ -275,12 +298,6 @@ struct SettingsView: View {
                         }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
                     }
                     Divider()
-                    row("字体") {
-                        HStack(spacing: 8) {
-                            ForEach(NoteFont.allCases, id: \.self) { face in fontChoice(face) }
-                        }
-                    }.padding(.vertical, 6)
-                    Divider()
                     HStack(spacing: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxGap))) {
                         Circle().stroke(Color.primary.opacity(0.42), lineWidth: 1.4)
                             .frame(width: CGFloat(model.noteTextSize.scaled(NoteMetrics.checkboxSize)),
@@ -289,11 +306,30 @@ struct SettingsView: View {
                             .font(Font(NoteFonts.font(model.noteFace, size: CGFloat(model.noteTextSize.itemSize), weight: .regular)))
                         Spacer()
                     }.frame(minHeight: 44).padding(.horizontal, 14).accessibilityHidden(true)
+                    Divider()
+                    row("新便签宽度") {
+                        Picker("新便签宽度", selection: Binding(get: { model.noteWidth }, set: {
+                            model.noteWidth = $0; model.saveNoteSize()
+                        })) {
+                            ForEach(NoteMetrics.newWidthChoices, id: \.self) { Text("\(Int($0))").tag($0) }
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                    }
+                    Divider()
+                    row("新便签高度") {
+                        Picker("新便签高度", selection: Binding(get: { model.noteHeight }, set: {
+                            model.noteHeight = $0; model.saveNoteSize()
+                        })) {
+                            ForEach(NoteMetrics.newHeightChoices, id: \.self) { Text($0 == 0 ? "随内容" : "\(Int($0))").tag($0) }
+                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                    }
                 }
-                HStack(spacing: 4) {
-                    Text("对所有便签生效，宽度不变。也可以在便签里按 ⌘+、⌘−、⌘0 调整大小。文楷为霞鹜文楷，SIL Open Font License 1.1，")
-                    Button("字体授权") { model.openFontLicense() }.buttonStyle(.link)
-                }.font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
+                caption {
+                    Text("字体和文字大小对所有便签生效，也可在便签里按 ⌘+、⌘−、⌘0 调整。新便签尺寸单位为点，只影响之后新建的便签；「随内容」会随事项增多自动变高。")
+                    HStack(spacing: 4) {
+                        Text("文楷为霞鹜文楷，SIL Open Font License 1.1。")
+                        Button("字体授权") { model.openFontLicense() }.buttonStyle(.link)
+                    }
+                }
                 group("工具条") {
                     row("排列方向") {
                         Picker("排列方向", selection: Binding(get: { model.toolbarOrientation }, set: {
@@ -318,27 +354,7 @@ struct SettingsView: View {
                             .disabled(model.toolbarHome == .standard)
                     }
                 }
-                Text("工具条闲置到时会收缩到固定位置，默认在屏幕右侧偏下；鼠标移过去停一下即可展开。拖动收缩后的入口可以换位置。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
-                group("新建便签") {
-                    row("宽度") {
-                        Picker("宽度", selection: Binding(get: { model.noteWidth }, set: {
-                            model.noteWidth = $0; model.saveNoteSize()
-                        })) {
-                            ForEach(NoteMetrics.newWidthChoices, id: \.self) { Text("\(Int($0))").tag($0) }
-                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
-                    }
-                    Divider()
-                    row("高度") {
-                        Picker("高度", selection: Binding(get: { model.noteHeight }, set: {
-                            model.noteHeight = $0; model.saveNoteSize()
-                        })) {
-                            ForEach(NoteMetrics.newHeightChoices, id: \.self) { Text($0 == 0 ? "随内容" : "\(Int($0))").tag($0) }
-                        }.labelsHidden().pickerStyle(.segmented).frame(width: 260)
-                    }
-                }
-                Text("只影响之后新建的便签，单位为点。「随内容」会随事项增多自动变高；固定高度可在便签菜单里改回「随内容调整高度」。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
+                caption { Text("闲置到时工具条收缩成小入口，鼠标停在入口上即展开；拖动入口可换位置。右键工具条也能改这些选项。") }
                 group("快捷键") {
                     shortcutRow("新建便签", value: model.shortcut, target: .create)
                     Divider()
@@ -347,18 +363,13 @@ struct SettingsView: View {
                             .disabled(model.peekShortcut.isEmpty || model.recording != nil)
                     }
                 }
-                Text("浮起：把全部便签临时浮到最前，包括全屏应用；按 Esc、再按一次或切换到其他应用即放回。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 4)
+                caption { Text("浮起：把全部便签临时浮到最前，包括全屏应用；按 Esc、再按一次或切换到其他应用即放回。") }
                 group("数据") {
                     row("备份（JSON）") {
                         Button("导入…") { model.importFile() }; Button("导出…") { model.exportFile() }
                     }
                 }
                 if let message = model.message { Text(message).foregroundStyle(.red).textSelection(.enabled) }
-                HStack {
-                    Spacer()
-                    Button("退出 DeskNodes") { model.quit() }.keyboardShortcut("q", modifiers: .command)
-                }
             }.padding(.horizontal, 40).padding(.vertical, 20)
         }.font(.system(size: 13)).frame(minWidth: 760, minHeight: 576)
             .background(Color(nsColor: NoteTheme.dynamic("F4F3F0", "242321")))

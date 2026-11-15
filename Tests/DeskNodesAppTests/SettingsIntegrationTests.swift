@@ -47,7 +47,7 @@ final class SettingsIntegrationTests: XCTestCase {
         try card.flushRolloverEdits()
         card.run { try actions.title(note.id, "stale title") }
         XCTAssertEqual(try store.items(in: note.id).first?.text, "")
-        XCTAssertNil(try store.notes().first?.title)
+        XCTAssertEqual(try store.notes().first?.title, NoteActions.defaultTitle)
         XCTAssertFalse(editor.undoManager?.canUndo ?? true)
         panel.close()
     }

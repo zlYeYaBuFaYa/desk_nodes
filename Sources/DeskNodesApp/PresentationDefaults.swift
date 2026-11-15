@@ -1,7 +1,22 @@
-import Foundation
+import AppKit
 import DeskNodesCore
 import DeskNodesActions
 import DeskNodesPersistence
+
+/// "外观": the toolbar, menus and windows. Notes stay paper-light in every mode.
+enum AppAppearance: String, CaseIterable {
+    case system, light, dark
+    var name: String {
+        switch self { case .system: "跟随系统"; case .light: "浅色"; case .dark: "深色" }
+    }
+    func apply() {
+        switch self {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+}
 
 /// Display preferences that belong to this Mac, not to the notes: the toolbar position,
 /// global collapse and the current arrangement pages. They live in UserDefaults on
@@ -91,6 +106,10 @@ final class PresentationDefaults {
             return value
         }
         set { defaults.set(newValue, forKey: "toolbar.autoShrink") }
+    }
+    var appearance: AppAppearance {
+        get { defaults.string(forKey: "app.appearance").flatMap(AppAppearance.init(rawValue:)) ?? .system }
+        set { defaults.set(newValue.rawValue, forKey: "app.appearance") }
     }
     /// "文字大小" for every note.
     var noteTextSize: NoteTextSize {

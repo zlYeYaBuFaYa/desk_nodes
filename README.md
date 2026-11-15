@@ -1,6 +1,6 @@
 # DeskNodes · 原生 macOS 便签
 
-中文桌面待办便签，使用 Swift、AppKit／SwiftUI 与系统 SQLite，面向 macOS 14+，本机存储、菜单栏常驻。
+中文桌面待办便签，使用 Swift、AppKit／SwiftUI 与系统 SQLite，面向 macOS 14+，本机存储、桌面工具条常驻。
 
 从 [文档入口](docs/README.md) 查阅现行说明：
 

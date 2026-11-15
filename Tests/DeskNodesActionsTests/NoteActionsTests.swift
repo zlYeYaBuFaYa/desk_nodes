@@ -38,7 +38,7 @@ final class NoteActionsTests: XCTestCase {
     }
     func testCRUDBindingAndReopen() throws {
         let note = try actions.createNote()
-        XCTAssertNil(note.title)
+        XCTAssertEqual(note.title, NoteActions.defaultTitle)
         let first = try XCTUnwrap(store.items(in: note.id).first)
         try actions.title(note.id, "中文 👩🏽‍💻")
         try actions.text(first.id, in: note.id, "组合e\u{301}\0中文")

@@ -36,6 +36,10 @@ final class DesktopController {
     private var reserved: NoteFrame?
     /// The toolbar's context menu reaches these, which live with the app delegate.
     var openSettings: () -> Void = {}
+    var pickNotes: () -> Void = {}
+    /// A fresh 历史记录 submenu, filled by the app as it opens.
+    var historyMenu: () -> NSMenu = { NSMenu() }
+    var quit: () -> Void = {}
     /// A toolbar preference changed outside the settings window.
     var toolbarPreferencesChanged: () -> Void = {}
     /// The hint is mid-fade with the toolbar's controls; a settled capsule leaves it alone.
@@ -167,13 +171,6 @@ final class DesktopController {
         toolbar.place(Toolbar.Frames(frames), animated: animated)
         reservationChanged()
     }
-    /// Menu bar recovery: back onto a connected display, fully expanded and in front.
-    func revealToolbar() {
-        placeToolbar()
-        toolbar.panel.orderFrontRegardless()
-        toolbar.expand()
-        if state.targetsCollapsed { showHint() }
-    }
     func screensChanged() { placeToolbar() }
     func setToolbarOrientation(_ orientation: ToolbarOrientation) {
         guard orientation != defaults.toolbarOrientation else { return }
@@ -257,27 +254,39 @@ final class DesktopController {
             item.state = on ? .on : .off; item.isEnabled = enabled
             return item
         }
+        // The app's only menu: 新建 and 浮起 are the toolbar's own buttons. Daily entries
+        // first, the toolbar's own options folded into one submenu, then settings and quit.
+        let history = NSMenuItem(title: "历史记录", action: nil, keyEquivalent: "")
+        history.submenu = historyMenu(); menu.addItem(history)
+        menu.addItem(item("选择便签…", enabled: canPeek) { [weak self] in self?.pickNotes() })
+        menu.addItem(.separator())
+        let options = NSMenu()
+        options.addItem(.sectionHeader(title: "排列方向"))
+        for (title, value) in [("竖向", ToolbarOrientation.vertical), ("横向", .horizontal)] {
+            options.addItem(item(title, on: defaults.toolbarOrientation == value) { [weak self] in
+                self?.setToolbarOrientation(value); self?.toolbarPreferencesChanged()
+            })
+        }
+        options.addItem(.separator())
+        options.addItem(.sectionHeader(title: "闲置自动收缩"))
+        for seconds in ToolbarMetrics.autoShrinkChoices {
+            options.addItem(item(seconds == 0 ? "关闭" : "\(seconds) 秒", on: toolbar.autoShrink == seconds) { [weak self] in
+                self?.setToolbarAutoShrink(seconds); self?.toolbarPreferencesChanged()
+            })
+        }
+        options.addItem(.separator())
+        options.addItem(item("恢复默认收缩位置", enabled: defaults.toolbarHome != .standard) { [weak self] in
+            self?.setToolbarHome(.standard)
+        })
+        let toolbarOptions = NSMenuItem(title: "工具条", action: nil, keyEquivalent: "")
+        toolbarOptions.submenu = options; menu.addItem(toolbarOptions)
         let settings = item("设置…") { [weak self] in self?.openSettings() }
         settings.keyEquivalent = ","; settings.keyEquivalentModifierMask = .command
         menu.addItem(settings)
         menu.addItem(.separator())
-        let orientation = NSMenuItem(title: "排列方向", action: nil, keyEquivalent: ""), orientations = NSMenu()
-        for (title, value) in [("竖向", ToolbarOrientation.vertical), ("横向", .horizontal)] {
-            orientations.addItem(item(title, on: defaults.toolbarOrientation == value) { [weak self] in
-                self?.setToolbarOrientation(value); self?.toolbarPreferencesChanged()
-            })
-        }
-        orientation.submenu = orientations; menu.addItem(orientation)
-        let shrink = NSMenuItem(title: "自动收缩", action: nil, keyEquivalent: ""), shrinks = NSMenu()
-        for seconds in ToolbarMetrics.autoShrinkChoices {
-            shrinks.addItem(item(seconds == 0 ? "关闭" : "\(seconds) 秒", on: toolbar.autoShrink == seconds) { [weak self] in
-                self?.setToolbarAutoShrink(seconds); self?.toolbarPreferencesChanged()
-            })
-        }
-        shrink.submenu = shrinks; menu.addItem(shrink)
-        menu.addItem(item("恢复默认收缩位置", enabled: defaults.toolbarHome != .standard) { [weak self] in
-            self?.setToolbarHome(.standard)
-        })
+        let quit = item("退出 DeskNodes") { [weak self] in self?.quit() }
+        quit.keyEquivalent = "q"; quit.keyEquivalentModifierMask = .command
+        menu.addItem(quit)
         return menu
     }
     private func release(_ visible: NSRect, round: Bool, pointer: NSPoint) -> (ToolbarAnchor, ToolbarFrames)? {
