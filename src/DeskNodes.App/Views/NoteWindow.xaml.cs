@@ -199,6 +199,16 @@ internal sealed partial class NoteWindow : Window
         else Close();
     }
 
+    public void CloseForImport()
+    {
+        removing = true;
+        presentationGeneration++;
+        foreach (var property in new[] { LeftProperty, TopProperty, WidthProperty, HeightProperty, OpacityProperty })
+            BeginAnimation(property, null);
+        ReleaseEditors();
+        Close();
+    }
+
     public void ReleaseEditors()
     {
         app.Editors.Remove(title);

@@ -11,7 +11,7 @@ internal sealed partial class NoteWindow
     private long presentationGeneration;
     public void ArrangeFrom(RectD previous)
     {
-        if (app.Preferences.ReduceMotion || !NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETCLIENTAREAANIMATION, 0, out int enabled, 0) || enabled == 0) return;
+        if (app.Animations.ReducedMotion) return;
         var target = RestoreTarget().Bounds;
         var duration = TimeSpan.FromSeconds(.26);
         foreach (var entry in new[] { (LeftProperty, previous.X, target.X), (TopProperty, previous.Y, target.Y),
@@ -52,7 +52,7 @@ internal sealed partial class NoteWindow
         Place();
         var target = collapse ? entrance : restore;
         if (!collapse && !IsVisible) from = entrance;
-        bool reduced = app.Preferences.ReduceMotion || !NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETCLIENTAREAANIMATION, 0, out int enabled, 0) || enabled == 0;
+        bool reduced = app.Animations.ReducedMotion;
         if (reduced)
         {
             completed();

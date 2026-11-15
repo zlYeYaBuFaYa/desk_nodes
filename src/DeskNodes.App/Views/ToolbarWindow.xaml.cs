@@ -38,7 +38,6 @@ internal partial class ToolbarWindow : Window
     private HomePosition? projected;
     private FrameworkElement? grip;
     private long generation;
-    private uint taskbarMessage;
     private Action<double>? frame;
     private TimeSpan started;
     private double duration;
@@ -70,7 +69,6 @@ internal partial class ToolbarWindow : Window
             NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE,
                 NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE) | NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
             HwndSource.FromHwnd(handle)?.AddHook(Message);
-            taskbarMessage = NativeMethods.RegisterWindowMessage("TaskbarCreated");
             ApplyMaterial();
         };
         wake.Tick += (_, _) => Tick();
@@ -111,7 +109,6 @@ internal partial class ToolbarWindow : Window
     private nint Message(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
         if (message == NativeMethods.WM_ACTIVATEAPP && wParam == 0) app.Presentation.Deactivated();
-        if ((uint)message == taskbarMessage) app.RebuildTray();
         if (message == NativeMethods.WM_SETTINGCHANGE)
         {
             theme.Refresh();
@@ -154,8 +151,7 @@ internal partial class ToolbarWindow : Window
         NativeMethods.SetDwmPreference(new WindowInteropHelper(this).Handle, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, NativeMethods.DWMWCP_ROUND);
         if (result < 0) app.Log.Warn("工具条材质不可用，使用纯色底。");
     }
-    private bool ReducedMotion => app.Preferences.ReduceMotion ||
-        !NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETCLIENTAREAANIMATION, 0, out int enabled, 0) || enabled == 0;
+    private bool ReducedMotion => app.Animations.ReducedMotion;
     private ScreenEdge HandleEdge => app.Preferences.Anchor?.Edge ?? app.Preferences.Home.Edge;
     private bool HandleAtEnd => ToolbarRules.HandleAtEnd(app.Preferences.Orientation, HandleEdge);
     private bool Paging => app.Preferences.Pages.Values.DefaultIfEmpty().Max() > 0;

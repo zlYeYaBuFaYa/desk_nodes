@@ -132,6 +132,25 @@ public sealed class DeskNodesDatabase : IDisposable
         }
     }
 
+    /// <summary>Replaces the live database using SQLite's atomic online backup transaction.</summary>
+    public void ReplaceFrom(DeskNodesDatabase staging)
+    {
+        ArgumentNullException.ThrowIfNull(staging);
+        if (ReferenceEquals(this, staging))
+            throw new ArgumentException("不能从同一个数据库导入。", nameof(staging));
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (transactionDepth != 0)
+                throw new InvalidOperationException("导入不能在外层事务中执行。");
+            staging.Read(source =>
+            {
+                source.BackupDatabase(connection);
+                return 0;
+            });
+        }
+    }
+
     internal static void Execute(SqliteConnection connection, string sql)
     {
         using var command = connection.CreateCommand();

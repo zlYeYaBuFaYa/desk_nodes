@@ -11,6 +11,12 @@ internal partial class SettingsWindow : Window
         var model = new SettingsViewModel(app, () => LicenseWindow.Open(this, app));
         DataContext = model;
         SourceInitialized += (_, _) => AuxiliaryWindowPlacement.Position(this, app.Screens, 760, 576);
-        Closed += (_, _) => model.Dispose();
+        PreviewKeyDown += (_, e) => model.CaptureKey(e);
+        Deactivated += (_, _) => model.CancelRecording();
+        Closed += (_, _) =>
+        {
+            model.CancelRecording();
+            model.Dispose();
+        };
     }
 }

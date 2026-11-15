@@ -58,6 +58,14 @@ internal static class Schema
             rollover_minutes INTEGER NOT NULL CHECK (rollover_minutes BETWEEN 0 AND 1439)
         );
         INSERT INTO business_settings VALUES (1, 240);
+        CREATE TABLE business_preferences (
+            singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+            hotkey_new TEXT NOT NULL,
+            hotkey_float TEXT,
+            login_prompt_answered INTEGER NOT NULL CHECK (login_prompt_answered IN (0,1)),
+            login_intent INTEGER NOT NULL CHECK (login_intent IN (0,1))
+        );
+        INSERT INTO business_preferences VALUES (1, 'Ctrl+Alt+N', 'Ctrl+Alt+F', 0, 0);
         CREATE TABLE snapshots (
             day TEXT NOT NULL PRIMARY KEY CHECK (length(day) = 10
                 AND day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'

@@ -65,7 +65,9 @@
                                     <Style.Triggers>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding Text.Length, ElementName=title}" Value="0"/>
+                                                <Condition
+                                                    Binding="{Binding Text.Length, ElementName=title}"
+                                                    Value="0"/>
                                                 <Condition Binding="{Binding Collapsed}" Value="False"/>
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible"/>
@@ -115,7 +117,9 @@
                                         <DataTrigger Binding="{Binding IsMouseOver, ElementName=header}" Value="True">
                                             <Setter Property="Opacity" Value="1"/>
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=header}" Value="True">
+                                        <DataTrigger
+                                            Binding="{Binding IsKeyboardFocusWithin, ElementName=header}"
+                                            Value="True">
                                             <Setter Property="Opacity" Value="1"/>
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -165,10 +169,23 @@
             BorderThickness="1.5"
             IsHitTestVisible="False"
             Opacity="{Binding SelectionOpacity}"/>
-        <Border BorderBrush="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" BorderThickness="2" CornerRadius="13" IsHitTestVisible="False">
-            <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Picked}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style>
-            <Border Width="22" Height="22" CornerRadius="11" HorizontalAlignment="Left" VerticalAlignment="Top" Background="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}">
-                <TextBlock Text="✓" HorizontalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+        <Border
+            Style="{StaticResource NotePickedOutline}"
+            BorderBrush="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
+            BorderThickness="2"
+            CornerRadius="13"
+            IsHitTestVisible="False">
+            <Border
+                Width="22"
+                Height="22"
+                CornerRadius="11"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}">
+                <TextBlock
+                    Text="✓"
+                    HorizontalAlignment="Center"
+                    Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
             </Border>
         </Border>
     </Grid>

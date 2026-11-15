@@ -140,7 +140,7 @@ internal sealed partial class NoteWindow
 
     private void Animate(bool delete)
     {
-        bool reduced = app.Preferences.ReduceMotion || !NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETCLIENTAREAANIMATION, 0, out int enabled, 0) || enabled == 0;
+        bool reduced = app.Animations.ReducedMotion;
         var duration = TimeSpan.FromSeconds(reduced ? .12 : delete ? .18 : .20);
         var fade = new DoubleAnimation(delete ? 1 : 0, delete ? 0 : 1, duration);
         if (delete) fade.Completed += (_, _) =>

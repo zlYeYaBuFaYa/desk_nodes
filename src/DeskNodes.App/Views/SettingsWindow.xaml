@@ -31,6 +31,16 @@
                 </Grid>
             </Border>
             <Border Style="{StaticResource SettingsRow}">
+                <StackPanel>
+                    <CheckBox
+                        Style="{StaticResource SettingsCheckBox}"
+                        IsEnabled="{Binding CanChangeLogin}"
+                        IsChecked="{Binding LoginEnabled, Mode=TwoWay}"
+                        Content="开机启动 DeskNodes"/>
+                    <TextBlock Text="{Binding LoginStatus}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingsRow}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="160"/>
@@ -64,7 +74,9 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="字体" VerticalAlignment="Center"/>
                     <ContentControl Grid.Column="1">
-                        <ItemsControl ItemsSource="{Binding FontCards}" ItemTemplate="{StaticResource SettingsFontTemplate}">
+                        <ItemsControl
+                            ItemsSource="{Binding FontCards}"
+                            ItemTemplate="{StaticResource SettingsFontTemplate}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal"/>
@@ -189,7 +201,12 @@
                     <ContentControl Grid.Column="1">
                         <StackPanel>
                             <Canvas Width="180" Height="96" HorizontalAlignment="Left">
-                                <Rectangle Width="180" Height="96" RadiusX="6" RadiusY="6" Stroke="{DynamicResource HistorySecondary}"/>
+                                <Rectangle
+                                    Width="180"
+                                    Height="96"
+                                    RadiusX="6"
+                                    RadiusY="6"
+                                    Stroke="{DynamicResource HistorySecondary}"/>
                                 <Ellipse
                                     Canvas.Left="{Binding HomeX}"
                                     Canvas.Top="{Binding HomeY}"
@@ -215,7 +232,10 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="辅助技术" VerticalAlignment="Center"/>
                     <ContentControl Grid.Column="1">
-                        <CheckBox Style="{StaticResource SettingsCheckBox}" IsChecked="{Binding KeepToolbarExpanded, Mode=TwoWay}" Content="保持工具条展开（辅助技术）"/>
+                        <CheckBox
+                            Style="{StaticResource SettingsCheckBox}"
+                            IsChecked="{Binding KeepToolbarExpanded, Mode=TwoWay}"
+                            Content="保持工具条展开（辅助技术）"/>
                     </ContentControl>
                 </Grid>
             </Border>
@@ -227,12 +247,72 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="动画" VerticalAlignment="Center"/>
                     <ContentControl Grid.Column="1">
-                        <CheckBox Style="{StaticResource SettingsCheckBox}" IsChecked="{Binding ReduceMotion, Mode=TwoWay}" Content="减少动画"/>
+                        <CheckBox
+                            Style="{StaticResource SettingsCheckBox}"
+                            IsChecked="{Binding ReduceMotion, Mode=TwoWay}"
+                            Content="减少动画"/>
                     </ContentControl>
                 </Grid>
             </Border>
             <Border Height="16"/>
-            <Button Style="{StaticResource SettingsButton}" Command="{Binding OpenLicense}" Content="字体授权" HorizontalAlignment="Left" Margin="14,0,0,12"/>
+            <TextBlock Text="快捷键" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <Border Style="{StaticResource SettingsRow}">
+                <StackPanel>
+                    <TextBlock Text="全局新建" Margin="0,0,0,6"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button
+                            Style="{StaticResource SettingsButton}"
+                            Command="{Binding RecordNew}"
+                            Content="{Binding NewHotkey}"
+                            AutomationProperties.Name="录制全局新建快捷键"/>
+                        <Button
+                            Style="{StaticResource SettingsButton}"
+                            Command="{Binding ResetNew}"
+                            Content="恢复默认"
+                            Margin="12,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding NewHotkeyStatus}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <TextBlock Text="全局浮起" Margin="0,12,0,6"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button
+                            Style="{StaticResource SettingsButton}"
+                            Command="{Binding RecordFloat}"
+                            Content="{Binding FloatHotkey}"
+                            AutomationProperties.Name="录制全局浮起快捷键"/>
+                        <Button
+                            Style="{StaticResource SettingsButton}"
+                            Command="{Binding ClearFloat}"
+                            Content="清除"
+                            Margin="12,0,0,0"/>
+                        <Button
+                            Style="{StaticResource SettingsButton}"
+                            Command="{Binding ResetFloat}"
+                            Content="恢复默认"
+                            Margin="12,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding FloatHotkeyStatus}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <TextBlock Text="{Binding AltGrWarning}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                    <TextBlock Text="{Binding HotkeyError}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                </StackPanel>
+            </Border>
+            <Border Height="16"/>
+            <TextBlock Text="数据" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <Border Style="{StaticResource SettingsRow}">
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource SettingsButton}" Command="{Binding Export}" Content="导出…"/>
+                    <Button
+                        Style="{StaticResource SettingsButton}"
+                        Command="{Binding Import}"
+                        Content="导入…"
+                        Margin="12,0,0,0"/>
+                </StackPanel>
+            </Border>
+            <Button
+                Style="{StaticResource SettingsButton}"
+                Command="{Binding OpenLicense}"
+                Content="字体授权"
+                HorizontalAlignment="Left"
+                Margin="14,0,0,12"/>
             <TextBox
                 Text="{Binding Error, Mode=OneWay}"
                 IsReadOnly="True"

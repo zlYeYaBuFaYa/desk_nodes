@@ -29,7 +29,7 @@ internal sealed class FontCardViewModel : INotifyPropertyChanged
     }
 }
 
-internal sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
+internal sealed partial class SettingsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly AppCoordinator app;
     private readonly NoteFonts fonts = new();
@@ -107,6 +107,7 @@ internal sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     public SettingsViewModel(AppCoordinator app, Action openLicense)
     {
         this.app = app;
+        InitializeSystemCommands();
         FontCards = SettingsOptions.Fonts.Select(o => new FontCardViewModel(this, o, fonts)).ToArray();
         rolloverText = SavedTime();
         CommitRollover = new RelayCommand(CommitTime);
@@ -156,6 +157,7 @@ internal sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     }
     public void Dispose()
     {
+        app.Hotkeys.Recorded -= CaptureRegisteredGesture;
         app.PreferencesChanged -= Changed;
         app.ErrorChanged -= Changed;
     }

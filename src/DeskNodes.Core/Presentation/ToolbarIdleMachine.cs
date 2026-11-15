@@ -24,6 +24,15 @@ public sealed class ToolbarIdleMachine
     private bool grace;
     private AutoShrink previousAutoShrink = AutoShrink.Seconds15;
 
+    /// <summary>Restarts idle and hover deadlines after resume without changing the visible state.</summary>
+    public void ResetIdle()
+    {
+        deadline = null;
+        hoverDeadline = null;
+        hoverOnly = false;
+        grace = false;
+    }
+
     public IdleOutput Update(TimeSpan now, IdleInput input)
     {
         if (now < lastTime) throw new ArgumentOutOfRangeException(nameof(now), "时间必须单调递增。");

@@ -1,0 +1,159 @@
+using System.Text.Json.Nodes;
+using DeskNodes.Core.Backup;
+using DeskNodes.Core.Domain;
+using DeskNodes.Core.Storage;
+using static DeskNodes.Core.Tests.TestData;
+
+namespace DeskNodes.Core.Tests;
+
+public sealed class WindowsBackupTests
+{
+    private static string Golden => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "backup-v1.json"));
+    private sealed class Clock : IClock
+    {
+        public DateTimeOffset UtcNow => Now;
+        public TimeZoneInfo TimeZone => TimeZoneInfo.Utc;
+    }
+    [Fact]
+    public void GoldenRoundTripPreservesAllBusinessTablesAndRestoresThroughBackupApi()
+    {
+        using var directory = new TestDirectory();
+        var backup = WindowsBackupCodec.Parse(Golden);
+        using var staging = WindowsBackupCodec.Stage(backup, Path.Combine(directory.DirectoryPath, "stage.sqlite3"));
+        var actual = WindowsBackupCodec.Export(staging, new Clock());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Golden), JsonNode.Parse(WindowsBackupCodec.Serialize(actual))));
+        using var live = directory.Open();
+        new NoteRepository(live).Insert(Note());
+        live.ReplaceFrom(staging);
+        Assert.Equal(WindowsBackupCodec.Serialize(actual), WindowsBackupCodec.Serialize(WindowsBackupCodec.Export(live, new Clock())));
+        Assert.Empty(new NoteRepository(live).GetNotes()); // golden current note is a tombstone
+        Assert.Equal(1L, live.Read(c => Scalar(c, "SELECT count(*) FROM snapshots")));
+        Assert.Equal("ok", live.Read(c => Scalar(c, "PRAGMA integrity_check")));
+        Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() => live.Transaction(c => Execute(c, "DELETE FROM snapshots")));
+    }
+    [Theory]
+    [InlineData("format")]
+    [InlineData("version")]
+    [InlineData("schema")]
+    [InlineData("time")]
+    [InlineData("duplicate")]
+    [InlineData("uuid")]
+    [InlineData("reference")]
+    [InlineData("exclusive")]
+    [InlineData("archive")]
+    [InlineData("carry")]
+    [InlineData("deleted")]
+    [InlineData("pending")]
+    [InlineData("membership")]
+    [InlineData("date")]
+    [InlineData("hotkeys")]
+    [InlineData("settings")]
+    [InlineData("checkpoint")]
+    [InlineData("geometry")]
+    [InlineData("unknown")]
+    [InlineData("missing")]
+    [InlineData("header_missing")]
+    [InlineData("uuid_uppercase")]
+    public void InvalidInputNeverChangesLiveDatabase(string invalid)
+    {
+        using var directory = new TestDirectory();
+        using var live = directory.Open();
+        new NoteRepository(live).Insert(Note());
+        string before = WindowsBackupCodec.Serialize(WindowsBackupCodec.Export(live, new Clock()));
+        var root = JsonNode.Parse(Golden)!;
+        var note = root["notes"]![0]!;
+        var item = root["items"]![0]!;
+        switch (invalid)
+        {
+            case "format": root["format"] = "mac.backup"; break;
+            case "version": root["version"] = 2; break;
+            case "schema": root["schema"] = 2; break;
+            case "time": root["exportedAt"] = "2026-11-15T12:30:00+01:00"; break;
+            case "duplicate": root["notes"]!.AsArray().Add(note.DeepClone()); break;
+            case "uuid": note["id"] = "bad"; break;
+            case "reference": item["note_id"] = Guid.NewGuid().ToString(); break;
+            case "exclusive": item["completed"] = true; item["struck"] = true; break;
+            case "archive": item["archived_day"] = "2026-11-14"; break;
+            case "carry": root["snapshot_items"]![0]!["carried_to"] = "2026-11-13"; break;
+            case "deleted": root["snapshot_notes"]![0]!["deleted"] = true; break;
+            case "pending": root["pending_deleted_items"]![0]!["deleted_at"] = "2026-11-15T12:00:00.000Z"; break;
+            case "membership": item["deleted_at"] = null; root["pending_deleted_items"] = new JsonArray(); break;
+            case "date": root["checkpoint"]![0]!["active_day"] = "2026-02-30"; break;
+            case "hotkeys": root["business_preferences"]![0]!["hotkey_float"] = "Ctrl+Alt+N"; break;
+            case "settings": root["business_settings"] = new JsonArray(); break;
+            case "checkpoint": root["checkpoint"]![0]!["high_water"] = "2026-11-14"; break;
+            case "geometry": note["width"] = -1; break;
+            case "unknown": root["sql"] = "DROP TABLE notes"; break;
+            case "missing": root.AsObject().Remove("items"); break;
+            case "header_missing": root.AsObject().Remove("format"); break;
+            case "uuid_uppercase": note["id"] = "AAAAAAAA-1111-4111-8111-111111111111"; break;
+        }
+        Assert.ThrowsAny<Exception>(() =>
+        {
+            var parsed = WindowsBackupCodec.Parse(root.ToJsonString());
+            using var staging = WindowsBackupCodec.Stage(parsed, Path.Combine(directory.DirectoryPath, "bad.sqlite3"));
+            live.ReplaceFrom(staging);
+        });
+        Assert.Equal(before, WindowsBackupCodec.Serialize(WindowsBackupCodec.Export(live, new Clock())));
+    }
+    [Fact]
+    public void ReplacementInsideTransactionIsRejectedAndOriginalDataSurvives()
+    {
+        using var directory = new TestDirectory();
+        using var live = directory.Open();
+        var note = Note();
+        new NoteRepository(live).Insert(note);
+        using var stage = WindowsBackupCodec.Stage(WindowsBackupCodec.Parse(Golden), Path.Combine(directory.DirectoryPath, "stage.sqlite3"));
+        Assert.Throws<InvalidOperationException>(() => live.Transaction(_ => live.ReplaceFrom(stage)));
+        Assert.Equal(note, Assert.Single(new NoteRepository(live).GetNotes()));
+    }
+    [Fact]
+    public void DestinationWriteLockCausesBackupFailureAndPreservesLiveData()
+    {
+        using var directory = new TestDirectory();
+        using var live = directory.Open();
+        var note = Note();
+        new NoteRepository(live).Insert(note);
+        using var stage = WindowsBackupCodec.Stage(WindowsBackupCodec.Parse(Golden), Path.Combine(directory.DirectoryPath, "stage.sqlite3"));
+        using var other = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={directory.DatabasePath};Pooling=False");
+        other.Open();
+        Execute(other, "BEGIN IMMEDIATE");
+        try
+        {
+            Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() => live.ReplaceFrom(stage));
+            Assert.Equal(note, Assert.Single(new NoteRepository(live).GetNotes()));
+        }
+        finally
+        {
+            Execute(other, "ROLLBACK");
+        }
+    }
+    [Fact]
+    public void PublishReplacesExistingFileAndFailureKeepsOriginalAndCleansTemporaryFile()
+    {
+        using var directory = new TestDirectory();
+        string target = Path.Combine(directory.DirectoryPath, "backup.json");
+        File.WriteAllText(target, "original");
+        var backup = WindowsBackupCodec.Parse(Golden);
+        WindowsBackupCodec.Publish(target, backup);
+        Assert.Equal(WindowsBackupCodec.Serialize(backup), File.ReadAllText(target));
+        string before = File.ReadAllText(target);
+        // Invalid metadata cannot replace an existing export.
+        Assert.ThrowsAny<Exception>(() => WindowsBackupCodec.Publish(target, backup with { ExportedAt = null! }));
+        Assert.Equal(before, File.ReadAllText(target));
+        Assert.Empty(Directory.GetFiles(directory.DirectoryPath, ".desknodes-*.tmp"));
+    }
+    [Fact]
+    public void PublicationFailureAfterFlushKeepsDestinationAndDeletesTemporaryFile()
+    {
+        using var directory = new TestDirectory();
+        string target = Path.Combine(directory.DirectoryPath, "backup.json");
+        Directory.CreateDirectory(target);
+        string retained = Path.Combine(target, "original");
+        File.WriteAllText(retained, "retained");
+        Assert.ThrowsAny<IOException>(() => WindowsBackupCodec.Publish(target, WindowsBackupCodec.Parse(Golden)));
+        Assert.Equal("retained", File.ReadAllText(retained));
+        Assert.Empty(Directory.GetFiles(directory.DirectoryPath, ".desknodes-*.tmp"));
+    }
+
+}

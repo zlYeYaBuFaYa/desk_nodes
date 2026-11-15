@@ -4,6 +4,15 @@ namespace DeskNodes.App.Interop;
 
 internal static partial class NativeMethods
 {
+    internal const int WM_HOTKEY = 0x0312, WM_POWERBROADCAST = 0x0218, WM_TIMECHANGE = 0x001E;
+    internal const int PBT_APMSUSPEND = 0x0004, PBT_APMRESUMESUSPEND = 0x0007, PBT_APMRESUMEAUTOMATIC = 0x0012;
+    internal const uint MOD_NOREPEAT = 0x4000;
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool RegisterHotKey(nint window, int id, uint modifiers, uint virtualKey);
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool UnregisterHotKey(nint window, int id);
     [LibraryImport("gdi32.dll")]
     internal static partial nint CreateRoundRectRgn(int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight);
     [LibraryImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)]

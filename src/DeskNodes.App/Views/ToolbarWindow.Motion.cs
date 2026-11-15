@@ -12,6 +12,11 @@ namespace DeskNodes.App.Views;
 
 internal partial class ToolbarWindow
 {
+    public void ResetIdle()
+    {
+        idle.ResetIdle();
+        Tick();
+    }
     private void Tick(bool clicked = false, bool operated = false, bool completed = false, long? completedGeneration = null)
     {
         wake.Stop();
@@ -116,7 +121,7 @@ internal partial class ToolbarWindow
     }
     private void RenderFrame()
     {
-        double elapsed = (Now - started).TotalSeconds;
+        double elapsed = ReducedMotion ? duration : (Now - started).TotalSeconds;
         frame?.Invoke(elapsed);
         if (elapsed < duration) return;
         frames.Stop();

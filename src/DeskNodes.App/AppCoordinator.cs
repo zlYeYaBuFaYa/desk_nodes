@@ -15,7 +15,7 @@ using Forms = System.Windows.Forms;
 
 namespace DeskNodes.App;
 
-internal sealed class AppCoordinator
+internal sealed partial class AppCoordinator
 {
     public PresentationCoordinator Presentation { get; private set; } = null!;
     public IReadOnlyDictionary<NoteId, NoteWindow> Windows => windows;
@@ -68,9 +68,7 @@ internal sealed class AppCoordinator
             command.Parameters.AddWithValue("$minutes", minutes);
             command.ExecuteNonQuery();
         });
-        var result = rollover.CheckAndAdvance();
-        if (result.Status == RolloverStatus.Failed) throw new InvalidOperationException("跨天处理失败，将自动重试。");
-        Refresh();
+        CheckSystemDay();
         historyWindow?.Reload();
     }
     public bool TrayMenuOpen { get; private set; }
@@ -133,9 +131,13 @@ internal sealed class AppCoordinator
         Actions = new(database, clock);
         Undo = new(database, clock);
         Screens = new();
+        Animations = new(() => Preferences.ReduceMotion);
+        Animations.Refresh();
+        businessStore = new(database);
+        BusinessPreferences = businessStore.Load();
         rollover = new(database, clock, Editors, new(database, DataDirectoryPath, Log), Log);
-        rollover.CheckAndAdvance();
         Presentation = new(this);
+        CheckSystemDay();
         Editors.SaveFailed += (_, _) => Presentation.Error("保存失败，请重试；编辑内容已保留。");
         Refresh();
         Screens.Changed += (_, _) => Refresh();
@@ -173,13 +175,21 @@ internal sealed class AppCoordinator
         {
             Interval = TimeSpan.FromSeconds(30)
         };
-        timer.Tick += (_, _) =>
+        timer.Tick += (_, _) => CheckSystemDay();
+        systemWindow = new(this);
+        Hotkeys = new(systemWindow.Handle);
+        Hotkeys.Invoked += action =>
         {
-            var result = rollover.CheckAndAdvance();
-            if (result.Status == RolloverStatus.Sealed) Refresh();
-            if (result.Status == RolloverStatus.Failed) Presentation.Error("跨天处理失败，当前内容已保留。稍后将重试。");
-            Presentation.Refresh();
+            if (dataOperation)
+                return;
+            if (action == HotkeyAction.NewNote)
+                Run(CreateNote);
+            else
+                Run(ToggleRaised);
         };
+        RegisterInitialHotkeys();
+        RefreshLoginStatus();
+        Application.Current.Dispatcher.BeginInvoke(PromptLogin);
         timer.Start();
     }
 
@@ -452,6 +462,8 @@ internal sealed class AppCoordinator
     public void Stop()
     {
         timer?.Stop();
+        Hotkeys?.Dispose();
+        systemWindow?.Dispose();
         settingsWindow?.Close();
         historyWindow?.Close();
         Presentation?.Dispose();
