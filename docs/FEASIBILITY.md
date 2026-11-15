@@ -1,6 +1,6 @@
 # DeskNodes Windows 可行性、选型与验证
 
-核对日期 2026-11-13。产品依据为 [入口记录的 feat-mac 文档提交](README.md)，不是更早的 cursor／macos-native-desknodes 文档。本文件基于公开文档和设计分析；环境为 Linux，无 Windows SDK、桌面运行时或真机测试。**所有 Windows 系统交互结果均需 Windows 真机验证**，“可行”表示有合理公开实现路径，不表示已实现／已验收。
+核对日期 2026-11-15。产品依据为 feat-mac `e0b23e660d361fb7963db9c3c1858729ae2ca356`（文档声明核对代码 `d32a827`），来源见 [入口](README.md)，不是更早的 cursor／macos-native-desknodes 文档。本文件基于公开文档和设计分析；环境为 Linux，无 Windows SDK、桌面运行时或真机测试。**所有 Windows 系统交互结果均需 Windows 真机验证**，“可行”表示有合理公开实现路径，不表示已实现／已验收。
 
 ## 最低版本与裁决定义
 
@@ -21,31 +21,31 @@ Windows 10 21H2 上托盘、WPF、热键、Per-Monitor V2 等核心路径并非�
 
 | 来源要求 | 裁决 | 保留的行为与 Windows 差异／替代 |
 |---|---|---|
-| [FR-01](REQUIREMENTS.md#fr-01) 启动／空库／菜单／退出 | 可行但有差异 | 迁移、跨天、空库、工具条恢复、关闭辅助窗不退、编辑屏障均保留。菜单栏常驻／无 Dock 改托盘与任务栏策略；强制关机不能承诺取消。替代 A、H。 |
-| [FR-02](REQUIREMENTS.md#fr-02) 新建／配色 | 可行但有差异 | 同入口、组词拒绝、多选退出、收起展开、默认尺寸、避让级联、最少色及已删最近候选均可做。⌘N→Ctrl+N，桌面层近似、激活可能被拒。替代 B、D、E。 |
+| [FR-01](REQUIREMENTS.md#fr-01) 启动／空库／菜单／退出 | 可行但有差异 | 迁移、跨天、空库、工具条恢复、关闭辅助窗不退、编辑屏障均保留。工具条四按钮与右键菜单为主，Windows 托盘恢复及任务栏策略保留；强制关机不能承诺取消。替代 A、H。 |
+| [FR-02](REQUIREMENTS.md#fr-02) 新建／配色 | 可行但有差异 | 默认标题“今日待办”、同入口、组词拒绝、多选退出、收起展开、默认尺寸、避让级联、最少色及已删最近候选均可做。⌘N→Ctrl+N，桌面层近似、激活可能被拒。替代 B、D、E。 |
 | [FR-03](REQUIREMENTS.md#fr-03) 原生编辑 | 可行但有差异 | 可空标题、摘要、完成／划掉互斥、进度、排序、视觉行箭头、粘贴拆项、0.4s、安全提交、空白清理可做。NSTextView→WPF TextBox 输入链，快捷键改 Ctrl；第三方 IME／撤销边界无自动保证。替代 E。 |
 | [FR-04](REQUIREMENTS.md#fr-04) 删除／恢复 | 可行 | 选择和焦点分离、无工具条删除、软删、5 秒严格边界、最新逐次／批次原子撤销、新输入后文字撤销、队列不跨重启、30 天仅列表、同时间子项恢复、已归档／冻结不变均为应用逻辑。组词屏障依 E。 |
-| [FR-05](REQUIREMENTS.md#fr-05) 自由／折叠／停靠 | 可行但有差异 | 拖缩、自动高、顶位置、单张菜单、自由还原、排序拖出／溢出／分页及菜单次序可做。Mac 可用区→Windows 工作区，AppBar 与任务栏避让；不迁移虚构旧全局停靠字段。替代 F、G。 |
-| [FR-06](REQUIREMENTS.md#fr-06) 瀑布流／分页 | 可行 | 持久顺序、最短列左优先／放不下换页、手动与自动高、折叠占位、停靠转自由、工具条完整目标避让、全屏共用页码／最后页、新建默认可见、收起整理展开均可做。几何换算依 G。 |
-| [FR-07](REQUIREMENTS.md#fr-07) 全局收起 | 可行 | 真实窗口汇聚隐藏、当前页恢复、位置尺寸层级保留、叠放／圆形数量、99+、结束浮起、空目标清除、目标持久化、快速反向均可做；减少动画时直接落位。 |
-| [FR-08](REQUIREMENTS.md#fr-08) 工具条 | 可行但有差异 | 五动作、方向、非抢焦点、4／81 阈值、边同距优先级、内边排除、锚点、闲置各条件、140ms／1.5s、反向状态机可做。VoiceOver→Windows 辅助技术策略；遮挡／全屏不能保证边缘接收。替代 A、C、E、F。 |
-| [FR-09](REQUIREMENTS.md#fr-09) 三层／浮起／全屏空间 | 可行但有差异 | 逐张保存层级、真实窗临时提升、收起展开、Esc 等结束路径、无全局事件监听、激活失败替代入口可做。严格桌面层、全屏辅助空间和全桌面可见不能等价。Mac 旧全局偏好退役提示不适用于全新 Windows。替代 B、C、D。 |
+| [FR-05](REQUIREMENTS.md#fr-05) 自由／折叠／停靠 | 可行但有差异 | 拖缩、自动高、顶位置、单张菜单、自由还原、排序拖出／溢出／分页及菜单次序可做。固定 homeZone 预留可做，展开／同屏移动不挤动停靠；Mac 可用区→Windows 工作区，AppBar 与任务栏避让；不迁移虚构旧全局停靠字段。替代 F、G。 |
+| [FR-06](REQUIREMENTS.md#fr-06) 瀑布流／分页 | 可行 | 持久顺序、最短列左优先／放不下换页、手动与自动高、折叠占位、停靠转自由、新建／整理避让当前锚点完整目标，停靠按 FR-05 单独预留、多屏共用页码／最后页、新建默认可见、收起整理展开均可做。几何换算依 G。 |
+| [FR-07](REQUIREMENTS.md#fr-07) 全局收起 | 可行 | 真实窗口汇聚隐藏、当前页恢复、位置尺寸层级保留、叠放／圆形数量、99+、结束浮起、空目标清除、汇聚入口随工具条更新、隐藏不复活、目标持久化、快速反向均可做；减少动画时直接落位。 |
+| [FR-08](REQUIREMENTS.md#fr-08) 工具条 | 可行但有差异 | 四动作、方向、固定收缩位置、自由位置闲置回归、先缩后滑、弹簧展开、停靠预留与连续中断均为可行应用逻辑，规则见 FR-08。VoiceOver→Windows 辅助技术策略；遮挡／全屏不能保证边缘接收。替代 A、C、E、F。 |
+| [FR-09](REQUIREMENTS.md#fr-09) 三层／浮起／全屏空间 | 可行但有差异 | 工具条／热键与 Windows 托盘替代入口、逐张保存层级、真实窗临时提升、收起展开、Esc 等结束路径、无全局事件监听、激活失败替代入口可做。严格桌面层、全屏辅助空间和全桌面可见不能等价。Mac 旧全局偏好退役提示不适用于全新 Windows。替代 B、C、D。 |
 | [FR-10](REQUIREMENTS.md#fr-10) 跨天／归档／备份 | 可行 | 当前时区、公历、04:00 可改、DST、约30s／启动唤醒时钟变化、初始不造历史、只封存已观察日、不补中间日、回拨高水位、冻结、组词延期、单事务推进、失败仅日志／7份副本可做；电源消息非执行时刻保证，依 H。 |
-| [FR-11](REQUIREMENTS.md#fr-11) 历史 | 可行 | 周一起始、月导航、冻结详情、删除／顺延、分母排除划掉但含删除、跨日按次数、月不平均、零分母“—”、只读／空态均可做。 |
-| [FR-12](REQUIREMENTS.md#fr-12) 设置／热键／启动 | 可行但有差异 | 分组即时修改、首次拒绝不再问、导入不动系统项可做。Carbon 物理 ANSI 和 Mac 禁用组合不照搬，RegisterHotKey VK 有保留键／AltGr；SMAppService 状态不能套 Run 项。替代 D、H。 |
+| [FR-11](REQUIREMENTS.md#fr-11) 历史 | 可行 | 最近 7 个已封存业务日菜单、聚合计数与失败态、键盘日／周／月导航、日格色阶、周一起始、冻结详情、删除／顺延、分母排除划掉但含删除、跨日按次数、月不平均、零分母“—”、只读／空态均可做。 |
+| [FR-12](REQUIREMENTS.md#fr-12) 设置／热键／启动 | 可行但有差异 | 菜单／Ctrl+,、新版分组、三种应用外观与浅色便签、即时修改、首次拒绝不再问、导入不动系统项可做。Carbon 物理 ANSI 和 Mac 禁用组合不照搬，RegisterHotKey VK 有保留键／AltGr；SMAppService 状态不能套 Run 项。替代 D、H。 |
 | [FR-13](REQUIREMENTS.md#fr-13) 导出／导入／本地 | 可行但有差异 | 提交→一致快照→文件面板→原子发布，staging／替换确认／候选热键／事务替库、失败保旧、浮起键后失败不回滚、成功清会话、偏好归属、后续跨天可做。Mac JSON 字段编码／坐标不直接等价，Windows 协议待冻结。替代 I。 |
-| [FR-14](REQUIREMENTS.md#fr-14) 字号 | 可行但有差异 | 四档、示例、全便签、端点、自动／固定高、停靠重排、组词拒绝、本机偏好不导出均可做。⌘→Ctrl，字体度量／系统文本缩放另适配。替代 E、G。 |
+| [FR-14](REQUIREMENTS.md#fr-14) 文字大小与字体 | 可行但有差异 | 四档字号与四字体、示例、全便签、端点、自动／固定高、停靠重排、组词拒绝、本机偏好不导出均可做。⌘→Ctrl，字体度量／系统文本缩放另适配；字形集合、下载、打包及回退不同。替代 E、G、K。 |
 | [FR-15](REQUIREMENTS.md#fr-15) 多选 | 可行但有差异 | 同手势进入、勾选／框替换追加、空白清空、当前可见全选、批删及撤销、真实窗提升、覆盖层、隐藏排除、退出恢复原浮起、模式外桌面归系统均可做。⌘→Ctrl，跨屏物理坐标转换和当前虚拟桌面可见过滤；不全局截桌面事件。替代 D、E、G。 |
-| 错误／质量边界 | 可行但有差异 | 明确启动错误、非激活后台提示、设置可复制、历史重试、深浅／减少动画／关键名称可做。Windows 高对比、UI Automation／Narrator 替代 VoiceOver；强制终止／关机不受提交取消保证。替代 E、G、H。 |
+| 错误／质量边界 | 可行但有差异 | 明确启动错误、非激活后台提示、设置可复制、历史重试、按应用外观选择深浅（默认跟随系统）／减少动画／关键名称可做。Windows 高对比、UI Automation／Narrator 替代 VoiceOver；强制终止／关机不受提交取消保证。替代 E、G、H。 |
 
 ## 系统语义逐项裁决与多个替代方案
 
 <a id="a"></a>
-### A：菜单栏 accessory、无 Dock 与工具条非激活
+### A：工具条菜单、托盘恢复与非激活窗口
 
-**可行但有差异**。通知区域不是 macOS 菜单栏；WS_EX_TOOLWINDOW 可影响任务栏／Alt+Tab，WS_EX_NOACTIVATE 会限制激活，不能给编辑窗永久使用。依据：[扩展样式](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)、[NotifyIcon](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon)。
+**可行但有差异**。主入口跟随最新 mac 工具条菜单；Windows 无等价全局应用菜单。mac 移除“显示工具条”依赖圆形入口始终可命中，但 Windows 可被普通窗口、Win+D 与独占全屏遮挡，因此保留托盘左键恢复及右键“显示工具条”、新建／浮起。菜单结构和退出屏障只见 [FR-01](REQUIREMENTS.md#fr-01)。通知区域不是 macOS 菜单栏；WS_EX_TOOLWINDOW 可影响任务栏／Alt+Tab，WS_EX_NOACTIVATE 会限制激活，不能给编辑窗永久使用。依据：[扩展样式](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)、[NotifyIcon](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon)。
 
-1. **推荐：托盘常驻＋便签不占任务栏＋普通辅助窗口**。界面安静、Windows 用户熟悉；托盘可能被隐藏，必须保留可见工具条与热键。
+1. **推荐：工具条主命令面＋托盘恢复＋便签不占任务栏＋普通辅助窗口**。界面安静、Windows 用户熟悉；托盘可能被隐藏，必须保留可见工具条与热键。
 2. 单一普通任务栏主窗口聚合入口。键盘切换和恢复容易；增加常驻任务栏占位，弱化桌面便签体验。
 3. 所有窗口都设非激活工具窗。焦点干扰少；编辑／辅助技术受限，不推荐。工具条可非激活显示，菜单及键盘路径仍需可达，需 Windows 真机验证。
 
@@ -110,13 +110,13 @@ VoiceOver→UI Automation／Narrator **可行但有差异**。推荐标准控件
 <a id="g"></a>
 ### G：材质、圆角、DPI、主题与 Reduce Motion
 
-Mac vibrancy **可行但有差异**，并非当前便签必需（来源便签／工具条本就纯色）。①**推荐纯色主表面＋辅助窗可选公开 Mica／Acrylic**，稳定可读，材质可能回退；②全纯色，最可预测但系统材质感少；③改 WinUI 3 SystemBackdrop，集成路径更直接，但增加主栈或混合窗口成本。不得用未公开 SetWindowCompositionAttribute／私有 DWM 属性作为推荐方案。[公开 backdrop](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type)
+工具条系统材质 **可行但有差异，需 Windows 真机验证**。工具条现以系统材质为设计目标，便签及停靠标签固定浅色纯色；纯色是工具条的回退。①**推荐公开 DWM Mica／Desktop Acrylic＋不透明回退**，保留视觉目标，WPF 壳层承载须小样；②全部纯色最稳定，但只能作为材质不可用时的降级；③WinUI 3 SystemBackdrop 集成较直接，但增加主栈或混合窗口成本。关闭透明、远程会话或效果不可用必须回退。不得用未公开 SetWindowCompositionAttribute／私有 DWM 属性作为推荐方案。[公开 backdrop](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type)
 
 精确 Mac 外圆角／阴影 **可行但有差异**。①**推荐系统非客户区＋内部视觉圆角**，保留系统行为但半径不精确；②自绘透明外壳，可控但阴影、DPI 和命中代价大；③标准矩形壳最稳但审美偏离。先小样后定，不承诺任意 WPF 透明窗口都有 DWM 效果。
 
 多屏 DPI／工作区 **可行但有差异**。①**推荐 manifest PerMonitorV2＋逐窗 DPI 转换**，跟屏清晰，需正确处理物理坐标与 DIP；②系统 DPI aware，工作量低但换屏可能模糊，不达首选品质；③单屏限制，最简单但失去来源多屏能力，不推荐。[DPI 声明](https://learn.microsoft.com/en-us/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process)、[窗口 DPI](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getdpiforwindow)
 
-Reduce Motion／深浅／高对比 **可行但有差异**。①**推荐公开系统参数／主题事件＋手动减少动画开关＋高对比语义资源**，最完整，增加状态适配；②只跟系统，设置简单但检测／更新不完整时无覆盖；③全禁动画，最稳定但失去正常视觉反馈。SPI_GETCLIENTAREAANIMATION 可查询客户区动画策略，不宣称等价 macOS 所有减少动态效果设置。[系统参数](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
+Reduce Motion／深浅／高对比 **可行但有差异**。①**推荐应用三态外观＋公开系统参数／主题事件＋手动减少动画开关＋高对比语义资源**，最完整，增加状态适配；②只跟系统，设置简单但检测／更新不完整时无覆盖；③全禁动画，最稳定但失去正常视觉反馈。SPI_GETCLIENTAREAANIMATION 可查询客户区动画策略，不宣称等价 macOS 所有减少动态效果设置。[系统参数](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
 
 <a id="h"></a>
 ### H：SMAppService、睡眠唤醒、关机与本地可靠性
@@ -147,6 +147,18 @@ Windows 本地 SQLite 与独立 JSON 备份 **可行**；直接宣称现有 Mac 
 
 若将来新增隐私功能：①**当前推荐不启用，清楚声明本地未加密**，范围明确但共享时可被看见；②用户主动隐藏所有便签，直观但要手动操作；③逐顶层窗口设置 affinity，部分捕获可排除但必须标注局限和验证捕获工具，不得命名为“共享自动隐藏”。
 
+<a id="k"></a>
+### K：字体资源
+
+字体 **可行但有差异**；字号的快捷键、字体度量与系统文本缩放仍依 [E](#e)、[G](#g)。Windows 字形集合、系统下载机制、应用打包与回退不同，不把苹果字体服务当作 Windows 合同。组合及字重目标集中在 [排版](UI_SPEC.md#type)，切换业务见 [FR-14](REQUIREMENTS.md#fr-14)。
+
+1. **默认**采用 Segoe UI + Microsoft YaHei UI，保留系统 fallback；实际中英混排度量需真机校准。
+2. **圆体**：mac 的系统 rounded 西文 + Yuanti SC 及其 CTFontDescriptorMatchFontDescriptorsWithProgressHandler 下载路径在 Windows 没有对等合同，Windows 没有圆体 SC。A **推荐已安装幼圆 YouYuan**，西文用系统无衬线；未安装按需求拒绝切换，不自动下载、不捆绑微软字体，幼圆不可再分发。B 实施时许可审核后可改捆绑某个 SIL OFL 中文圆体，再将“未安装”改为打包策略，本轮不指定未审核字体。C 用微软雅黑替代虽省事，视觉并非圆体，不推荐默认映射。[微软字体再分发说明](https://learn.microsoft.com/en-us/typography/fonts/font-faq)
+3. **宋体**：mac 的系统 serif + Songti SC 改为系统衬线西文与已安装宋体／新宋体。SimSun 小字号可能走点阵，高 DPI 品质需真机观察。若品质不足，可在实施阶段经许可审核捆绑 Source Han Serif／Noto Serif CJK（OFL）；本轮不确定捆绑方案。
+4. **文楷**：推荐固定霞鹜文楷 v1.530，获取 Regular／Medium 与 OFL.txt，固定 SHA-256 校验，原始字体资源不入库源码，构建时获取并打包。按 [技术设计](TECHNICAL_DESIGN.md#fonts) 私有加载与回退，不安装系统字体。未打包拒绝切换；授权优先包内 OFL，缺失转项目在线授权页。直接运行未打包开发会话不等于原生字体验收。[上游版本](https://github.com/lxgw/LxgwWenKai/releases/tag/v1.530)、[上游授权](https://github.com/lxgw/LxgwWenKai/blob/v1.530/OFL.txt)、[WPF 应用字体资源](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/packaging-fonts-with-applications)
+
+本仓库尚无 Windows 字体获取／构建脚本。实施时锁定资源来源、哈希、打包与授权文件，核对实际字体族、字形、字重和回退结果；不能把有资源或跳过字体测试写成通过。
+
 <a id="stack"></a>
 ## 技术栈比较与唯一推荐
 
@@ -176,8 +188,12 @@ Windows 本地 SQLite 与独立 JSON 备份 **可行**；直接宣称现有 Mac 
 5. **数据安全**：隔离库跑迁移、冻结不可改、事务回滚、导入往返／无效引用／未来版本／取消／热键冲突、磁盘满／权限拒绝、备份 7 份／同日不覆盖／partial、离线恢复及强制终止。夏令时、回拨、改时区、休眠跨多日必须用可注入时钟和真实系统事件分别验证。
 6. **登录启动**：稳定安装路径下首次拒绝／同意、设置关闭、任务管理器禁用后不绕过、重新登录、exe 路径更新和卸载清理；若改 MSIX 重新验证 StartupTask 各状态，不复用 Run 项结论。
 
+7. **工具条与布局**：四按钮且无设置按钮；手柄／空白／圆形右键可用、按钮不弹菜单；空库、菜单退出屏障与辅助窗口关闭。退出时已收缩，重启仍展开；完整摆放不改固定位置，自由位置闲置回归、原地收缩、先缩后滑、弹簧展开、移动中唤起／取消／拖动中断、悬停宽限、菜单暂停、角落安全距离、接缝对边回退、拔屏、入口边隙命中及恢复默认。停靠预留不抖动，新建／整理避让完整 target；汇聚入口移动不复活隐藏便签，下次从新入口展开。减少动态效果无透明残留。
+8. **历史菜单与导航**：最近 7 个封存日跨月且不补连续自然日、业务日相对标签、完成数／分母、最近删除聚合计数及计数失败可进；空快照／读取失败／零恢复数分开。菜单日期同步月份，今天禁用、日／周上限、月导航及直接点未来、Ctrl+方向与 Ctrl+T、文本选择与完整键盘导航、最近删除不抢键、日格全部色阶。大量历史时菜单读取无可感知停顿。
+9. **设置与字体**：菜单／Ctrl+, 入口及菜单修改后同步；跟随系统／浅／深三种外观，便签与停靠标签始终浅色。四档字号 × 四种字体中英混排、组词拒绝、重启、固定／自动高、停靠、首行圆圈、折叠标题、添加入口与等宽计数；幼圆未安装／已安装，缺字／缺字重回退，文楷打包后可用、标题 Medium／正文 Regular 及授权可打开。其他界面字体不随选择改变；缺资源跳过不算通过。
+
 每次记录 Windows build、硬件／DPI、IME 版本、.NET／依赖版本、代码 SHA、命令和退出码、实际操作结果、截图／日志路径及失败／未执行项。API 文档核查、Linux 链接检查、Windows 编译、自动业务测试、真机人工验收分开记。Mac ACCEPTANCE.md 的 Swift 测试及浏览器结果均不计入 Windows 通过项。
 
 ## 本轮证据范围
 
-本轮只完成来源全文阅读、视觉参考查看、公开文档核查和 Markdown 静态检查；没有 Windows 工程、构建命令、SDK 调用或运行截图。
+本轮仅更新文档并做静态核对；没有 Windows 工程、构建命令、SDK 调用或运行截图。

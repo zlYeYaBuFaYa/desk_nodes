@@ -1,8 +1,8 @@
 # DeskNodes Windows 文档入口
 
-核对日期：2026-11-13（America/Los_Angeles）。本目录是 Windows 设计方案，尚无 Windows 应用实现，也没有 Windows 构建、SDK 或真机验收结果。
+核对日期：2026-11-15（America/Los_Angeles）。本目录是 Windows 设计方案，尚无 Windows 应用实现，也没有 Windows 构建、SDK 或真机验收结果。
 
-分支 `feat-win` 基于全新 `origin/main` 提交 `4cedf910173cf40d927f1d7db9fc12dfd5f469ab`，该 main 只有初始 README；未继承 feat-mac 代码或分支历史。产品行为来源为远程分支 `feat-mac` 的 `docs/`，提交 `5d4f483e81bfbc42321641377b4fa3c526c368eb`（`docs: consolidate docs with current implementation`）。已阅读该目录全部文件，包括 HTML 演示、验收、本机构建指南及视觉图。macOS 验收记录不适用于 Windows；原型与效果图都不是验收来源。根 README 保持不变。
+分支 `feat-win` 基于全新 `origin/main` 提交 `4cedf910173cf40d927f1d7db9fc12dfd5f469ab`，该 main 只有初始 README；未继承 feat-mac 代码或分支历史。产品行为来源为远程分支 `feat-mac` 的 `docs/`，提交 `e0b23e660d361fb7963db9c3c1858729ae2ca356`（`docs: align documentation with current implementation`）。该文档声明核对代码提交 `d32a827`。已阅读最新 docs 下现有六份文件：README、REQUIREMENTS、TECHNICAL_DESIGN、UI_SPEC、ACCEPTANCE、native-build，并对照旧基线全文及 Markdown 差异。feat-mac 已移除 HTML 演示和视觉效果图，本轮不以已删除材料为现行依据。macOS 验收与本机构建指南不适用于 Windows，不复制进本目录。根 README 保持不变。
 
 ## 文档分工
 
@@ -12,7 +12,7 @@
 - [交互设计](INTERACTION.md)：指针、键盘、托盘、焦点和多窗口事件如何实现需求；不另立业务规则。
 - [可行性与验证](FEASIBILITY.md)：逐 FR 与系统行为裁决、多个替代方案、技术栈比较、公开 API 依据和未来验证门槛。
 
-不复制 macOS 的 native-build.md、ACCEPTANCE.md 或 UI_PROTOTYPE.html 来暗示 Windows 已实现；未来验证提纲统一放在可行性文档。
+不复制 macOS 的构建与验收文档来暗示 Windows 已实现；未来验证提纲统一放在可行性文档。
 
 ## 维护约定
 

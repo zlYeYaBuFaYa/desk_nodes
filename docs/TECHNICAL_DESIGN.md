@@ -18,8 +18,10 @@
 | EditorCoordinator | 每标题／事项的编辑所有者、组词、选区、修订号与提交 |
 | NoteSurfaces | NoteID→WPF Window／HWND，差量更新，禁止刷新复活隐藏窗口 |
 | PresentationCoordinator | 收起、浮起、多选、分页和 generation；不编辑业务内容 |
-| Dock／ToolbarLayout | 工作区、停靠、溢出、吸边、完整目标避让 |
-| WindowsServices | 托盘、热键、登录启动、DPI、电源／时钟／主题及虚拟桌面查询 |
+| Dock／ToolbarLayout | 工作区、停靠、溢出、吸边、完整 target、固定收缩位置、homeZone／hitZone 与停靠预留 |
+| Settings／HistoryPresentation | 设置即时修改、菜单同步、只读历史展示与日历导航，最近删除注入恢复动作 |
+| Theme／NoteFonts | 应用外观资源、便签固定浅色、字号度量、字体可用性与回退 |
+| WindowsServices | Windows 特有托盘恢复入口、热键、登录启动、DPI、电源／时钟／主题及虚拟桌面查询 |
 
 UI 和 HWND 在同一 STA Dispatcher 上操作。持久化由一个串行仓库队列管理；事务内部不 await、不跨线程。UI 在进入事务前提供已提交文本的不可变快照，不从存储线程触碰编辑器。单实例拟用命名 Mutex 和当前用户范围的命名管道；第二次启动只请求显示工具条，不能抢占第一实例的热键或开第二套写库。隔离验证实例必须用独立库／偏好，且明确禁止修改个人登录项。
 
@@ -32,7 +34,7 @@ DailySnapshot／SnapshotNote／SnapshotItem 保存冻结成员，包括删除、
 
 Windows placement 使用显示器相对 DIP 矩形与可识别的显示设备线索、停靠边及序号、自由还原位置。Windows 屏幕坐标左上原点、Y 向下，虚拟屏幕可有负坐标，不能复制 Mac 左下原点值。显示器句柄不跨重启存储；标识失配时按已连接屏幕、工作区和最近位置回退主屏。业务库不保存 HWND、瞬时 DPI 或动画坐标。
 
-业务偏好保留跨天时间、快捷键和登录意愿；本机偏好另存全局收起目标、工具条锚点／方向／闲置、字号、新建尺寸、整理页。自由锚点用中心、吸边用边及归一化比例。选择、焦点、浮起、多选、过渡、撤销和保存任务不序列化。Windows 无已有发布 schema，不冒称继承 Mac v8 迁移；以后明确 Windows schema 和 application_id 后才冻结格式。
+业务偏好保留跨天时间、快捷键和登录意愿；本机偏好另存全局收起目标、工具条锚点／固定位置／方向／闲置、应用外观、字号／字体、新建尺寸、整理页。自由锚点用中心、吸边用边及归一化比例。选择、焦点、浮起、多选、过渡、撤销和保存任务不序列化。Windows 无已有发布 schema，不冒称继承 Mac v8 迁移；以后明确 Windows schema 和 application_id 后才冻结格式。
 
 <a id="storage"></a>
 ## 存储、事务与恢复
@@ -72,12 +74,18 @@ SQLite 使用外键、WAL、synchronous=FULL、5 秒 busy timeout；外层 BEGIN
 
 便签展示 expanded／collapsing／collapsed／expanding，工具条 expanded／collapsing／round／expanding，另有 peeking 和可空 picked 集合；普通 selection 与键盘 focus 独立。以 generation 丢弃过期动画回调，suppressed 原因集合含收起、页隐藏、停靠溢出、虚拟桌面不在当前；刷新不可自行 Show 所有窗口。动画只改临时展示，完成后写一次布局，不能逐帧写库。
 
-清单、停靠、瀑布流及新建均按完整工具条目标避让。工作区用 MonitorFromPoint／MonitorFromWindow 与 GetMonitorInfo 的 rcWork，屏幕拓扑用 EnumDisplayMonitors；任务栏自动隐藏时保留 UI 安全边距，不把工作区等同物理屏幕框。吸边只选择屏幕外边，排除相接内边。
+新建与整理避让当前锚点完整 target；停靠只避让固定 homeZone，区域改变才重排。固定收缩位置按工作区计算，避开任务栏和其他已注册 AppBar。ToolbarLayout 分别求解完整锚点和固定位置；homeZone／hitZone 为入口向屏幕边扩展后的预留／命中区。吸边跨度与固定位置跨度不同，不能直接混用 ratio；几何数值见 [UI](UI_SPEC.md#toolbar)。工作区用 MonitorFromPoint／MonitorFromWindow 与 GetMonitorInfo 的 rcWork，屏幕拓扑用 EnumDisplayMonitors；任务栏自动隐藏时保留 UI 安全边距，不把工作区等同物理屏幕框。吸边只选择屏幕外边，排除相接内边。
+
+工具条转换以可见 shell、icon／controls 透明度为连续状态，拟由 WPF 渲染／动画时钟驱动。回到固定位置先收缩再滑动；pendingExpand 记录移动中的唤起请求，到达时再次检查指针。形变阶段动画窗口取外框并集，滑动阶段随入口移动，避免整段路径截获事件。中断从当前可见状态续接，以 generation 废弃旧回调。启动总是 expanded，收缩形态不持久化；交互分派见 [交互](INTERACTION.md)。
+
+本机偏好拟保存 `desk.collapsed`、`toolbar.anchor`、`toolbar.orientation`、`toolbar.autoShrink`、`toolbar.home`（边与比例，不绑定显示器）、`app.appearance`、`note.newWidth`／`note.newHeight`／`note.textSize`／`note.font`、`arrange.pages`／`arrange.page`。无效 home 恢复标准默认；未知枚举分别回退标准字号、默认字体、跟随系统。高度缺失用默认，显式 0 为随内容。若需兼容旧 `toolbar.place`，只迁为自由锚点，不按距离推断吸边。这些字段不入业务 JSON，也不保存临时选择、动画或撤销。
 
 manifest 声明 PerMonitorV2，WPF 内容为 96 DIP／英寸，Win32 边界为像素，所有跨界明确转换。GetDpiForWindow 获取窗口 DPI，WM_DPICHANGED 建议矩形用于换屏调整并重算布局；WPF 自身 DPI 处理与手工调整要防止重复缩放。显示改变、工作区变化、远程会话和重新连接触发布局校正。[DPI 声明](https://learn.microsoft.com/en-us/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process)、[WM_DPICHANGED](https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged)
 
 <a id="services"></a>
 ## 托盘、热键、启动与系统事件
+
+不提供通知区域以外的菜单栏常驻图标；托盘是 Windows 恢复入口，不是 mac 状态图标的等价物。工具条右键菜单按需构建，历史子菜单打开时读取摘要。
 
 托盘可用 System.Windows.Forms.NotifyIcon（WPF 进程内只复用通知区域组件）或 Shell_NotifyIcon；推荐前者降低工作量，保留消息恢复适配层。Explorer 重启后核对图标重建，不保证系统让其固定可见。应用显式退出才 Dispose 图标，关闭辅助窗口不结束 Dispatcher。[NotifyIcon](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon)
 
@@ -88,6 +96,22 @@ manifest 声明 PerMonitorV2，WPF 内容为 96 DIP／英寸，Win32 边界为�
 服务顶层 HWND 接 WM_POWERBROADCAST（恢复时重计闲置并检查跨天）、WM_TIMECHANGE、WM_SETTINGCHANGE、WM_DISPLAYCHANGE；非 message-only 是为了接广播。计时器不是秒级承诺，恢复／重启时补检查。时区变化还比较当前时区标识和规则，不能只依赖一个消息。夏令时采用 TimeZoneInfo 明确处理无效／重复时刻；高水位阻回拨。挂起时尝试提交有效文本，强制关机不承诺能取消。[电源广播](https://learn.microsoft.com/en-us/windows/win32/power/wm-powerbroadcast)
 
 减少动画读 SystemParametersInfo(SPI_GETCLIENTAREAANIMATION)，监听设置变化并允许用户强制减少；高对比用 SystemParameters.HighContrast 等公开系统状态。屏幕阅读器相关 SPI_GETSCREENREADER 不能穷举所有辅助工具，提供“保持工具条展开”显式设置，不声称可靠探测所有 Narrator／第三方读屏器。[系统参数](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
+
+<a id="fonts"></a>
+## 字体资源与应用外观
+
+建议 NoteFonts 从本机偏好初始化，按实际可用字体和字重建立中西文 fallback；具体组合只在 [UI 排版](UI_SPEC.md#type) 维护。切换字号／字体共用提交屏障及卡片布局刷新，组词时拒绝更新并回显实际选择。可用性检查须区分族存在和所需字形／字重；幼圆不可用不请求苹果系统字体下载。资源策略与授权边界见 [字体裁决](FEASIBILITY.md#k)。
+
+文楷构建获取脚本是设计要求，本仓库当前没有 Windows 构建脚本。实施时从固定版本获取 Regular／Medium 和 OFL.txt，以固定 SHA-256 校验，原始字体不入库源码，构建后打包为应用资源。WPF 优先用应用资源私有字体加载，或经验证的等价路径，不安装到系统字体目录；PrivateFontCollection 属于其他文字栈，不能假定自动供 WPF 使用。缺少 Medium 退 Regular，再退系统字体。授权入口优先打开包内 OFL，缺失时打开项目在线授权页；未打包开发会话不构成字体验收。
+
+应用外观拟用 WPF 应用级主题／资源字典设置浅深；便签及停靠标签显式强制浅色资源，菜单、工具条与辅助窗用有效外观。`app.appearance` 未知值回退跟随系统。具体主题和公开 backdrop API 实施时锁定，需 Windows 真机验证；不套用 NSApp.appearance／aqua／darkAqua。
+
+<a id="history"></a>
+## 历史展示与导航
+
+建议历史查询按封存日期倒序读取 `limit=7`，相对标签由当前业务日生成，菜单统计复用冻结统计模型。最近删除用 SQL 聚合计数，不加载完整列表。菜单每次打开触发读取；空数据、读取失败和计数失败分别呈现，业务规则见 [FR-11](REQUIREMENTS.md#fr-11)。
+
+HistoryPresentation 与普通历史窗口按需创建并复用，指定日时同步选中日期和月份。本地键盘处理只在该窗口日历模式接管，保留详情文本选择与完整键盘导航的普通方向键；最近删除模式不接管。逐日／周移动约束到 today，月导航定位月首且不设同样上限。today 在 reload 时更新，不另设计时器；日格色阶复用冻结完成率，数值见 [UI](UI_SPEC.md#windows)。以上均为建议职责，不是已有类型。
 
 <a id="backup"></a>
 ## JSON 协议与导入原子性
