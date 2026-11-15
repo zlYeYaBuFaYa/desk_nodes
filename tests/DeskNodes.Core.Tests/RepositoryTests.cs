@@ -53,8 +53,8 @@ public sealed class RepositoryTests
         var remaining = Item(note.Id, 8);
         repository.Insert(item);
         repository.Insert(remaining);
-        Assert.True(repository.SoftDelete(item.Id, Now.AddMinutes(1)));
-        Assert.False(repository.SoftDelete(item.Id, Now.AddMinutes(2)));
+        Assert.True(repository.SoftDelete(item.Id, Now.AddMinutes(1), HistoryDay.Parse("2026-11-15")));
+        Assert.False(repository.SoftDelete(item.Id, Now.AddMinutes(2), HistoryDay.Parse("2026-11-15")));
         Assert.Equal(remaining, Assert.Single(repository.GetItems(note.Id)));
         NoteItem tombstone = repository.GetItems(note.Id, includeDeleted: true)[0];
         Assert.Equal(Now.AddMinutes(1), tombstone.DeletedAt);
@@ -85,9 +85,9 @@ public sealed class RepositoryTests
         repository.Insert(live);
         repository.Insert(earlier);
         repository.Insert(archived);
-        repository.SoftDelete(earlier.Id, Now.AddSeconds(1));
-        Assert.True(repository.SoftDelete(note.Id, Now.AddSeconds(2)));
-        Assert.False(repository.SoftDelete(note.Id, Now.AddSeconds(3)));
+        repository.SoftDelete(earlier.Id, Now.AddSeconds(1), HistoryDay.Parse("2026-11-15"));
+        Assert.True(repository.SoftDelete(note.Id, Now.AddSeconds(2), HistoryDay.Parse("2026-11-15")));
+        Assert.False(repository.SoftDelete(note.Id, Now.AddSeconds(3), HistoryDay.Parse("2026-11-15")));
         Assert.Empty(repository.GetNotes());
         Assert.Empty(repository.GetItems(note.Id));
         Assert.Equal(note.Id, Assert.Single(repository.GetNotes(includeDeleted: true)).Id);
@@ -118,10 +118,10 @@ public sealed class RepositoryTests
         repository.Insert(archived);
         Assert.Empty(repository.GetItems(note.Id));
         Assert.Equal(archived, Assert.Single(repository.GetItems(note.Id, includeArchived: true)));
-        Assert.True(repository.SoftDelete(archived.Id, Now));
+        Assert.True(repository.SoftDelete(archived.Id, Now, HistoryDay.Parse("2026-11-15")));
         Assert.False(repository.Restore(archived.Id, Now.AddMinutes(1)));
-        Assert.False(repository.SoftDelete(NoteId.New(), Now));
-        Assert.False(repository.SoftDelete(ItemId.New(), Now));
+        Assert.False(repository.SoftDelete(NoteId.New(), Now, HistoryDay.Parse("2026-11-15")));
+        Assert.False(repository.SoftDelete(ItemId.New(), Now, HistoryDay.Parse("2026-11-15")));
         Assert.False(repository.Restore(NoteId.New(), Now));
         Assert.False(repository.Restore(ItemId.New(), Now));
     }
@@ -170,7 +170,7 @@ public sealed class RepositoryTests
         SealSnapshot(database);
         var repository = new NoteRepository(database);
         var note = Assert.Single(repository.GetNotes());
-        repository.SoftDelete(note.Id, Now);
+        repository.SoftDelete(note.Id, Now, HistoryDay.Parse("2026-11-15"));
         repository.Restore(note.Id, Now.AddMinutes(1));
         Assert.Equal(1L, database.Read(connection => Scalar(connection, "SELECT completed FROM snapshot_items;")));
         Assert.Equal(0L, database.Read(connection => Scalar(connection, "SELECT deleted FROM snapshot_items;")));

@@ -2,7 +2,7 @@ namespace DeskNodes.Core.Storage;
 
 internal static class Schema
 {
-    // All timestamps, including checkpoint high_water (latest observed UTC instant), are Unix milliseconds.
+    // Timestamps are Unix milliseconds; checkpoint high_water is the greatest observed business day.
     // Deferred foreign keys allow members before the header, but require the complete snapshot at commit.
     // Triggers protect headers and members, including INSERT OR REPLACE with recursive_triggers disabled.
     public const string Version1 = """
@@ -47,7 +47,11 @@ internal static class Schema
                 AND active_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
                 AND substr(active_day,1,4) BETWEEN '0001' AND '9999'
                 AND date(active_day, '+0 days') IS NOT NULL AND date(active_day, '+0 days') = active_day),
-            high_water INTEGER NOT NULL
+            high_water TEXT NOT NULL CHECK (length(high_water) = 10
+                AND high_water GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                AND substr(high_water,1,4) BETWEEN '0001' AND '9999'
+                AND date(high_water, '+0 days') IS NOT NULL AND date(high_water, '+0 days') = high_water),
+            CHECK (high_water >= active_day)
         );
         CREATE TABLE business_settings (
             singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
@@ -107,11 +111,19 @@ internal static class Schema
         );
         CREATE TABLE pending_deleted_notes (
             note_id TEXT NOT NULL PRIMARY KEY REFERENCES notes(id),
-            deleted_at INTEGER NOT NULL
+            deleted_at INTEGER NOT NULL,
+            day TEXT NOT NULL CHECK (length(day) = 10
+                AND day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                AND substr(day,1,4) BETWEEN '0001' AND '9999'
+                AND date(day, '+0 days') IS NOT NULL AND date(day, '+0 days') = day)
         );
         CREATE TABLE pending_deleted_items (
             item_id TEXT NOT NULL PRIMARY KEY REFERENCES items(id),
-            deleted_at INTEGER NOT NULL
+            deleted_at INTEGER NOT NULL,
+            day TEXT NOT NULL CHECK (length(day) = 10
+                AND day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                AND substr(day,1,4) BETWEEN '0001' AND '9999'
+                AND date(day, '+0 days') IS NOT NULL AND date(day, '+0 days') = day)
         );
         CREATE TRIGGER snapshots_no_update BEFORE UPDATE ON snapshots
         BEGIN SELECT RAISE(ABORT, 'Snapshots are immutable'); END;

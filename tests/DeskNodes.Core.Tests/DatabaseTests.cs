@@ -1,3 +1,4 @@
+using DeskNodes.Core.Domain;
 using DeskNodes.Core.Storage;
 using Microsoft.Data.Sqlite;
 using static DeskNodes.Core.Tests.TestData;
@@ -212,7 +213,7 @@ public sealed class DatabaseTests
         var note = Note();
         repository.Insert(note);
         repository.Insert(Item(note.Id));
-        repository.SoftDelete(note.Id, Now);
+        repository.SoftDelete(note.Id, Now, HistoryDay.Parse("2026-11-15"));
         database.Transaction(connection =>
         {
             Execute(connection, "INSERT INTO snapshot_notes SELECT '2026-11-14', n.*, 1 FROM notes n;");
@@ -244,9 +245,9 @@ public sealed class DatabaseTests
         using var directory = new TestDirectory();
         using var database = directory.Open();
         database.Transaction(connection => Execute(connection,
-            "INSERT INTO checkpoint VALUES(1,'2026-11-15',1000); UPDATE business_settings SET rollover_minutes=0;"));
+            "INSERT INTO checkpoint VALUES(1,'2026-11-15','2026-11-15'); UPDATE business_settings SET rollover_minutes=0;"));
         Assert.Throws<SqliteException>(() => database.Transaction(connection => Execute(connection,
-            "INSERT INTO checkpoint VALUES(2,'2026-11-15',1000);")));
+            "INSERT INTO checkpoint VALUES(2,'2026-11-15','2026-11-15');")));
         Assert.Throws<SqliteException>(() => database.Transaction(connection => Execute(connection,
             "UPDATE business_settings SET rollover_minutes=1440;")));
         Assert.Throws<SqliteException>(() => database.Transaction(connection => Execute(connection,

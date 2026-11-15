@@ -3,10 +3,10 @@ using Microsoft.Data.Sqlite;
 
 namespace DeskNodes.Core.Storage;
 
-/// <summary>All operations run synchronously in the database transaction scope. Times use UTC Unix milliseconds.</summary>
+/// <summary>Queries use serialized reads; writes use transactions. Times use UTC Unix milliseconds.</summary>
 public sealed class NoteRepository(DeskNodesDatabase database)
 {
-    public IReadOnlyList<Note> GetNotes(bool includeDeleted = false) => database.Transaction(connection =>
+    public IReadOnlyList<Note> GetNotes(bool includeDeleted = false) => database.Read(connection =>
     {
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT * FROM notes" + (includeDeleted ? "" : " WHERE deleted_at IS NULL") +
@@ -19,7 +19,7 @@ public sealed class NoteRepository(DeskNodesDatabase database)
     });
 
     public IReadOnlyList<NoteItem> GetItems(NoteId noteId, bool includeDeleted = false, bool includeArchived = false)
-        => database.Transaction(connection =>
+        => database.Read(connection =>
     {
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT i.* FROM items i JOIN notes n ON n.id = i.note_id WHERE i.note_id = $note_id" +
@@ -111,32 +111,35 @@ public sealed class NoteRepository(DeskNodesDatabase database)
         });
     }
 
-    public bool SoftDelete(NoteId id, DateTimeOffset at) => database.Transaction(connection =>
+    /// <summary>Records the deletion day at write time so later time-zone/settings changes cannot reassign it.</summary>
+    public bool SoftDelete(NoteId id, DateTimeOffset at, HistoryDay day) => database.Transaction(connection =>
     {
         long timestamp = at.ToUnixTimeMilliseconds();
+        HistoryDay deletionDay = day;
         int changed = Execute(connection,
-            "UPDATE notes SET deleted_at=$at, updated_at=$at WHERE id=$id AND deleted_at IS NULL;", id.ToString(), timestamp);
+            "UPDATE notes SET deleted_at=$at, updated_at=$at WHERE id=$id AND deleted_at IS NULL;", id.ToString(), timestamp, deletionDay);
         if (changed == 0)
             return false;
-        Execute(connection, "INSERT INTO pending_deleted_notes(note_id,deleted_at) VALUES($id,$at) " +
-            "ON CONFLICT(note_id) DO UPDATE SET deleted_at=excluded.deleted_at;", id.ToString(), timestamp);
-        Execute(connection, "INSERT INTO pending_deleted_items(item_id,deleted_at) " +
-            "SELECT id,$at FROM items WHERE note_id=$id AND deleted_at IS NULL AND archived_day IS NULL " +
-            "ON CONFLICT(item_id) DO UPDATE SET deleted_at=excluded.deleted_at;", id.ToString(), timestamp);
+        Execute(connection, "INSERT INTO pending_deleted_notes(note_id,deleted_at,day) VALUES($id,$at,$day) " +
+            "ON CONFLICT(note_id) DO UPDATE SET deleted_at=excluded.deleted_at,day=excluded.day;", id.ToString(), timestamp, deletionDay);
+        Execute(connection, "INSERT INTO pending_deleted_items(item_id,deleted_at,day) " +
+            "SELECT id,$at,$day FROM items WHERE note_id=$id AND deleted_at IS NULL AND archived_day IS NULL " +
+            "ON CONFLICT(item_id) DO UPDATE SET deleted_at=excluded.deleted_at,day=excluded.day;", id.ToString(), timestamp, deletionDay);
         Execute(connection, "UPDATE items SET deleted_at=$at, updated_at=$at " +
-            "WHERE note_id=$id AND deleted_at IS NULL AND archived_day IS NULL;", id.ToString(), timestamp);
+            "WHERE note_id=$id AND deleted_at IS NULL AND archived_day IS NULL;", id.ToString(), timestamp, deletionDay);
         return true;
     });
 
-    public bool SoftDelete(ItemId id, DateTimeOffset at) => database.Transaction(connection =>
+    public bool SoftDelete(ItemId id, DateTimeOffset at, HistoryDay day) => database.Transaction(connection =>
     {
         long timestamp = at.ToUnixTimeMilliseconds();
+        HistoryDay deletionDay = day;
         int changed = Execute(connection,
-            "UPDATE items SET deleted_at=$at, updated_at=$at WHERE id=$id AND deleted_at IS NULL;", id.ToString(), timestamp);
+            "UPDATE items SET deleted_at=$at, updated_at=$at WHERE id=$id AND deleted_at IS NULL;", id.ToString(), timestamp, deletionDay);
         if (changed == 0)
             return false;
-        Execute(connection, "INSERT INTO pending_deleted_items(item_id,deleted_at) VALUES($id,$at) " +
-            "ON CONFLICT(item_id) DO UPDATE SET deleted_at=excluded.deleted_at;", id.ToString(), timestamp);
+        Execute(connection, "INSERT INTO pending_deleted_items(item_id,deleted_at,day) VALUES($id,$at,$day) " +
+            "ON CONFLICT(item_id) DO UPDATE SET deleted_at=excluded.deleted_at,day=excluded.day;", id.ToString(), timestamp, deletionDay);
         return true;
     });
 
@@ -168,12 +171,13 @@ public sealed class NoteRepository(DeskNodesDatabase database)
         return changed != 0;
     });
 
-    private static int Execute(SqliteConnection connection, string sql, string id, long timestamp)
+    private static int Execute(SqliteConnection connection, string sql, string id, long timestamp, HistoryDay? day = null)
     {
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$at", timestamp);
+        command.Parameters.AddWithValue("$day", day?.ToString() ?? (object)DBNull.Value);
         return command.ExecuteNonQuery();
     }
 
