@@ -152,6 +152,10 @@ internal sealed partial class NoteWindow
         if (e.Handled || (Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
         switch (e.Key)
         {
+            case Key.OemComma:
+                app.OpenSettings();
+                e.Handled = true;
+                break;
             case Key.N:
                 app.Run(app.CreateNote);
                 break;

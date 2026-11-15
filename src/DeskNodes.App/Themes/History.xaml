@@ -135,7 +135,6 @@
         <Setter Property="MinWidth" Value="900"/>
         <Setter Property="MinHeight" Value="656"/>
     </Style>
-    <local:HistoryBrushConverter x:Key="HistoryBrush"/>
     <Style TargetType="TextBox" x:Key="HistoryTextBox">
         <Setter Property="IsReadOnly" Value="True"/>
         <Setter Property="TextWrapping" Value="Wrap"/>
@@ -246,7 +245,7 @@
     <ControlTemplate TargetType="Button" x:Key="HistoryDayControlTemplate">
         <Grid>
             <Border
-                Background="{Binding ShadeKey, Converter={StaticResource HistoryBrush}}"
+                local:HistoryResources.BackgroundKey="{Binding ShadeKey}"
                 Opacity="{Binding Opacity}"
                 Style="{StaticResource HistoryDayShade}"/>
             <Border
@@ -333,7 +332,7 @@
         <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
     </Style>
     <DataTemplate x:Key="DeletedEntry">
-        <Border Background="{Binding ColorKey, Converter={StaticResource HistoryBrush}}" Style="{StaticResource HistoryDeletedCard}">
+        <Border local:HistoryResources.BackgroundKey="{Binding ColorKey}" Style="{StaticResource HistoryDeletedCard}">
             <StackPanel>
                 <DockPanel>
                     <Button
@@ -371,7 +370,7 @@
     </DataTemplate>
     <DataTemplate x:Key="HistoryNoteTemplate">
         <StackPanel Style="{StaticResource HistoryNoteSpacing}">
-            <Border Background="{Binding ColorKey, Converter={StaticResource HistoryBrush}}" Style="{StaticResource HistoryNoteTitleBar}">
+            <Border local:HistoryResources.BackgroundKey="{Binding ColorKey}" Style="{StaticResource HistoryNoteTitleBar}">
                 <DockPanel>
                     <TextBlock
                         Text="已删除"

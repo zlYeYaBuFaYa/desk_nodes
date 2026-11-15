@@ -26,7 +26,53 @@ internal sealed class AppCoordinator
     private DispatcherTimer? timer;
     private ToolbarWindow? toolbar;
     private System.Drawing.Icon? trayIcon;
-    public bool SettingsVisible => false;
+    private SettingsWindow? settingsWindow;
+    public bool SettingsVisible => settingsWindow?.IsVisible == true;
+    public event EventHandler? PreferencesChanged;
+    public string LastError { get; private set; } = "";
+    public event EventHandler? ErrorChanged;
+    public void RecordError(string message)
+    {
+        LastError = message;
+        ErrorChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public void OpenSettings()
+    {
+        if (settingsWindow is null)
+        {
+            settingsWindow = new(this);
+            settingsWindow.Closed += (_, _) =>
+            {
+                settingsWindow = null;
+                toolbar?.InputChanged();
+            };
+        }
+        settingsWindow.Show();
+        settingsWindow.Activate();
+        toolbar?.InputChanged();
+    }
+    public int RolloverMinutes => database!.Read(connection =>
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT rollover_minutes FROM business_settings WHERE singleton=1";
+        return Convert.ToInt32(command.ExecuteScalar());
+    });
+    public void SetRolloverMinutes(int minutes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(minutes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(minutes, 1439);
+        database!.Transaction(connection =>
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE business_settings SET rollover_minutes=$minutes WHERE singleton=1";
+            command.Parameters.AddWithValue("$minutes", minutes);
+            command.ExecuteNonQuery();
+        });
+        var result = rollover.CheckAndAdvance();
+        if (result.Status == RolloverStatus.Failed) throw new InvalidOperationException("跨天处理失败，将自动重试。");
+        Refresh();
+        historyWindow?.Reload();
+    }
     public bool TrayMenuOpen { get; private set; }
     public bool Raised { get; private set; }
     public int NoteCount => windows.Count;
@@ -190,8 +236,18 @@ internal sealed class AppCoordinator
     public void ShowToolbar() => toolbar?.RestoreExpanded();
     public void SavePreferences(LocalPreferences value)
     {
+        value = value.Normalize();
+        bool typographyChanged = value.Font != Preferences.Font || value.TextSize != Preferences.TextSize;
+        if (typographyChanged && Editors.TryCommitPending() != CommitResult.Committed)
+            throw new InvalidOperationException("请先结束组词或完成当前编辑，再切换字体和字号。");
+        if (typographyChanged && !new Themes.NoteFonts().Resolve(value.Font).Available)
+            throw new InvalidOperationException(value.Font == NoteFont.Wenkai ? "此版本未包含文楷字体，请选择其他字体。" : "所选字体未安装。");
         preferencesStore.Save(value);
         Preferences = value;
+        if (typographyChanged)
+            foreach (var window in windows.Values) window.RefreshTypography();
+        PreferencesChanged?.Invoke(this, EventArgs.Empty);
+        RefreshTheme();
         toolbar?.Rebuild();
         toolbar?.InputChanged();
         RefreshVisibility();
@@ -337,13 +393,10 @@ internal sealed class AppCoordinator
 
     public void ChangeSize(int delta, bool reset = false) => Run(() =>
     {
-        Preferences = Preferences with
+        SavePreferences(Preferences with
         {
             TextSize = reset ? NoteTextSize.Standard : (NoteTextSize)Math.Clamp((int)Preferences.TextSize + delta, 0, 3)
-        };
-        preferencesStore.Save(Preferences);
-        foreach (var window in windows.Values)
-            window.RefreshTypography();
+        });
     });
     public void Update(Note note, NoteColor? color = null, NoteLevel? level = null, Placement? placement = null,
         bool? automatic = null, bool? collapsed = null, RectD? free = null, bool clearFree = false)
@@ -399,6 +452,7 @@ internal sealed class AppCoordinator
     public void Stop()
     {
         timer?.Stop();
+        settingsWindow?.Close();
         historyWindow?.Close();
         Presentation?.Dispose();
         toolbar?.Close();

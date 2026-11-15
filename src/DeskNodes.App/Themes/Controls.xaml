@@ -124,14 +124,15 @@
         </Style.Triggers>
     </Style>
     <Style TargetType="ContextMenu">
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuBrushKey}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
+        <Setter Property="Background" Value="{DynamicResource AppBackground}"/>
+        <Setter Property="Foreground" Value="{DynamicResource AppForeground}"/>
         <Setter Property="Padding" Value="4"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI"/>
     </Style>
     <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{DynamicResource AppForeground}"/>
         <Setter Property="Padding" Value="10,5"/>
         <Setter Property="MinHeight" Value="28"/>
         <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>

@@ -5,6 +5,6 @@ public readonly record struct ThemeState(bool EffectiveDark, bool TransparencyEn
 public static class ThemeRules
 {
     public static ThemeState Resolve(Appearance appearance, bool systemDark, bool transparencyEnabled, bool highContrast, bool remoteSession) =>
-        new(appearance == Appearance.Dark || appearance == Appearance.System && systemDark,
+        new(appearance == Appearance.Dark || (!Enum.IsDefined(appearance) || appearance == Appearance.System) && systemDark,
             transparencyEnabled, highContrast, highContrast || !transparencyEnabled || remoteSession);
 }

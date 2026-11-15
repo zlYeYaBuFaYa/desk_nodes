@@ -287,6 +287,7 @@ internal sealed class PresentationCoordinator : IDisposable
     }
     public void Error(string message)
     {
+        app.RecordError(message);
         errorBar ??= new(false, () => { });
         errorBar.HideAction();
         errorBar.Model.Message = message;

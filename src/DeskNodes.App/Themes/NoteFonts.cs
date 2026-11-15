@@ -9,7 +9,6 @@ internal sealed class NoteFonts : INoteFontAvailability
     private readonly Dictionary<string, FontFamily> families = Fonts.SystemFontFamilies
         .GroupBy(f => f.Source, StringComparer.OrdinalIgnoreCase)
         .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-    // W9 will supply this resource directory. Merely having a system WenKai does not mean it was bundled.
     private static readonly Uri ApplicationUri = new("pack://application:,,,/");
     private readonly FontFamily? wenkai = FindWenkai();
     private static FontFamily? FindWenkai()
@@ -26,7 +25,7 @@ internal sealed class NoteFonts : INoteFontAvailability
     {
         var mapping = NoteFontRules.Resolve(font, IsAvailable);
         if (font == NoteFont.Wenkai && mapping.Available && wenkai is not null)
-            return mapping with { Family = wenkai.Source, TitleWeight = wenkai.GetTypefaces().Any(t => t.Weight == FontWeights.Medium) ? "Medium" : "Normal" };
+            return mapping with { Family = "pack://application:,,,/DeskNodes.App;component/Resources/Fonts/#LXGW WenKai", TitleWeight = wenkai.GetTypefaces().Any(t => t.Weight == FontWeights.Medium) ? "Medium" : "Normal" };
         return mapping;
     }
 }

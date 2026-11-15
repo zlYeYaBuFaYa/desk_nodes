@@ -32,7 +32,7 @@ public sealed class NoteTypographyTests
     [Fact]
     public void SongCanUseNewSongAndDefaultRequiresNoOptionalFont()
     {
-        Assert.Equal("Georgia, NSimSun", NoteFontRules.Resolve(NoteFont.Song, name => name == "NSimSun").Family);
+        Assert.Equal("Sitka Text, Georgia, NSimSun", NoteFontRules.Resolve(NoteFont.Song, name => name == "NSimSun").Family);
         Assert.True(NoteFontRules.Resolve(NoteFont.Default, _ => false).Available);
     }
     [Theory]

@@ -8,6 +8,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Themes/Palette.xaml"/>
                 <ResourceDictionary Source="Themes/Controls.xaml"/>
+                <ResourceDictionary Source="Themes/Settings.xaml"/>
                 <ResourceDictionary Source="Themes/Toolbar.xaml"/>
                 <ResourceDictionary Source="Themes/History.xaml"/>
             </ResourceDictionary.MergedDictionaries>

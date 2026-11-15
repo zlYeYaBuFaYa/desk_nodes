@@ -86,6 +86,7 @@ internal sealed class AppMenus(AppCoordinator app)
         menu.Items.Add(Command("选择便签…", () => app.Presentation.EnterSelection(), enabled: app.NoteCount > 0));
         menu.Items.Add(toolbar);
         menu.Items.Add(new Separator());
+        menu.Items.Add(Command("设置…", app.OpenSettings));
         menu.Items.Add(Command("退出 DeskNodes", app.Exit));
         return menu;
     }
@@ -141,6 +142,7 @@ internal sealed class AppMenus(AppCoordinator app)
         deletedItem.Enabled = deleted.Enabled;
         menu.Items.Add(history);
         menu.Items.Add(new Forms.ToolStripSeparator());
+        Add("设置…", app.OpenSettings);
         Add("退出 DeskNodes", app.Exit);
     }
 }

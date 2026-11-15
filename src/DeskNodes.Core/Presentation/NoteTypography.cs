@@ -18,8 +18,8 @@ public static class NoteFontRules
     public static NoteFontMapping Resolve(NoteFont font, Func<string, bool> installed) => font switch
     {
         NoteFont.Rounded when installed("YouYuan") => new("Segoe UI, YouYuan", "Bold", true),
-        NoteFont.Song when installed("SimSun") => new("Georgia, SimSun", "Bold", true),
-        NoteFont.Song when installed("NSimSun") => new("Georgia, NSimSun", "Bold", true),
+        NoteFont.Song when installed("SimSun") => new("Sitka Text, Georgia, SimSun", "Bold", true),
+        NoteFont.Song when installed("NSimSun") => new("Sitka Text, Georgia, NSimSun", "Bold", true),
         NoteFont.Wenkai when installed("LXGW WenKai") => new("LXGW WenKai", "Medium", true),
         NoteFont.Default => new(DefaultFamily, "SemiBold", true),
         _ => new(DefaultFamily, "SemiBold", false)

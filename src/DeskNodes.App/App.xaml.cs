@@ -1,5 +1,4 @@
 using System.Windows;
-using System.ComponentModel;
 
 namespace DeskNodes.App;
 
@@ -8,30 +7,13 @@ public partial class App : System.Windows.Application
     private readonly AppCoordinator coordinator = new();
     private Platform.SingleInstance? instance;
 
-    private ResourceDictionary? highContrast;
-
-    private void UpdatePalette()
-    {
-        if (highContrast is not null)
-            Resources.MergedDictionaries.Remove(highContrast);
-        highContrast = SystemParameters.HighContrast
-            ? new ResourceDictionary { Source = new Uri("Themes/HighContrast.xaml", UriKind.Relative) }
-            : null;
-        if (highContrast is not null)
-            Resources.MergedDictionaries.Add(highContrast);
-    }
-
-    private void SystemParametersChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(SystemParameters.HighContrast))
-            Dispatcher.BeginInvoke(UpdatePalette);
-    }
+    internal Themes.ThemeService Theme { get; private set; } = null!;
+    internal void RefreshAppearance() => Theme.Refresh();
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        UpdatePalette();
-        SystemParameters.StaticPropertyChanged += SystemParametersChanged;
+        Theme = new(() => coordinator.Preferences.Appearance, Dispatcher, Resources);
         try
         {
             instance = new(Core.Storage.DataDirectory.Resolve());
@@ -49,6 +31,8 @@ public partial class App : System.Windows.Application
                 return;
             }
             coordinator.Start();
+            coordinator.PreferencesChanged += (_, _) => Theme.Refresh();
+            Theme.Refresh();
             _ = instance.ListenAsync(() => Dispatcher.BeginInvoke(coordinator.ShowToolbar),
                 error => coordinator.Log.Error("单实例恢复入口通信失败。", error));
         }
@@ -64,7 +48,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        SystemParameters.StaticPropertyChanged -= SystemParametersChanged;
+        Theme?.Dispose();
         coordinator.Stop();
         instance?.Dispose();
         base.OnExit(e);

@@ -14,4 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="../DeskNodes.Core/DeskNodes.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources/Fonts/*" Condition="Exists('Resources/Fonts')" />
+  </ItemGroup>
 </Project>

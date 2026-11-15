@@ -49,7 +49,7 @@ internal partial class ToolbarWindow : Window
         timeOrigin = app.Clock.UtcNow;
         InitializeComponent();
         DataContext = model;
-        theme = new(() => app.Preferences.Appearance, Dispatcher);
+        theme = ((App)Application.Current).Theme;
         theme.Changed += ThemeChanged;
         entranceHit.PlacementTarget = this;
         stackHint.PlacementTarget = this;
@@ -88,12 +88,12 @@ internal partial class ToolbarWindow : Window
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) CancelDrag();
+            if (e.Key == Key.OemComma && Keyboard.Modifiers == ModifierKeys.Control) app.OpenSettings();
         };
         PreviewMouseRightButtonUp += OpenMenu;
         Closed += (_, _) =>
         {
             theme.Changed -= ThemeChanged;
-            theme.Dispose();
             wake.Stop();
             frames.Stop();
             dragWatch.Stop();
@@ -112,7 +112,12 @@ internal partial class ToolbarWindow : Window
     {
         if (message == NativeMethods.WM_ACTIVATEAPP && wParam == 0) app.Presentation.Deactivated();
         if ((uint)message == taskbarMessage) app.RebuildTray();
-        if (message == NativeMethods.WM_SETTINGCHANGE) theme.Refresh();
+        if (message == NativeMethods.WM_SETTINGCHANGE)
+        {
+            theme.Refresh();
+            ((App)Application.Current).RefreshAppearance();
+            app.RefreshTheme();
+        }
         return 0;
     }
     public void InputChanged() => Tick();
@@ -128,13 +133,6 @@ internal partial class ToolbarWindow : Window
     private void ApplyMaterial()
     {
         bool dark = theme.EffectiveDark;
-        foreach (string key in new[] { "ToolbarBackground", "ToolbarForeground", "ToolbarSecondary", "ToolbarDisabled", "ToolbarBorder", "ToolbarHover" })
-        {
-            Resources.Remove(key);
-            if (theme.HighContrast)
-                Resources[key] = key is "ToolbarBackground" ? SystemColors.WindowBrush : key is "ToolbarHover" ? SystemColors.HighlightBrush : SystemColors.WindowTextBrush;
-            else if (dark) Resources[key] = FindResource(key + "Dark");
-        }
         int kind = dark ? 3 : 2;
         if (theme.SolidFallback) kind = 1;
         if (Environment.OSVersion.Version.Build < 22621)
