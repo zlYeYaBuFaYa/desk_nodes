@@ -1,0 +1,16 @@
+<Window x:Class="DeskNodes.App.Views.DockOverflowWindow" x:ClassModifier="internal"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False" SizeToContent="Manual"
+ Background="{DynamicResource Paper}" Foreground="{DynamicResource Body}" AutomationProperties.Name="停靠溢出便签与分页">
+ <Border Padding="4" BorderThickness="1" BorderBrush="{DynamicResource ToolbarBorder}" CornerRadius="8">
+  <Grid>
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <DockPanel><Button Style="{StaticResource PresentationAction}" Content="‹" Click="Previous" AutomationProperties.Name="上一停靠页"/><Button Style="{StaticResource PresentationAction}" Content="›" DockPanel.Dock="Right" Click="Next" AutomationProperties.Name="下一停靠页"/><TextBlock Text="{Binding PageText}" VerticalAlignment="Center" TextAlignment="Center"/></DockPanel>
+   <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+    <ItemsControl ItemsSource="{Binding Entries}"><ItemsControl.ItemTemplate><DataTemplate>
+     <Button Style="{StaticResource PresentationAction}" Content="{Binding Title}" Tag="{Binding Id}" Click="Reveal" Margin="0,2" Padding="3" AutomationProperties.Name="{Binding Title}"/>
+    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+   </ScrollViewer>
+  </Grid>
+ </Border>
+</Window>

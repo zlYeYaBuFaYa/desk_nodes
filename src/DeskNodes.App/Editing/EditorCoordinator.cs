@@ -24,6 +24,7 @@ internal sealed class EditorCoordinator(IDeskNodesLog log) : ICommitBarrier, IDi
     }
     private readonly Dictionary<TextBox, Owner> owners = [];
     public event EventHandler? TextInput;
+    public event EventHandler? SaveFailed;
     public bool HasComposition => owners.Values.Any(o => o.Composing);
     public CommitResult Status { get; private set; } = CommitResult.Committed;
     public Owner Register(TextBox editor, string id, Action<string> save)
@@ -69,7 +70,13 @@ internal sealed class EditorCoordinator(IDeskNodesLog log) : ICommitBarrier, IDi
             if (revision == owner.Revision) owner.Committed = text;
             Status = CommitResult.Committed; return true;
         }
-        catch (Exception ex) { Status = CommitResult.Failed; log.Error($"保存编辑失败：{owner.Id}，保留缓冲。", ex); return false; }
+        catch (Exception ex)
+        {
+            Status = CommitResult.Failed;
+            SaveFailed?.Invoke(this, EventArgs.Empty);
+            log.Error($"保存编辑失败：{owner.Id}，保留缓冲。", ex);
+            return false;
+        }
     }
     public CommitResult TryCommitPending()
     {

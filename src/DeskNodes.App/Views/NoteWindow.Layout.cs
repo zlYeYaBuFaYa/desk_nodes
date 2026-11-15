@@ -34,11 +34,7 @@ internal sealed partial class NoteWindow
         {
             applicationActive = wParam != 0;
             UpdateSelection();
-            if (!applicationActive && !app.Editors.HasComposition)
-            {
-                if (levels is not null) levels.TemporarilyRaised = false;
-                levels?.Apply(true);
-            }
+            if (!applicationActive) app.Presentation.Deactivated();
         }
         app.Screens.NotifyWindowMessage(message);
         return 0;
@@ -48,7 +44,12 @@ internal sealed partial class NoteWindow
     private bool applicationActive = true;
     private void Drag(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed || app.Editors.HasComposition || note.Placement.DockEdge is not null) return;
+        if (e.ButtonState != MouseButtonState.Pressed || app.Editors.HasComposition || app.Presentation.Selecting) return;
+        if (note.Placement.DockEdge is not null)
+        {
+            BeginDockDrag(e);
+            return;
+        }
         DragMove();
         app.Run(() => SaveBounds(false));
         e.Handled = true;
@@ -72,7 +73,7 @@ internal sealed partial class NoteWindow
         RectD target = new(screen.Bounds.X + r.X, screen.Bounds.Y + r.Y, r.Width, r.Height);
         if (placement.DockEdge is { } edge)
         {
-            var dock = DockLayout.Arrange(screen, edge, app.Repository.GetNotes().Where(n => n.Placement.DockEdge == edge && screens.Resolve(n.Placement.DisplayDeviceHint).Id == screen.Id).Select(n => new DockItem(n.Id, n.Placement.DockOrder ?? 0, n.Collapsed ? 32 : n.Placement.Bounds.Height)), ToolbarGeometry.Home(screens, screen, app.Preferences.Home).HitZone);
+            var dock = app.Presentation.Dock(screen, edge);
             var entry = dock.Visible.FirstOrDefault(n => n.Id == note.Id);
             if (entry is not null) target = entry.Bounds;
         }

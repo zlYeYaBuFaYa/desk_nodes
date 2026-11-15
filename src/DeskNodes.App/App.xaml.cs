@@ -37,7 +37,14 @@ public partial class App : System.Windows.Application
             instance = new(Core.Storage.DataDirectory.Resolve());
             if (!instance.IsFirst)
             {
-                instance.SignalAsync().GetAwaiter().GetResult();
+                try
+                {
+                    instance.SignalAsync().GetAwaiter().GetResult();
+                }
+                catch (Exception exception) when (exception is System.IO.IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException)
+                {
+                    MessageBox.Show("DeskNodes 已在运行，但无法唤起工具条（可从托盘打开）。", "DeskNodes", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
                 Shutdown();
                 return;
             }

@@ -17,6 +17,9 @@ namespace DeskNodes.App;
 
 internal sealed class AppCoordinator
 {
+    public PresentationCoordinator Presentation { get; private set; } = null!;
+    public IReadOnlyDictionary<NoteId, NoteWindow> Windows => windows;
+    public RectD CollapseEntrance => toolbar?.EntranceBounds ?? ToolbarGeometry.ResolveAnchor(Screens.GetScreens(), Preferences, Preferences.Orientation, false);
     private DeskNodesDatabase? database;
     private Forms.NotifyIcon? tray;
     private Forms.ContextMenuStrip? trayMenu;
@@ -60,6 +63,8 @@ internal sealed class AppCoordinator
         Screens = new();
         rollover = new(database, clock, Editors, new(database, DataDirectoryPath, Log), Log);
         rollover.CheckAndAdvance();
+        Presentation = new(this);
+        Editors.SaveFailed += (_, _) => Presentation.Error("保存失败，请重试；编辑内容已保留。");
         Refresh();
         Screens.Changed += (_, _) => Refresh();
         History = new(database);
@@ -97,7 +102,10 @@ internal sealed class AppCoordinator
         };
         timer.Tick += (_, _) =>
         {
-            if (rollover.CheckAndAdvance().Status == RolloverStatus.Sealed) Refresh();
+            var result = rollover.CheckAndAdvance();
+            if (result.Status == RolloverStatus.Sealed) Refresh();
+            if (result.Status == RolloverStatus.Failed) Presentation.Error("跨天处理失败，当前内容已保留。稍后将重试。");
+            Presentation.Refresh();
         };
         timer.Start();
     }
@@ -162,23 +170,35 @@ internal sealed class AppCoordinator
         RefreshVisibility();
     }
     public void Exit() => Application.Current.Shutdown();
-    public void ToggleCollapsed()
+    public void ToggleCollapsed() => Presentation.Collapse(!Preferences.DeskCollapsed);
+    public void EndRaised()
     {
         Raised = false;
-        foreach (var window in windows.Values) window.SetTemporarilyRaised(false);
-        SavePreferences(Preferences with { DeskCollapsed = !Preferences.DeskCollapsed });
+        foreach (var window in windows.Values) window.SetTemporarilyRaised(Presentation.Selecting);
+        toolbar?.Rebuild();
     }
     public void ToggleRaised()
     {
-        Raised = !Raised;
-        if (Raised && Preferences.DeskCollapsed) SavePreferences(Preferences with { DeskCollapsed = false });
-        foreach (var window in windows.Values) window.SetTemporarilyRaised(Raised);
+        Presentation.ExitSelection();
+        if (Raised)
+        {
+            EndRaised();
+            return;
+        }
+        if (Preferences.DeskCollapsed) Presentation.Collapse(false);
+        Raised = true;
+        Presentation.Refresh();
+        var target = windows.Values.FirstOrDefault(w => w.IsVisible && w.IsSelected) ?? windows.Values.FirstOrDefault(w => w.IsVisible);
+        if (target is not null && !NativeMethods.SetForegroundWindow(new WindowInteropHelper(target).Handle))
+            Presentation.Error("点击便签继续");
         toolbar?.Rebuild();
     }
     public void Arrange()
     {
+        Presentation.ExitSelection();
         var screens = Screens.GetScreens();
         var notes = Repository.GetNotes();
+        var previousBounds = windows.ToDictionary(p => p.Key, p => p.Value.Bounds);
         var arrangement = Arranger.Arrange(screens, notes, (note, width) => windows[note.Id].MeasureForArrangement(width),
             ToolbarGeometry.ResolveAnchor(screens, Preferences, Preferences.Orientation, Preferences.Pages.Values.Any(p => p > 0)),
             ToolbarGeometry.AnchorScreen(screens, Preferences).Id);
@@ -194,28 +214,15 @@ internal sealed class AppCoordinator
         SavePreferences(Preferences with { DeskCollapsed = false, Page = 0,
             Pages = arrangement.Notes.ToImmutableDictionary(n => n.Id.ToString(), n => n.Page) });
         Refresh();
+        foreach (var pair in windows.Where(p => p.Value.IsVisible)) pair.Value.ArrangeFrom(previousBounds[pair.Key]);
     }
     public void ChangePage(int delta)
     {
+        Presentation.ExitSelection();
         int pages = Preferences.Pages.Values.DefaultIfEmpty().Max() + 1;
         SavePreferences(Preferences with { Page = (Preferences.Page + delta + pages) % pages });
     }
-    private void RefreshVisibility()
-    {
-        var notes = Repository.GetNotes();
-        foreach (var pair in windows)
-        {
-            var note = notes.FirstOrDefault(n => n.Id == pair.Key);
-            if (note is null) continue;
-            var screen = Screens.GetScreens().Resolve(note.Placement.DisplayDeviceHint);
-            int lastPage = notes.Where(n => Screens.GetScreens().Resolve(n.Placement.DisplayDeviceHint).Id == screen.Id)
-                .Select(n => Preferences.Pages.GetValueOrDefault(n.Id.ToString())).DefaultIfEmpty().Max();
-            bool visible = ToolbarRules.IsVisible(Preferences.DeskCollapsed,
-                Preferences.Pages.TryGetValue(pair.Key.ToString(), out int page) ? page : null, Preferences.Page, lastPage);
-            if (visible) pair.Value.Show();
-            else pair.Value.Hide();
-        }
-    }
+    private void RefreshVisibility() => Presentation.Refresh();
 
     public void Run(Action action)
     {
@@ -228,6 +235,7 @@ internal sealed class AppCoordinator
         catch (Exception ex)
         {
             Log.Error("操作失败，保留当前窗口与编辑缓冲。", ex);
+            Presentation.Error("操作失败，当前内容已保留。请重试。");
         }
     }
 
@@ -258,8 +266,7 @@ internal sealed class AppCoordinator
             {
                 window = new(this, note);
                 windows.Add(note.Id, window);
-                if (!Preferences.DeskCollapsed)
-                    window.Show();
+
             }
             else
                 window.RefreshNote(note);
@@ -275,6 +282,7 @@ internal sealed class AppCoordinator
 
     public void CreateNote()
     {
+        Presentation.ExitSelection();
         var screens = Screens.GetScreens();
         bool hasPaging = Preferences.Pages.Values.Any(page => page > 0);
         var toolbarTarget = ToolbarGeometry.ResolveAnchor(screens, Preferences, Preferences.Orientation, hasPaging);
@@ -318,6 +326,34 @@ internal sealed class AppCoordinator
         Refresh();
     }
 
+    public void ReorderDock(IReadOnlyList<Note> notes)
+    {
+        database!.Transaction(_ =>
+        {
+            for (int i = 0; i < notes.Count; i++)
+            {
+                var n = notes[i];
+                Repository.Update(new Note(n.Id, n.Title, n.Color, n.SortOrder,
+                    new(n.Placement.Bounds, n.Placement.DisplayDeviceHint, n.Placement.DockEdge, i),
+                    n.SavedLevel, n.FreeRestore, n.AutomaticHeight, n.Collapsed, n.CreatedAt, Clock.UtcNow));
+            }
+        });
+        Refresh();
+    }
+
+    public void DeleteNotes(IEnumerable<NoteId> ids)
+    {
+        Undo.DeleteNotes(ids);
+        Presentation.ExitSelection();
+        NewInputSinceDeletion = false;
+        Refresh();
+    }
+    public void UndoDeletion()
+    {
+        Undo.Undo(Clock.UtcNow);
+        Refresh();
+    }
+
     public void DeleteItem(ItemId id)
     {
         Undo.DeleteItem(id);
@@ -335,6 +371,7 @@ internal sealed class AppCoordinator
     public void Stop()
     {
         timer?.Stop();
+        Presentation?.Dispose();
         toolbar?.Close();
         tray?.Dispose();
         trayIcon?.Dispose();

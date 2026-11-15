@@ -23,6 +23,7 @@ internal sealed partial class NoteWindow : Window
     private bool placing;
     private bool removing;
     private bool selected;
+    public bool IsSelected => selected;
     private bool initialized;
     private int openMenus;
     public void SetTemporarilyRaised(bool raised)
@@ -58,10 +59,14 @@ internal sealed partial class NoteWindow : Window
         ContextMenu = new ContextMenu();
         ContextMenuOpening += OpenContextMenu;
         PreviewKeyDown += ContextMenuKeys;
-        PreviewMouseLeftButtonDown += (_, _) =>
+        PreviewMouseLeftButtonDown += (_, e) =>
         {
-            app.Select(this);
+            if (app.Presentation.Selecting || Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+                app.Presentation.BeginBox(this, note.Id, e);
+            else app.Select(this);
         };
+        PreviewMouseMove += (_, e) => app.Presentation.MoveBox(e);
+        PreviewMouseLeftButtonUp += (_, e) => app.Presentation.EndBox(e);
         Activated += (_, _) =>
         {
             app.Select(this);
@@ -86,7 +91,10 @@ internal sealed partial class NoteWindow : Window
             initialized = true;
             Place();
         };
-        Loaded += (_, _) => Animate(false);
+        Loaded += (_, _) =>
+        {
+            if (presentationGeneration == 0) Animate(false);
+        };
         Closing += (_, e) =>
         {
             if (!removing && !Application.Current.Dispatcher.HasShutdownStarted) e.Cancel = true;

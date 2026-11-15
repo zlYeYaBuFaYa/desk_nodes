@@ -22,4 +22,7 @@
     <SolidColorBrush x:Key="CompletionMark" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
     <SolidColorBrush x:Key="HoverPlate" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
     <SolidColorBrush x:Key="Divider" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="ToolbarBackground" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="ToolbarForeground" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="ToolbarBorder" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
 </ResourceDictionary>

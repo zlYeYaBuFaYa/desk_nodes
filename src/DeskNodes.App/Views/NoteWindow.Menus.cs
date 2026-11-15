@@ -80,6 +80,7 @@ internal sealed partial class NoteWindow
         Command(menu, "随内容", () => app.Update(Current(), automatic: true), note.AutomaticHeight);
         Command(menu, "添加事项", AddItem);
         menu.Items.Add(new Separator());
+        Command(menu, "选择多张…", () => app.Presentation.EnterSelection(note.Id));
         Command(menu, "删除", () => app.DeleteNote(note.Id));
     }
 

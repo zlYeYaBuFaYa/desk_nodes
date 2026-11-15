@@ -35,4 +35,6 @@
     <SolidColorBrush x:Key="ToolbarBorderDark" Color="#24FFFFFF"/>
     <SolidColorBrush x:Key="ToolbarHoverDark" Color="#12F2F4F6"/>
     <SolidColorBrush x:Key="ToolbarHitArea" Color="#01000000"/>
+    <SolidColorBrush x:Key="SelectionShade" Color="#1A000000"/>
+    <SolidColorBrush x:Key="SelectionFill" Color="{x:Static SystemColors.HighlightColor}" Opacity="0.14"/>
 </ResourceDictionary>

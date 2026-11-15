@@ -148,7 +148,8 @@ internal sealed partial class NoteWindow
     private void WindowKeys(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.ImeProcessed || app.Editors.HasComposition) return;
-        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
+        if (openMenus == 0) app.Presentation.Keys(e);
+        if (e.Handled || (Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
         switch (e.Key)
         {
             case Key.N:

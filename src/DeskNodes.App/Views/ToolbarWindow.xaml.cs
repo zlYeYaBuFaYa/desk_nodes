@@ -110,6 +110,7 @@ internal partial class ToolbarWindow : Window
     }
     private nint Message(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
+        if (message == NativeMethods.WM_ACTIVATEAPP && wParam == 0) app.Presentation.Deactivated();
         if ((uint)message == taskbarMessage) app.RebuildTray();
         if (message == NativeMethods.WM_SETTINGCHANGE) theme.Refresh();
         return 0;
@@ -202,12 +203,17 @@ internal partial class ToolbarWindow : Window
     private void Operate(Action command)
     {
         if (dragging || animating) return;
-        app.Run(command);
+        app.Run(() =>
+        {
+            app.Presentation.ExitSelection();
+            command();
+        });
         Tick(operated: true);
     }
     private RectD visibleBounds;
     private RectD animationBounds;
     private RectD Bounds => visibleBounds;
+    public RectD EntranceBounds => Bounds;
     private void Place(RectD rect)
     {
         visibleBounds = rect;

@@ -4,7 +4,7 @@ namespace DeskNodes.Core.Presentation;
 
 public sealed record DockItem(NoteId Id, int Order, double Height = 240);
 public sealed record DockedNote(NoteId Id, RectD Bounds);
-public sealed record DockResult(IReadOnlyList<DockedNote> Visible, IReadOnlyList<NoteId> Overflow, int Page, int PageCount);
+public sealed record DockResult(IReadOnlyList<DockedNote> Visible, IReadOnlyList<NoteId> Overflow, int Page, int PageCount, RectD? OverflowBounds);
 public static class DockLayout
 {
     public static DockResult Arrange(ScreenInfo screen, DockEdge edge, IEnumerable<DockItem> items,
@@ -28,6 +28,11 @@ public static class DockLayout
         double Length(DockItem i) => top ? Math.Min(220, w.Width) : Math.Min(Math.Clamp(i.Height, 120, 600), w.Height);
         double available = end - start;
         bool overflow = ordered.Sum(i => Length(i) + 12) - 12 > available;
+        double overflowLength = Math.Min(96, available);
+        RectD? overflowBounds = overflow
+            ? top ? new(end - overflowLength, w.Y, overflowLength, cross)
+                : new(edge == DockEdge.Left ? w.X : w.Right - cross, end - overflowLength, cross, overflowLength)
+            : null;
         if (overflow) available = Math.Max(0, available - 96);
         var groups = new List<List<DockItem>> { new() };
         double used = 0;
@@ -49,7 +54,7 @@ public static class DockLayout
             cursor += length + 12;
         }
         var ids = visible.Select(v => v.Id).ToHashSet();
-        return new(visible.AsReadOnly(), Array.AsReadOnly(ordered.Where(i => !ids.Contains(i.Id)).Select(i => i.Id).ToArray()), page, groups.Count);
+        return new(visible.AsReadOnly(), Array.AsReadOnly(ordered.Where(i => !ids.Contains(i.Id)).Select(i => i.Id).ToArray()), page, groups.Count, overflowBounds);
     }
     public static bool ShouldDetach(DockEdge edge, RectD workArea, PointD pointer) => edge switch
     {

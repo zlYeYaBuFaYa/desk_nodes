@@ -20,6 +20,9 @@ internal static partial class NativeMethods
     internal static partial uint RegisterWindowMessage(string name);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetCursorPos(out Point point);
+    [LibraryImport("user32.dll")] internal static partial nint GetForegroundWindow();
+    [LibraryImport("user32.dll")] internal static partial uint GetWindowThreadProcessId(nint window, out uint process);
+    [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool GetWindowRect(nint window, out Rect rect);
     internal const int GWL_EXSTYLE = -20;
     internal const int WS_EX_TOOLWINDOW = 0x80;
     internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;

@@ -13,6 +13,46 @@ public sealed class PresentationTests
             NoteLevel.Back, null, auto, collapsed, TestData.Now, TestData.Now);
     private static TimeSpan T(double seconds) => TimeSpan.FromSeconds(seconds);
 
+    [Theory]
+    [InlineData(DockEdge.Left, false, 8, 696, 288, 96)]
+    [InlineData(DockEdge.Right, false, 704, 696, 288, 96)]
+    [InlineData(DockEdge.Top, false, 896, 8, 96, 260)]
+    [InlineData(DockEdge.Left, true, 8, 392, 288, 96)]
+    [InlineData(DockEdge.Right, true, 704, 392, 288, 96)]
+    [InlineData(DockEdge.Top, true, 596, 8, 96, 260)]
+    public void OverflowOccupiesEndOfReservedDockSide(DockEdge edge, bool reserve,
+        double x, double y, double width, double height)
+    {
+        RectD? home = reserve ? edge switch
+        {
+            DockEdge.Left => new(0, 500, 64, 64),
+            DockEdge.Right => new(936, 500, 64, 64),
+            _ => new(704, 0, 64, 64)
+        } : null;
+        var items = Enumerable.Range(0, 10).Select(i => new DockItem(NoteId.New(), i));
+        var result = DockLayout.Arrange(Screen(), edge, items, home);
+        var overflow = Assert.IsType<RectD>(result.OverflowBounds);
+        Assert.Equal(new RectD(x, y, width, height), overflow);
+        Assert.NotEmpty(result.Overflow);
+        Assert.All(result.Visible, note => Assert.False(note.Bounds.Intersects(overflow)));
+        if (home is { } zone) Assert.False(overflow.Intersects(zone));
+    }
+    [Fact]
+    public void DockWithoutOverflowDoesNotReserveLabel()
+    {
+        var result = DockLayout.Arrange(Screen(), DockEdge.Left, [new(NoteId.New(), 0)]);
+        Assert.Empty(result.Overflow);
+        Assert.Null(result.OverflowBounds);
+    }
+    [Fact]
+    public void OverflowIsClampedToShortReservedSide()
+    {
+        var screen = Screen(width: 100, height: 70);
+        var result = DockLayout.Arrange(screen, DockEdge.Left, [new(NoteId.New(), 0), new(NoteId.New(), 1)]);
+        Assert.Equal(new RectD(8, 8, 84, 54), result.OverflowBounds);
+        Assert.Empty(result.Visible);
+        Assert.Equal(2, result.Overflow.Count);
+    }
     [Fact]
     public void ScreensResolveNegativeCoordinatesIntersectionAndFallback()
     {

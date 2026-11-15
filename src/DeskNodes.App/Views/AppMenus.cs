@@ -42,7 +42,11 @@ internal sealed class AppMenus(AppCoordinator app)
     private MenuItem Command(string text, Action action, bool check = false, bool enabled = true)
     {
         var item = new MenuItem { Header = text, IsCheckable = check, IsChecked = check, IsEnabled = enabled };
-        item.Click += (_, _) => app.Run(action);
+        item.Click += (_, _) => app.Run(() =>
+        {
+            app.Presentation.ExitSelection();
+            action();
+        });
         return item;
     }
     public ContextMenu ToolbarMenu()
@@ -59,6 +63,7 @@ internal sealed class AppMenus(AppCoordinator app)
             shrink.Items.Add(Command(value == AutoShrink.Off ? "关闭" : $"{(int)value} 秒", () => app.SavePreferences(app.Preferences with { AutoShrink = value }), app.Preferences.AutoShrink == value));
         toolbar.Items.Add(shrink);
         toolbar.Items.Add(Command("恢复默认收缩位置", () => app.SavePreferences(app.Preferences with { Home = new() }), enabled: !app.Preferences.Home.IsDefault));
+        menu.Items.Add(Command("选择便签…", () => app.Presentation.EnterSelection(), enabled: app.NoteCount > 0));
         menu.Items.Add(toolbar);
         menu.Items.Add(new Separator());
         menu.Items.Add(Command("退出 DeskNodes", app.Exit));
@@ -69,11 +74,16 @@ internal sealed class AppMenus(AppCoordinator app)
         menu.Items.Clear();
         void Add(string text, Action action, bool enabled = true)
         {
-            var item = menu.Items.Add(text, null, (_, _) => app.Run(action));
+            var item = menu.Items.Add(text, null, (_, _) => app.Run(() =>
+            {
+                app.Presentation.ExitSelection();
+                action();
+            }));
             item.Enabled = enabled;
         }
         Add("显示工具条", app.ShowToolbar);
         Add("新建便签", app.CreateNote);
+        Add("选择便签…", () => app.Presentation.EnterSelection(), app.NoteCount > 0);
         Add(app.Raised ? "放回" : "浮起", app.ToggleRaised, app.NoteCount > 0);
         var history = new Forms.ToolStripMenuItem("历史记录");
         foreach (var entry in History())

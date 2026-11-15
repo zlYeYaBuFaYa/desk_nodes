@@ -26,6 +26,7 @@ internal sealed class NoteViewModel : INotifyPropertyChanged
     public CornerRadius Radius => new(Collapsed ? 10 : 13);
     public NoteColor Color { get; set; }
     public bool Selected { get; set; }
+    public bool Picked { get; set; }
     public double SelectionOpacity { get; set; } = 1;
     public void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
 }
