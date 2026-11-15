@@ -1,6 +1,7 @@
 namespace DeskNodes.Core.Domain;
 
-/// <summary>DIP coordinates (monitor-relative in persisted placements, virtual-screen in presentation), with a top-left origin and Y increasing downward.</summary>
+/// <summary>Rectangle with a top-left origin and Y increasing downward. Layout uses per-screen DIP
+/// (monitor-relative in persisted placements); ScreenInfo.PixelBounds uses physical virtual-desktop pixels.</summary>
 public readonly record struct RectD
 {
     public double X { get; }

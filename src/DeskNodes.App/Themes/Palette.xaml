@@ -1,0 +1,30 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="Paper" Color="#F6F1E7"/>
+    <SolidColorBrush x:Key="PaperSelected" Color="#B59E74"/>
+    <SolidColorBrush x:Key="Lemon" Color="#FAF0C8"/>
+    <SolidColorBrush x:Key="LemonSelected" Color="#C9A93A"/>
+    <SolidColorBrush x:Key="Apricot" Color="#FBE7D6"/>
+    <SolidColorBrush x:Key="ApricotSelected" Color="#D9905F"/>
+    <SolidColorBrush x:Key="Cherry" Color="#F7E1E4"/>
+    <SolidColorBrush x:Key="CherrySelected" Color="#CF7F90"/>
+    <SolidColorBrush x:Key="Lavender" Color="#ECE6F5"/>
+    <SolidColorBrush x:Key="LavenderSelected" Color="#9A82C9"/>
+    <SolidColorBrush x:Key="Mist" Color="#E3ECF5"/>
+    <SolidColorBrush x:Key="MistSelected" Color="#6F97C4"/>
+    <SolidColorBrush x:Key="Mint" Color="#E2F0E8"/>
+    <SolidColorBrush x:Key="MintSelected" Color="#6FA585"/>
+    <SolidColorBrush x:Key="Body" Color="#1F1F1F"/>
+    <SolidColorBrush x:Key="Secondary" Color="#5F5A52"/>
+    <SolidColorBrush x:Key="Completed" Color="#6F6A61"/>
+    <SolidColorBrush x:Key="CompletionFill" Color="#6E9A68"/>
+    <SolidColorBrush x:Key="ToolbarBackground" Color="#F6F5F1"/>
+    <SolidColorBrush x:Key="ToolbarForeground" Color="#24282D"/>
+    <SolidColorBrush x:Key="ToolbarSecondary" Color="#5C636B"/>
+    <SolidColorBrush x:Key="ToolbarDisabled" Color="#878D94"/>
+    <SolidColorBrush x:Key="ToolbarBorder" Color="#1A000000"/>
+    <SolidColorBrush x:Key="HoverPlate" Color="#14000000"/>
+    <SolidColorBrush x:Key="Divider" Color="#18000000"/>
+    <SolidColorBrush x:Key="CompletionMark" Color="White"/>
+</ResourceDictionary>

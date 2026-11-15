@@ -11,7 +11,10 @@ public enum Appearance { System, Light, Dark }
 public enum NoteTextSize { Small, Standard, Large, ExtraLarge }
 public enum NoteFont { Default, Rounded, Song, Wenkai }
 public enum AutoShrink { Off = 0, Seconds10 = 10, Seconds15 = 15, Seconds30 = 30 }
-public sealed record ToolbarAnchor(PointD? Center = null, ScreenEdge? Edge = null, double Ratio = .5)
+// Free centers use physical virtual-desktop pixels, so mixed-DPI screen selection is unambiguous.
+// Edge anchors carry a device hint; old preferences without one retain the primary-screen fallback.
+public sealed record ToolbarAnchor(PointD? Center = null, ScreenEdge? Edge = null, double Ratio = .5,
+    string? DeviceHint = null)
 {
     public bool IsValid => double.IsFinite(Ratio) && Ratio is >= 0 and <= 1 &&
         ((Center is { } c && double.IsFinite(c.X) && double.IsFinite(c.Y) && Edge is null) ||
@@ -159,7 +162,9 @@ public sealed class LocalPreferencesStore
             if (!TryReadEnum(value, "edge", Edges, out var parsed)) return null;
             edge = parsed;
         }
-        var anchor = new ToolbarAnchor(center, edge, ratio);
+        string? hint = value.TryGetProperty("deviceHint", out var device) && device.ValueKind == JsonValueKind.String
+            ? device.GetString() : null;
+        var anchor = new ToolbarAnchor(center, edge, ratio, hint);
         return anchor.IsValid ? anchor : null;
     }
     private static ImmutableDictionary<string, int> ReadPages(JsonElement root)
@@ -185,6 +190,7 @@ public sealed class LocalPreferencesStore
                 writer.WriteStartObject("center"); writer.WriteNumber("x", center.X); writer.WriteNumber("y", center.Y); writer.WriteEndObject();
             }
             if (anchor.Edge is { } edge) writer.WriteString("edge", Identifier(edge, Edges));
+            if (anchor.DeviceHint is not null) writer.WriteString("deviceHint", anchor.DeviceHint);
             writer.WriteNumber("ratio", anchor.Ratio);
             writer.WriteEndObject();
         }

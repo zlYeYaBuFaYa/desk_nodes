@@ -1,0 +1,219 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <Style x:Key="KeyboardFocus" TargetType="Control">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border
+                        BorderThickness="2"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
+                        CornerRadius="4"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{DynamicResource Secondary}"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Plate" CornerRadius="6" Background="{TemplateBinding Background}">
+                        <ContentPresenter
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="Center"
+                            Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Plate" Property="Background" Value="{DynamicResource HoverPlate}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Plate" Property="Background" Value="{DynamicResource HoverPlate}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Width" Value="22"/>
+        <Setter Property="Height" Value="22"/>
+        <Setter Property="Margin" Value="0,0,2,0"/>
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="MoreButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+        <Setter Property="Opacity" Value="0"/>
+    </Style>
+    <Style x:Key="AddItemButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="NoteEditor" TargetType="TextBox">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Foreground" Value="{DynamicResource Body}"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="CompletionCircle" TargetType="CheckBox">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid Background="Transparent">
+                        <Ellipse x:Name="Circle" Stroke="{DynamicResource Completed}" StrokeThickness="1.2"/>
+                        <TextBlock
+                            x:Name="Tick"
+                            Text="&#xE73E;"
+                            FontFamily="{StaticResource IconFont}"
+                            Foreground="{DynamicResource CompletionMark}"
+                            FontSize="12"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Circle" Property="Fill" Value="{DynamicResource CompletionFill}"/>
+                            <Setter TargetName="Circle" Property="Stroke" Value="{DynamicResource CompletionFill}"/>
+                            <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="ExpandedScroll" TargetType="ScrollViewer">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Collapsed}" Value="True">
+                <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="ExpandedBorder" TargetType="Border">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Collapsed}" Value="True">
+                <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuBrushKey}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
+        <Setter Property="Padding" Value="4"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+        <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI"/>
+    </Style>
+    <Style TargetType="MenuItem">
+        <Setter Property="Padding" Value="10,5"/>
+        <Setter Property="MinHeight" Value="28"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
+    </Style>
+    <Style x:Key="NoteSurface" TargetType="Window">
+        <Setter Property="Background" Value="{DynamicResource Paper}"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Color}" Value="Paper">
+                <Setter Property="Background" Value="{DynamicResource Paper}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Color}" Value="Lemon">
+                <Setter Property="Background" Value="{DynamicResource Lemon}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Color}" Value="Apricot">
+                <Setter Property="Background" Value="{DynamicResource Apricot}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Color}" Value="Cherry">
+                <Setter Property="Background" Value="{DynamicResource Cherry}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Color}" Value="Lavender">
+                <Setter Property="Background" Value="{DynamicResource Lavender}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Color}" Value="Mist">
+                <Setter Property="Background" Value="{DynamicResource Mist}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Color}" Value="Mint">
+                <Setter Property="Background" Value="{DynamicResource Mint}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="NoteOutline" TargetType="Border">
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Style.Triggers>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Selected}" Value="True"/>
+                    <Condition Binding="{Binding Color}" Value="Paper"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource PaperSelected}"/>
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Selected}" Value="True"/>
+                    <Condition Binding="{Binding Color}" Value="Lemon"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource LemonSelected}"/>
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Selected}" Value="True"/>
+                    <Condition Binding="{Binding Color}" Value="Apricot"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource ApricotSelected}"/>
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Selected}" Value="True"/>
+                    <Condition Binding="{Binding Color}" Value="Cherry"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource CherrySelected}"/>
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Selected}" Value="True"/>
+                    <Condition Binding="{Binding Color}" Value="Lavender"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource LavenderSelected}"/>
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Selected}" Value="True"/>
+                    <Condition Binding="{Binding Color}" Value="Mist"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource MistSelected}"/>
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Selected}" Value="True"/>
+                    <Condition Binding="{Binding Color}" Value="Mint"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource MintSelected}"/>
+            </MultiDataTrigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>
