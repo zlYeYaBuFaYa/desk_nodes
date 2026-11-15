@@ -1,12 +1,22 @@
 namespace DeskNodes.Core.Domain;
 
-/// <summary>Monitor-relative DIP coordinates, with a top-left origin and Y increasing downward.</summary>
+/// <summary>DIP coordinates (monitor-relative in persisted placements, virtual-screen in presentation), with a top-left origin and Y increasing downward.</summary>
 public readonly record struct RectD
 {
     public double X { get; }
     public double Y { get; }
     public double Width { get; }
     public double Height { get; }
+
+    public double Right => X + Width;
+    public double Bottom => Y + Height;
+    public PointD Center => new(X + Width / 2, Y + Height / 2);
+    public bool Contains(PointD p) => p.X >= X && p.X < Right && p.Y >= Y && p.Y < Bottom;
+    public bool Intersects(RectD r) => X < r.Right && Right > r.X && Y < r.Bottom && Bottom > r.Y;
+    public RectD Inset(double margin) => new(X + Math.Min(margin, Width / 2), Y + Math.Min(margin, Height / 2),
+        Math.Max(0, Width - margin * 2), Math.Max(0, Height - margin * 2));
+    public RectD Fit(RectD area) => new(Math.Clamp(X, area.X, area.Right - Math.Min(Width, area.Width)),
+        Math.Clamp(Y, area.Y, area.Bottom - Math.Min(Height, area.Height)), Math.Min(Width, area.Width), Math.Min(Height, area.Height));
 
     public RectD(double x, double y, double width, double height)
     {
@@ -35,3 +45,6 @@ public sealed record Placement
         (Bounds, DisplayDeviceHint, DockEdge, DockOrder) = (bounds, displayDeviceHint, dockEdge, dockOrder);
     }
 }
+
+public readonly record struct PointD(double X, double Y);
+public readonly record struct SizeD(double Width, double Height);
