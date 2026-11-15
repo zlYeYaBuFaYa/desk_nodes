@@ -1,0 +1,92 @@
+using System.ComponentModel;
+using System.Globalization;
+using System.Windows;
+using DeskNodes.Core.Domain;
+using DeskNodes.Core.Services;
+using DeskNodes.Core.Presentation;
+
+namespace DeskNodes.App.Views;
+
+internal sealed record CalendarCell(HistoryDay? Day, string Label, string ShadeKey, double Opacity, bool Selected, bool Today, bool InMonth);
+internal sealed record HistoryItemView(string Text, HistoryItemState State, bool Struck, string? Carry);
+internal sealed record HistoryNoteView(string Title, string ColorKey, bool Deleted, IReadOnlyList<HistoryItemView> Items);
+internal sealed record DeletedEntryView(DeletedEntry Entry, string ColorKey, string Time, string Preview, bool CanRestore, string Explanation);
+internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public CalendarNavigator Navigator { get; } = new(app.BusinessDays.Current, app.BusinessDays.Current);
+    public string MonthTitle => Navigator.SelectedDay.Value.ToString("yyyy年M月", CultureInfo.InvariantCulture);
+    public string DayTitle => Navigator.SelectedDay.Value.ToString("yyyy年M月d日", CultureInfo.InvariantCulture);
+    public bool CanToday => !Navigator.IsTodayDisabled;
+    public string MonthRate { get; private set; } = "—";
+    public IReadOnlyList<CalendarCell> Cells { get; private set; } = [];
+    public IReadOnlyList<HistoryNoteView> Notes { get; private set; } = [];
+    public IReadOnlyList<DeletedEntryView> DeletedNotes { get; private set; } = [];
+    public IReadOnlyList<DeletedEntryView> DeletedItems { get; private set; } = [];
+    public Visibility Empty { get; private set; } = Visibility.Collapsed;
+    public Visibility Failure { get; private set; } = Visibility.Collapsed;
+    public Visibility DeletedEmpty { get; private set; } = Visibility.Collapsed;
+    public string Error { get; private set; } = "";
+    public void Reload(bool deleted)
+    {
+        Navigator.ReloadToday(app.BusinessDays.Current);
+        Failure = Visibility.Collapsed;
+        Empty = Visibility.Collapsed;
+        DeletedEmpty = Visibility.Collapsed;
+        Error = "";
+        try
+        {
+            if (deleted)
+            {
+                var existingNotes = app.Repository.GetNotes().Select(n => n.Id).ToHashSet();
+                var entries = app.Deleted.List().Select(entry =>
+                {
+                    var projection = HistoryRules.ProjectDeleted(entry, existingNotes);
+                    return new DeletedEntryView(entry, HistoryRules.ColorKey(entry.Color),
+                        HistoryRules.DeletedTime(entry.DeletedAt, app.Clock.UtcNow, app.Clock.TimeZone),
+                        projection.Preview, projection.CanRestore, projection.Explanation);
+                }).ToArray();
+                DeletedNotes = entries.Where(e => e.Entry.Member.NoteId is not null).ToArray();
+                DeletedItems = entries.Where(e => e.Entry.Member.ItemId is not null).ToArray();
+                DeletedEmpty = entries.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+            else
+            {
+                var date = Navigator.SelectedDay.Value;
+                var stats = app.History.MonthStats(date.Year, date.Month);
+                MonthRate = stats.Progress.Total == 0 ? "—" : $"{100.0 * stats.Progress.Completed / stats.Progress.Total:0}%";
+                var grid = Navigator.MonthGrid();
+                var gridStats = grid.Where(d => d is not null).Select(d => (d!.Value.Value.Year, d.Value.Value.Month))
+                    .Distinct().SelectMany(m => m.Year == date.Year && m.Month == date.Month ? stats.Days : app.History.MonthStats(m.Year, m.Month).Days)
+                    .ToDictionary(s => s.Day);
+                Cells = grid.Select(day =>
+                {
+                    var stat = day is { } cellDay ? gridStats.GetValueOrDefault(cellDay) : null;
+                    var shade = HistoryQueries.Shade(stat is not null, stat?.Progress.Rate);
+                    return new CalendarCell(day, day?.Value.Day.ToString(CultureInfo.InvariantCulture) ?? "", shade == CalendarShade.Weak ? "HistoryWeak" : "HistoryProgress",
+                        shade == CalendarShade.Weak ? 1 : HistoryQueries.ShadeOpacity(shade), day == Navigator.SelectedDay, day == Navigator.CurrentBusinessDay, day?.Value.Month == date.Month);
+                }).ToArray();
+                var snapshot = app.History.DaySnapshot(Navigator.SelectedDay);
+                Notes = snapshot.Notes.Select(n => new HistoryNoteView(n.Note.Title, HistoryRules.ColorKey(n.Note.Color), n.Deleted,
+                    n.Items.Select(i =>
+                    {
+                        var projection = HistoryRules.ProjectItem(i.Deleted, i.Item.Struck, i.Item.Completed, i.CarriedTo);
+                        return new HistoryItemView(i.Item.Text, projection.State, i.Item.Struck, projection.Carry);
+                    }).ToArray())).ToArray();
+                Empty = !snapshot.HasSnapshot ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+        catch (Exception ex)
+        {
+            Notes = [];
+            DeletedNotes = [];
+            DeletedItems = [];
+            Cells = [];
+            MonthRate = "—";
+            Error = "无法读取历史记录，请重试。";
+            Failure = Visibility.Visible;
+            app.Log.Error("无法读取历史窗口。", ex);
+        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+    }
+}

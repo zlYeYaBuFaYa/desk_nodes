@@ -31,6 +31,32 @@ internal sealed class AppCoordinator
     public bool Raised { get; private set; }
     public int NoteCount => windows.Count;
     public AppMenus Menus { get; private set; } = null!;
+    private HistoryWindow? historyWindow;
+    public RecentlyDeleted Deleted { get; private set; } = null!;
+    public void OpenHistory(HistoryDay? day = null, bool deleted = false)
+    {
+        if (historyWindow is null)
+        {
+            historyWindow = new(this);
+            historyWindow.Closed += (_, _) => historyWindow = null;
+        }
+        historyWindow.Open(day, deleted);
+    }
+    public void RestoreDeleted(DeletedEntry entry) => Run(() =>
+    {
+        var result = entry.Member.NoteId is { } note ? Deleted.Restore(note) : Deleted.Restore(entry.Member.ItemId!.Value);
+        if (result == RestoreResult.Restored)
+        {
+            if (entry.Member.NoteId is not null && Preferences.DeskCollapsed)
+                SavePreferences(Preferences with { DeskCollapsed = false });
+            Refresh();
+            if (entry.Member.NoteId is { } restored)
+                Presentation.RevealRestored(restored);
+        }
+        else
+            Presentation.Error("未能恢复内容，请刷新后重试。");
+        historyWindow?.Reload();
+    });
     public HistoryQueries History { get; private set; } = null!;
     public BusinessDayContext BusinessDays { get; private set; } = null!;
     private DayRolloverService rollover = null!;
@@ -68,6 +94,7 @@ internal sealed class AppCoordinator
         Refresh();
         Screens.Changed += (_, _) => Refresh();
         History = new(database);
+        Deleted = new(database, Clock, Undo);
         BusinessDays = new(database, Clock);
         Menus = new(this);
         toolbar = new(this);
@@ -247,6 +274,7 @@ internal sealed class AppCoordinator
 
     public void RefreshTheme()
     {
+        historyWindow?.RefreshTheme();
         foreach (var window in windows.Values) window.RefreshTheme();
         toolbar?.RefreshTheme();
     }
@@ -371,6 +399,7 @@ internal sealed class AppCoordinator
     public void Stop()
     {
         timer?.Stop();
+        historyWindow?.Close();
         Presentation?.Dispose();
         toolbar?.Close();
         tray?.Dispose();

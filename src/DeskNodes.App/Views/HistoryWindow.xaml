@@ -1,0 +1,128 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:DeskNodes.App.Views"
+    x:Class="DeskNodes.App.Views.HistoryWindow"
+    x:ClassModifier="internal"
+    Title="历史记录 · DeskNodes"
+    Background="{DynamicResource HistoryBackground}"
+    Foreground="{DynamicResource HistoryForeground}"
+    PreviewKeyDown="Navigate">
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static local:HistoryCommands.Restore}" Executed="Restore"/>
+        <CommandBinding Command="{x:Static local:HistoryCommands.SelectDay}" Executed="SelectDay"/>
+        <CommandBinding Command="{x:Static local:HistoryCommands.Previous}" Executed="Previous"/>
+        <CommandBinding Command="{x:Static local:HistoryCommands.Next}" Executed="Next"/>
+        <CommandBinding Command="{x:Static local:HistoryCommands.Today}" Executed="Today"/>
+        <CommandBinding Command="{x:Static local:HistoryCommands.Retry}" Executed="Retry"/>
+    </Window.CommandBindings>
+    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <DockPanel Style="{StaticResource HistoryContent}">
+            <Border DockPanel.Dock="Top" Style="{StaticResource HistorySegments}">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton
+                        x:Name="CalendarSegment"
+                        Content="日历"
+                        IsChecked="True"
+                        Checked="SegmentChanged"
+                        Style="{StaticResource HistoryCalendarSegment}"/>
+                    <RadioButton
+                        x:Name="DeletedSegment"
+                        Content="最近删除"
+                        Checked="SegmentChanged"/>
+                </StackPanel>
+            </Border>
+            <Grid>
+                <Grid x:Name="CalendarPane">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{StaticResource HistoryCalendarWidth}"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Style="{StaticResource HistoryCalendarPadding}">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button
+                                        Content="{StaticResource HistoryPreviousGlyph}"
+                                        Command="{x:Static local:HistoryCommands.Previous}"
+                                        AutomationProperties.Name="上一月"
+                                        Style="{StaticResource HistoryPreviousButton}"/>
+                                    <Button
+                                        Content="{StaticResource HistoryNextGlyph}"
+                                        Command="{x:Static local:HistoryCommands.Next}"
+                                        AutomationProperties.Name="下一月"
+                                        Style="{StaticResource HistoryNextButton}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding MonthTitle}" Style="{StaticResource HistoryHeading}"/>
+                            </DockPanel>
+                            <DockPanel Style="{StaticResource HistoryMonthSummary}">
+                                <Button
+                                    DockPanel.Dock="Right"
+                                    Content="今天"
+                                    IsEnabled="{Binding CanToday}"
+                                    Command="{x:Static local:HistoryCommands.Today}"
+                                    Style="{StaticResource HistoryButton}"/>
+                                <TextBlock Text="{Binding MonthRate}" Style="{StaticResource HistoryMonthRate}"/>
+                            </DockPanel>
+                            <UniformGrid Columns="7" Style="{StaticResource HistoryWeekdays}">
+                                <TextBlock Text="一" Style="{StaticResource HistoryWeekday}"/>
+                                <TextBlock Text="二" Style="{StaticResource HistoryWeekday}"/>
+                                <TextBlock Text="三" Style="{StaticResource HistoryWeekday}"/>
+                                <TextBlock Text="四" Style="{StaticResource HistoryWeekday}"/>
+                                <TextBlock Text="五" Style="{StaticResource HistoryWeekday}"/>
+                                <TextBlock Text="六" Style="{StaticResource HistoryWeekday}"/>
+                                <TextBlock Text="日" Style="{StaticResource HistoryWeekday}"/>
+                            </UniformGrid>
+                            <ItemsControl
+                                ItemsSource="{Binding Cells}"
+                                ItemTemplate="{StaticResource HistoryDayTemplate}"
+                                ItemsPanel="{StaticResource HistoryWeekPanel}"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <Grid Grid.Column="1" Style="{StaticResource HistoryDetails}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="{Binding DayTitle}" Style="{StaticResource HistoryDayHeading}"/>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Notes}" ItemTemplate="{StaticResource HistoryNoteTemplate}"/>
+                        </ScrollViewer>
+                        <StackPanel
+                            Grid.Row="1"
+                            Visibility="{Binding Empty}"
+                            Style="{StaticResource HistoryEmptyState}">
+                            <TextBlock Text="{StaticResource HistoryCalendarGlyph}" Style="{StaticResource HistoryEmptyIcon}"/>
+                            <TextBlock Text="当天没有历史记录" Style="{StaticResource HistoryEmptyTitle}"/>
+                            <TextBlock Text="仅显示已封存业务日的冻结记录。" Style="{StaticResource HistorySecondaryText}"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+                <ScrollViewer
+                    x:Name="DeletedPane"
+                    Visibility="Collapsed"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Style="{StaticResource HistoryDeletedPadding}">
+                        <TextBlock Text="便签" Style="{StaticResource HistoryDeletedNotesHeading}"/>
+                        <ItemsControl ItemsSource="{Binding DeletedNotes}" ItemTemplate="{StaticResource DeletedEntry}"/>
+                        <TextBlock Text="事项" Style="{StaticResource HistoryDeletedItemsHeading}"/>
+                        <ItemsControl ItemsSource="{Binding DeletedItems}" ItemTemplate="{StaticResource DeletedEntry}"/>
+                        <TextBlock
+                            Text="最近没有移出列表的内容"
+                            Visibility="{Binding DeletedEmpty}"
+                            Style="{StaticResource HistoryDeletedEmpty}"/>
+                    </StackPanel>
+                </ScrollViewer>
+                <Border Visibility="{Binding Failure}" Style="{StaticResource HistoryFailureBackground}">
+                    <StackPanel Style="{StaticResource HistoryFailureContent}">
+                        <TextBlock Text="{Binding Error}"/>
+                        <Button
+                            Content="重试"
+                            Command="{x:Static local:HistoryCommands.Retry}"
+                            Style="{StaticResource HistoryRetryButton}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DockPanel>
+    </ScrollViewer>
+</Window>

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using DeskNodes.Core.Presentation;
+using DeskNodes.Core.Domain;
 using DeskNodes.Core.Services;
 using Forms = System.Windows.Forms;
 
@@ -8,14 +9,14 @@ namespace DeskNodes.App.Views;
 
 internal sealed class AppMenus(AppCoordinator app)
 {
-    internal sealed record HistoryEntry(string Label, int Completed, int Total, bool Available);
+    internal sealed record HistoryEntry(string Label, int Completed, int Total, bool Available, HistoryDay? Day = null);
     private IReadOnlyList<HistoryEntry> History()
     {
         try
         {
             var days = app.History.RecentSealedDays();
             if (days.Count == 0) return [new("暂无历史记录", 0, 0, false)];
-            return days.Select(day => new HistoryEntry(HistoryQueries.RelativeLabel(day.Day, app.BusinessDays.Current), day.Progress.Completed, day.Progress.Total, true)).ToArray();
+            return days.Select(day => new HistoryEntry(HistoryQueries.RelativeLabel(day.Day, app.BusinessDays.Current), day.Progress.Completed, day.Progress.Total, true, day.Day)).ToArray();
         }
         catch (Exception ex)
         {
@@ -35,9 +36,28 @@ internal sealed class AppMenus(AppCoordinator app)
                 row.Children.Add(new ProgressBar { Width = 28, Height = 4, Maximum = Math.Max(1, entry.Total), Value = entry.Completed, VerticalAlignment = VerticalAlignment.Center });
                 row.Children.Add(new TextBlock { Text = $"  {entry.Completed}/{entry.Total}", FontFamily = new System.Windows.Media.FontFamily("Consolas") });
             }
-            menu.Items.Add(new MenuItem { Header = row, IsEnabled = false });
+            var item = Command(entry.Label, () => app.OpenHistory(entry.Day), enabled: entry.Available);
+            item.Header = row;
+            menu.Items.Add(item);
         }
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Command("打开日历…", () => app.OpenHistory()));
+        var deleted = DeletedCount();
+        menu.Items.Add(Command(deleted.Label, () => app.OpenHistory(deleted: true), enabled: deleted.Enabled));
         return menu;
+    }
+    private (string Label, bool Enabled) DeletedCount()
+    {
+        try
+        {
+            int count = app.Deleted.Count();
+            return ($"最近删除（{count}）", count > 0);
+        }
+        catch (Exception ex)
+        {
+            app.Log.Error("无法读取最近删除计数。", ex);
+            return ("最近删除", true);
+        }
     }
     private MenuItem Command(string text, Action action, bool check = false, bool enabled = true)
     {
@@ -103,8 +123,22 @@ internal sealed class AppMenus(AppCoordinator app)
                 e.Graphics.FillRectangle(track, 110, 11, 28, 4);
                 if (entry.Total > 0) e.Graphics.FillRectangle(fill, 110, 11, 28f * entry.Completed / entry.Total, 4);
             };
-            history.DropDownItems.Add(new Forms.ToolStripControlHost(row) { Enabled = false, AutoSize = false, Size = row.Size });
+            var host = new Forms.ToolStripControlHost(row) { AutoSize = false, Size = row.Size };
+            void OpenDate(object? sender, EventArgs args)
+            {
+                menu.Close();
+                app.Run(() => app.OpenHistory(entry.Day));
+            }
+            host.Click += OpenDate;
+            row.Click += OpenDate;
+            foreach (Forms.Control child in row.Controls) child.Click += OpenDate;
+            history.DropDownItems.Add(host);
         }
+        history.DropDownItems.Add(new Forms.ToolStripSeparator());
+        history.DropDownItems.Add("打开日历…", null, (_, _) => app.Run(() => app.OpenHistory()));
+        var deleted = DeletedCount();
+        var deletedItem = history.DropDownItems.Add(deleted.Label, null, (_, _) => app.Run(() => app.OpenHistory(deleted: true)));
+        deletedItem.Enabled = deleted.Enabled;
         menu.Items.Add(history);
         menu.Items.Add(new Forms.ToolStripSeparator());
         Add("退出 DeskNodes", app.Exit);

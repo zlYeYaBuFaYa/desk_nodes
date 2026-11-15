@@ -4,7 +4,10 @@ namespace DeskNodes.Core.Presentation;
 
 public sealed record DockItem(NoteId Id, int Order, double Height = 240);
 public sealed record DockedNote(NoteId Id, RectD Bounds);
-public sealed record DockResult(IReadOnlyList<DockedNote> Visible, IReadOnlyList<NoteId> Overflow, int Page, int PageCount, RectD? OverflowBounds);
+public sealed record DockResult(IReadOnlyList<DockedNote> Visible, IReadOnlyList<NoteId> Overflow, int Page, int PageCount, RectD? OverflowBounds)
+{
+    public IReadOnlyDictionary<NoteId, int> Pages { get; init; } = new Dictionary<NoteId, int>();
+}
 public static class DockLayout
 {
     public static DockResult Arrange(ScreenInfo screen, DockEdge edge, IEnumerable<DockItem> items,
@@ -54,8 +57,15 @@ public static class DockLayout
             cursor += length + 12;
         }
         var ids = visible.Select(v => v.Id).ToHashSet();
-        return new(visible.AsReadOnly(), Array.AsReadOnly(ordered.Where(i => !ids.Contains(i.Id)).Select(i => i.Id).ToArray()), page, groups.Count, overflowBounds);
+        return new(visible.AsReadOnly(), Array.AsReadOnly(ordered.Where(i => !ids.Contains(i.Id)).Select(i => i.Id).ToArray()), page, groups.Count, overflowBounds)
+        {
+            Pages = groups.SelectMany((group, index) => group.Select(item => (item.Id, Page: index)))
+                .ToDictionary(item => item.Id, item => item.Page)
+        };
     }
+    public static int? PageForNote(DockResult layout, NoteId id) =>
+        layout.Pages.TryGetValue(id, out int page) ? page : null;
+
     public static bool ShouldDetach(DockEdge edge, RectD workArea, PointD pointer) => edge switch
     {
         DockEdge.Left => pointer.X > workArea.X + 288 + 48,

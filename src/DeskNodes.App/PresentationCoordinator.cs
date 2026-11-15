@@ -16,6 +16,21 @@ internal sealed class PresentationCoordinator : IDisposable
     private readonly AppCoordinator app;
     private readonly VirtualDesktop desktop = new();
     private readonly PresentationState state = new();
+    public void RevealRestored(NoteId id)
+    {
+        var note = app.Repository.GetNote(id);
+        if (note is null) return;
+        if (app.Preferences.Pages.TryGetValue(id.ToString(), out int savedPage))
+            app.SavePreferences(app.Preferences with { Page = savedPage });
+        if (note.Placement.DockEdge is { } edge)
+        {
+            var screen = app.Screens.GetScreens().Resolve(note.Placement.DisplayDeviceHint);
+            if (DockLayout.PageForNote(Dock(screen, edge), id) is { } page)
+                dockPages[(screen.Id, edge)] = page;
+        }
+        foreach (var window in app.Windows.Values) window.Place();
+        Refresh();
+    }
     private readonly Dictionary<(string Screen, DockEdge Edge), int> dockPages = [];
     private readonly Dictionary<(string Screen, DockEdge Edge), DockOverflowWindow> dockLabels = [];
     public DockResult Dock(ScreenInfo screen, DockEdge edge)
