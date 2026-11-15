@@ -27,6 +27,8 @@ open build/DeskNodes.app
 DESKNODES_SIGNING_IDENTITY='已有身份名称或 SHA-1' ./scripts/build-macos.sh
 ```
 
+需要在 Swift 测试中验证文楷真实字重时，先执行 `./scripts/fetch-fonts.sh`；缺少资源时对应测试会跳过。直接 `swift run` 不打包字体，原生字体验收使用上述 `.app`。下载、注册和授权机制见 [字体资源](TECHNICAL_DESIGN.md#fonts)。
+
 自动检查还包括 `python3 scripts/check-n1.py`、`check-n7.py`、`check-n8.py`、`check-n9.py`、`check-n10.py`，它们只核对静态契约，不替代 Swift 编译与原生操作。
 
 如果受限环境阻止默认缓存写入，可将缓存放到可写临时目录重试，不修改用户工具链配置：

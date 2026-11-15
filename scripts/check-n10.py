@@ -61,12 +61,6 @@ for name in ['README.md', 'REQUIREMENTS.md', 'TECHNICAL_DESIGN.md', 'UI_SPEC.md'
              'ACCEPTANCE.md', 'native-build.md']:
     document = read(f'docs/{name}')
     assert document.startswith('# '), name
-prototype = read('docs/UI_PROTOTYPE.html')
-assert '<html lang="zh-CN">' in prototype
-for element in ['stage', 'notes', 'menu', 'selbar', 'win', 'toast']:
-    assert f'id="{element}"' in prototype, element
-assert '<script src=' not in prototype
-assert 'data-ver=' not in prototype  # one current demo, no competing old/new specification
 # Relative links and explicit section anchors must survive document consolidation.
 documents = [root / 'README.md', *sorted((root / 'docs').rglob('*.md')),
              *sorted((root / 'docs').rglob('*.html'))]

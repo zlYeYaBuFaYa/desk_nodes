@@ -18,6 +18,8 @@
 - [DockController.swift](../Sources/DeskNodesApp/DockController.swift)：停靠布局、标签、拖出与屏幕校正。
 - [AuxiliaryWindows.swift](../Sources/DeskNodesApp/AuxiliaryWindows.swift)：按需创建并复用 SwiftUI 承载窗口。
 - [SystemServices.swift](../Sources/DeskNodesApp/SystemServices.swift)：GlobalHotkey、LoginService；Carbon 热键 ID 使用类级计数，避免两个实例互认。
+- [SettingsWindow.swift](../Sources/DeskNodesApp/SettingsWindow.swift)、[HistoryWindow.swift](../Sources/DeskNodesApp/HistoryWindow.swift)：设置与只读历史的 presentation model／SwiftUI 视图；最近删除通过注入动作恢复。
+- [Theme.swift](../Sources/DeskNodesApp/Theme.swift)：动态颜色、NoteType 排版度量和 NoteFonts 字体选择、中文 fallback 与系统下载。
 
 Bundle 信息以 [Info.plist](../Resources/Info.plist) 为准。主 UI 协调在主 actor，Store 为同步串行仓库，不是异步后台 actor。
 
@@ -74,6 +76,10 @@ NoteSurfaces.refresh 两次查询取得 notes 与分组实时事项，与 Render
 
 整组 DeskPresentation 为 expanded／collapsing／collapsed／expanding；generation 使过期动画完成回调失效，resting frame 按 NoteID 关联。工具条独立维护 expanded／collapsing／round／expanding，不逐帧写库。
 
+Toolbar 的 Transition 以可见 shell、icon／controls 透明度为连续状态，CADisplayLink 逐帧呈现；回到固定位置使用先收缩后 glide 的两段转换，pendingExpand 记录移动中的唤起请求，到达时再次检查指针。动画窗口在形变阶段使用外框并集，滑动阶段随入口移动，避免整段路径截获事件。应用启动通过 show() 总是进入 expanded；收缩形态不持久化。
+
+不创建 NSStatusItem。DesktopController 每次构建工具条右键菜单，Application 为历史子菜单提供 NSMenuDelegate，menuNeedsUpdate 按需查询快照与最近删除数量；应用主菜单保留原生编辑与快捷键响应链。
+
 多选集合 `picked: Set<NoteID>?` 与普通 selection 分开，nil 表示不在模式中。可选窗口过滤 suppressed 与 isVisible；窗口先拦截多选按下，再处理编辑。覆盖层位于 floating−1，框选与操作条位于 floating+1；键盘使用应用内 monitor，没有全局监听。
 
 WindowModes 的有效 peek 为 `peeking || picking`，再按每张保存 level 解析。桌面层为 desktopIconWindow+1，普通为 normal，置顶为 floating；设置、历史与提示的 collectionBehavior 单独处理。旧 desk.topmost 由 retireGlobalTopmost 读取一次后移除。
@@ -85,7 +91,9 @@ WindowModes 的有效 peek 为 `peeking || picking`，再按每张保存 level �
 - [Docking.swift](../Sources/DeskNodesActions/Docking.swift)：各边停靠、溢出标签、保留带、离线屏幕解析。
 - [ToolbarGeometry.swift](../Sources/DeskNodesActions/ToolbarGeometry.swift)：外边筛选、磁吸优先级、方向与锚点求解。
 
-自动布局避让完整 target，命中与动画使用当前 visibleFrame。形变中的窗口可临时取两外框并集，结束后缩回；文字按最终几何布局。
+新建与整理避让工具条完整 target；停靠条只避让 toolbarReservation 返回的固定 homeZone。ToolbarAnchor 保存完整工具条的自由中心或吸边锚点；ToolbarHome 另存边与比例，由 ToolbarGeometry.home 解析为当前屏幕的外边，再转换为 snapped anchor。homeSpan 约束角落距离，homeZone／hitZone 计算入口向边缘扩展的命中与预留区；改变区域才触发停靠重排。
+
+命中与动画使用当前 visibleFrame，文字按最终几何布局。吸边跨度与固定位置跨度不同，转换由几何函数完成，不能直接混用两种 ratio。
 
 ### UserDefaults 字段
 
@@ -93,12 +101,32 @@ WindowModes 的有效 peek 为 `peeking || picking`，再按每张保存 level �
 
 - desk.collapsed。
 - toolbar.place（旧位置）、toolbar.anchor、toolbar.orientation、toolbar.autoShrink。
-- note.newWidth、note.newHeight、note.textSize。
+- toolbar.home（边与比例，不绑定显示器）。
+- app.appearance。
+- note.newWidth、note.newHeight、note.textSize、note.font。
 - arrange.pages、arrange.page。
 
-旧 toolbar.place 迁为自由锚点，不按距离推断吸边；自由锚点存中心，吸边锚点存边及沿边比例。note.newHeight 缺失时使用默认高度，显式 0 表示随内容。note.textSize 使用枚举原值。
+旧 toolbar.place 迁为自由锚点，不按距离推断吸边；自由锚点存中心，吸边锚点存边及沿边比例。toolbar.home 无效时恢复 ToolbarHome.standard。note.newHeight 缺失时使用默认高度，显式 0 表示随内容。字号、字体与外观使用枚举原值，未知值分别回退到标准、默认字体与跟随系统。
 
 上述键不属于业务库和 JSON。验证域为 local.desknodes.native.verification，不同验证目录共用此域。临时焦点、选择、peeking／picking、动画与撤销也不序列化。
+
+<a id="fonts"></a>
+## 字体资源与应用外观
+
+NoteType 的 size／face 从本机偏好初始化；Application 的 setTextSize／setNoteFont 在组词期间拒绝更新，否则对所有卡片调用 applyTextSize 并重排。NoteFonts 为系统西文设计添加中文 cascadeList；文楷按 PostScript 名 LXGWWenKai-Regular／LXGWWenKai-Medium 取字重，缺少 Medium 时退 Regular，再退系统字体。
+
+圆体可用性通过 NSFontManager 检查。SettingsPresentation 仅在用户选择未安装圆体时调用 CTFontDescriptorMatchFontDescriptorsWithProgressHandler，回调切回主线程，仅成功后请求切换；下载期间不改持久化选择。启动不发起下载，缺失字体由字体回退处理。
+
+[fetch-fonts.sh](../scripts/fetch-fonts.sh) 固定获取霞鹜文楷 v1.530 的两个原始 TTF 与 OFL.txt，并校验 SHA-256；Resources/Fonts 不入库。[构建脚本](../scripts/build-macos.sh) 打包到 Contents/Resources/Fonts，[Info.plist](../Resources/Info.plist) 的 ATSApplicationFontsPath 仅为应用注册字体。Swift Package 本身不声明字体资源，直接 swift run 不包含这些文件。授权为 SIL Open Font License 1.1；设置优先打开打包的 OFL，缺失时打开项目在线授权页。
+
+AppAppearance 通过 NSApp.appearance 设置跟随系统／aqua／darkAqua，并写本机偏好。便签和停靠标签显式固定 aqua；工具条根据有效外观选择 NSVisualEffectView 的 popover／hudWindow 材质及动态描边，其他窗口采用动态颜色。具体外观值见 [UI 规格](UI_SPEC.md#palette)。
+
+<a id="history"></a>
+## 历史展示与导航
+
+Store.recentHistory(limit:) 按封存日期倒序读取；HistoryMenuRow 使用 BusinessCalendar 的当前业务日生成相对标签，并复用 HistoryCompletion 绘制菜单统计。recentlyDeletedCount 通过 SQL 聚合计数，不加载完整恢复列表。
+
+AuxiliaryWindows 复用 HistoryPresentation 和窗口，指定 day 时同步月份与选中日期；本地键盘 monitor 只接管该窗口的日历模式，并保留 NSTextView 与完整键盘控制的方向键。HistoryPresentation.step 按天约束不越过 today，navigate 按月定位月首、没有相同上限；today 在 reload 时更新，不安装独立计时器。HistoryHeat 复用冻结完成率映射日格色阶，读取失败与空快照分别呈现。业务统计与导航边界见 [FR-11](REQUIREMENTS.md#fr-11)。
 
 <a id="rollover"></a>
 ## 业务日实现

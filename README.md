@@ -10,3 +10,5 @@
 - 验证范围与实际结果：[验收](docs/ACCEPTANCE.md)。
 
 功能说明以当前代码为准，文档分工与更新约定统一维护在文档入口。
+
+便签文楷使用霞鹜文楷，按 SIL Open Font License 1.1 原样打包；资源获取与授权入口见 [字体资源说明](docs/TECHNICAL_DESIGN.md#fonts)。

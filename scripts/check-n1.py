@@ -28,9 +28,8 @@ for case_name, (name, light, dark) in zip(case_names, pairs):
         for value, section in zip((name, light, dark), sections)))
 # Seven light/dark backgrounds plus their seven light/dark selection tones.
 check('exactly twenty-eight palette hex literals', len(re.findall(r'return "[A-F0-9]{6}"', tokens)) == 28)
-proto = read('docs/UI_PROTOTYPE.html').upper()
 for hex_value in ('1F1F1F', 'EDEBE6', '5F5A52', 'B3ADA2', '6F6A61', 'A39D92'):
-    check(f'current prototype ink {hex_value}', f'#{hex_value}' in proto and f'"{hex_value}"' in tokens)
+    check(f'documented ink {hex_value}', f'#{hex_value}' in spec and f'"{hex_value}"' in tokens)
 # Current note metrics are documented in docs/UI_SPEC.md.
 for key, value in [('width', 288), ('padding', 18), ('cornerRadius', 13), ('titleSize', 16),
                    ('itemSize', 14), ('rowHeight', 32), ('collapsedHeight', 32)]:

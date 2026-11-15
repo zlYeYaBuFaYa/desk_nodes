@@ -9,14 +9,13 @@ services = read('Sources/DeskNodesApp/SystemServices.swift')
 backup = read('Sources/DeskNodesPersistence/Backup.swift')
 sqlite = read('Sources/DeskNodesPersistence/SQLite.swift')
 card = read('Sources/DeskNodesApp/NotePanel.swift')
-prototype = read('docs/UI_PROTOTYPE.html')
 count = 0
 def check(value):
     global count
     assert value
     count += 1
 for label in ['通用', '快捷键', '数据', '每天跨天时间', '新建便签', '浮起便签', '备份（JSON）', '导入…', '导出…']:
-    check(label in settings and label in prototype)
+    check(label in settings)
 for value in ['NSOpenPanel()', 'NSSavePanel()', 'Store.validateBackup', '.alertSecondButtonReturn', 'Data.write']:
     check(value in settings if value != 'Data.write' else 'data.write(to: url, options: .atomic)' in settings)
 check(settings.index('Store.validateBackup') < settings.index('alert.messageText = "替换全部本机数据？"') < settings.index('try importBackup(backup)'))
