@@ -109,6 +109,10 @@ internal static class Schema
             PRIMARY KEY (day, item_id),
             FOREIGN KEY (day, note_id) REFERENCES snapshot_notes(day, note_id) DEFERRABLE INITIALLY DEFERRED
         );
+        CREATE TABLE note_deletion_items (
+            note_id TEXT NOT NULL REFERENCES notes(id),
+            item_id TEXT NOT NULL PRIMARY KEY REFERENCES items(id)
+        );
         CREATE TABLE pending_deleted_notes (
             note_id TEXT NOT NULL PRIMARY KEY REFERENCES notes(id),
             deleted_at INTEGER NOT NULL,

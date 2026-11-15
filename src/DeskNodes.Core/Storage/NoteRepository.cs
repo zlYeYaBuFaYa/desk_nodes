@@ -6,6 +6,29 @@ namespace DeskNodes.Core.Storage;
 /// <summary>Queries use serialized reads; writes use transactions. Times use UTC Unix milliseconds.</summary>
 public sealed class NoteRepository(DeskNodesDatabase database)
 {
+    public Note? GetNote(NoteId id, bool includeDeleted = false) => database.Read(connection =>
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM notes WHERE id = $id" +
+            (includeDeleted ? "" : " AND deleted_at IS NULL") + ";";
+        command.Parameters.AddWithValue("$id", id.ToString());
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadNote(reader) : null;
+    });
+
+    /// <summary>Deletion filtering includes the parent note, as with GetItems.</summary>
+    public NoteItem? GetItem(ItemId id, bool includeDeleted = false, bool includeArchived = false)
+        => database.Read(connection =>
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT i.* FROM items i JOIN notes n ON n.id = i.note_id WHERE i.id = $id" +
+            (includeDeleted ? "" : " AND i.deleted_at IS NULL AND n.deleted_at IS NULL") +
+            (includeArchived ? "" : " AND i.archived_day IS NULL") + ";";
+        command.Parameters.AddWithValue("$id", id.ToString());
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadItem(reader) : null;
+    });
+
     public IReadOnlyList<Note> GetNotes(bool includeDeleted = false) => database.Read(connection =>
     {
         using var command = connection.CreateCommand();
@@ -122,6 +145,9 @@ public sealed class NoteRepository(DeskNodesDatabase database)
             return false;
         Execute(connection, "INSERT INTO pending_deleted_notes(note_id,deleted_at,day) VALUES($id,$at,$day) " +
             "ON CONFLICT(note_id) DO UPDATE SET deleted_at=excluded.deleted_at,day=excluded.day;", id.ToString(), timestamp, deletionDay);
+        // Explicit membership disambiguates an earlier single deletion in the same millisecond.
+        Execute(connection, "INSERT INTO note_deletion_items(note_id,item_id) SELECT note_id,id FROM items " +
+            "WHERE note_id=$id AND deleted_at IS NULL AND archived_day IS NULL;", id.ToString(), timestamp, deletionDay);
         Execute(connection, "INSERT INTO pending_deleted_items(item_id,deleted_at,day) " +
             "SELECT id,$at,$day FROM items WHERE note_id=$id AND deleted_at IS NULL AND archived_day IS NULL " +
             "ON CONFLICT(item_id) DO UPDATE SET deleted_at=excluded.deleted_at,day=excluded.day;", id.ToString(), timestamp, deletionDay);
@@ -148,13 +174,13 @@ public sealed class NoteRepository(DeskNodesDatabase database)
         // Only children from this whole-note deletion return; earlier individual tombstones stay deleted.
         Execute(connection, "DELETE FROM pending_deleted_items WHERE item_id IN " +
             "(SELECT i.id FROM items i JOIN notes n ON n.id=i.note_id WHERE n.id=$id " +
-            "AND n.deleted_at IS NOT NULL AND i.deleted_at=n.deleted_at AND i.archived_day IS NULL);", id.ToString(), at.ToUnixTimeMilliseconds());
+            "AND n.deleted_at IS NOT NULL AND i.id IN (SELECT item_id FROM note_deletion_items WHERE note_id=$id) AND i.archived_day IS NULL);", id.ToString(), at.ToUnixTimeMilliseconds());
         Execute(connection, "UPDATE items SET deleted_at=NULL, updated_at=$at WHERE note_id=$id " +
-            "AND archived_day IS NULL AND deleted_at=(SELECT deleted_at FROM notes WHERE id=$id);", id.ToString(), at.ToUnixTimeMilliseconds());
+            "AND archived_day IS NULL AND id IN (SELECT item_id FROM note_deletion_items WHERE note_id=$id);", id.ToString(), at.ToUnixTimeMilliseconds());
         int changed = Execute(connection, "UPDATE notes SET deleted_at=NULL, updated_at=$at " +
             "WHERE id=$id AND deleted_at IS NOT NULL;", id.ToString(), at.ToUnixTimeMilliseconds());
         if (changed != 0)
-            Execute(connection, "DELETE FROM pending_deleted_notes WHERE note_id=$id;", id.ToString(), at.ToUnixTimeMilliseconds());
+            Execute(connection, "DELETE FROM note_deletion_items WHERE note_id=$id; DELETE FROM pending_deleted_notes WHERE note_id=$id;", id.ToString(), at.ToUnixTimeMilliseconds());
         return changed != 0;
     });
 
@@ -231,7 +257,7 @@ public sealed class NoteRepository(DeskNodesDatabase database)
     private static void Add(SqliteCommand command, string name, object? value)
         => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
 
-    private static Note ReadNote(SqliteDataReader reader) => new(
+    internal static Note ReadNote(SqliteDataReader reader) => new(
         NoteId.Parse(reader.GetString(reader.GetOrdinal("id"))),
         reader.GetString(reader.GetOrdinal("title")),
         NoteColors.ParseStorageId(reader.GetString(reader.GetOrdinal("color"))),
@@ -252,7 +278,7 @@ public sealed class NoteRepository(DeskNodesDatabase database)
         reader.GetBoolean(reader.GetOrdinal("collapsed")),
         ReadTime(reader, "created_at"), ReadTime(reader, "updated_at"), OptionalTime(reader, "deleted_at"));
 
-    private static NoteItem ReadItem(SqliteDataReader reader) => new(
+    internal static NoteItem ReadItem(SqliteDataReader reader) => new(
         ItemId.Parse(reader.GetString(reader.GetOrdinal("id"))),
         NoteId.Parse(reader.GetString(reader.GetOrdinal("note_id"))),
         reader.GetString(reader.GetOrdinal("text")),

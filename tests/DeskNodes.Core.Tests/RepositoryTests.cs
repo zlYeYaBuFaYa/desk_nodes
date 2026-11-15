@@ -8,6 +8,67 @@ namespace DeskNodes.Core.Tests;
 public sealed class RepositoryTests
 {
     [Fact]
+    public void DirectQueriesReturnMatchingRecordsOrNullForMissingIds()
+    {
+        using var directory = new TestDirectory();
+        using var database = directory.Open();
+        var repository = new NoteRepository(database);
+        var note = Note();
+        var other = Note(1);
+        repository.Insert(note);
+        repository.Insert(other);
+        var item = Item(note.Id);
+        repository.Insert(item);
+        repository.Insert(Item(other.Id));
+
+        Assert.Equal(note, repository.GetNote(note.Id));
+        Assert.Equal(item, repository.GetItem(item.Id));
+        Assert.Null(repository.GetNote(NoteId.New(), includeDeleted: true));
+        Assert.Null(repository.GetItem(ItemId.New(), includeDeleted: true, includeArchived: true));
+
+        repository.SoftDelete(note.Id, Now, HistoryDay.Parse("2026-11-15"));
+        Assert.Null(repository.GetNote(note.Id));
+        var deleted = repository.GetNote(note.Id, includeDeleted: true);
+        Assert.NotNull(deleted);
+        Assert.Equal(note.Id, deleted.Id);
+        Assert.Equal(Now, deleted.DeletedAt);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void DirectItemQueryFiltersDeletionAndArchiveIndependently(bool includeDeleted, bool includeArchived)
+    {
+        using var directory = new TestDirectory();
+        using var database = directory.Open();
+        var repository = new NoteRepository(database);
+        var note = Note();
+        repository.Insert(note);
+        var live = Item(note.Id);
+        var archived = Item(note.Id, 1, archivedDay: HistoryDay.Parse("2026-11-14"));
+        var deleted = Item(note.Id, 2);
+        var deletedArchived = Item(note.Id, 3, archivedDay: HistoryDay.Parse("2026-11-14"));
+        foreach (var item in new[] { live, archived, deleted, deletedArchived }) repository.Insert(item);
+        repository.SoftDelete(deleted.Id, Now, HistoryDay.Parse("2026-11-15"));
+        repository.SoftDelete(deletedArchived.Id, Now, HistoryDay.Parse("2026-11-15"));
+
+        Assert.Equal(live, repository.GetItem(live.Id, includeDeleted, includeArchived));
+        Assert.Equal(includeArchived, repository.GetItem(archived.Id, includeDeleted, includeArchived) is not null);
+        Assert.Equal(includeDeleted, repository.GetItem(deleted.Id, includeDeleted, includeArchived) is not null);
+        Assert.Equal(includeDeleted && includeArchived,
+            repository.GetItem(deletedArchived.Id, includeDeleted, includeArchived) is not null);
+
+        repository.SoftDelete(note.Id, Now, HistoryDay.Parse("2026-11-15"));
+        // Archived children keep their own tombstone unset when their parent is deleted.
+        Assert.Null(repository.GetItem(archived.Id, true, true)!.DeletedAt);
+        Assert.Equal(includeDeleted && includeArchived,
+            repository.GetItem(archived.Id, includeDeleted, includeArchived) is not null);
+        Assert.Equal(includeDeleted, repository.GetItem(live.Id, includeDeleted, includeArchived) is not null);
+    }
+
+    [Fact]
     public void CrudRoundTripsEveryFieldAndSortsNotesAndItems()
     {
         using var directory = new TestDirectory();

@@ -26,8 +26,7 @@ public sealed class DayRolloverService(DeskNodesDatabase database, IClock clock,
             RolloverResult result = database.Transaction(connection =>
             {
                 var now = clock.UtcNow;
-                int minutes = Convert.ToInt32(Scalar(connection, "SELECT rollover_minutes FROM business_settings WHERE singleton=1;"));
-                current = new BusinessDayCalculator().GetDay(now, clock.TimeZone, minutes);
+                current = new BusinessDayContext(database, clock).GetDay(now);
                 string? active = null;
                 string? highWater = null;
                 using (var command = connection.CreateCommand())
