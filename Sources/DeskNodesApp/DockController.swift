@@ -179,7 +179,7 @@ final class DockController: NSObject {
         func window(_ frame: NoteFrame, button: DockTab, choice: WindowLevel) {
             let tab = NSPanel(contentRect: rect(frame), styleMask: [.borderless], backing: .buffered, defer: false)
             tab.isReleasedWhenClosed = false; tab.isOpaque = false; tab.backgroundColor = .clear
-            tab.hasShadow = true; tab.hidesOnDeactivate = false
+            tab.hasShadow = true; tab.hidesOnDeactivate = false; tab.appearance = NSAppearance(named: .aqua)
             tab.applyNoteLevel(modes.effective(choice))
             button.frame = NSRect(origin: .zero, size: rect(frame).size)
             button.isBordered = false; button.font = .systemFont(ofSize: 13, weight: .semibold)

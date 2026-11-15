@@ -85,9 +85,10 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertEqual(ToolbarMetrics.length(horizontal: true, paged: false), 364)
     }
 
-    func testEntryIsALargerSoftSquareAndLongTripsHomeTakeLonger() {
+    func testEntryIsACircleAndLongTripsHomeTakeLonger() {
         XCTAssertEqual(ToolbarMetrics.entrySize, 56)
-        XCTAssertLessThan(ToolbarMetrics.entryCornerRadius, ToolbarMetrics.entrySize / 2, "a square, not a circle")
+        XCTAssertEqual(ToolbarMetrics.entryCornerRadius, ToolbarMetrics.entrySize / 2, "a circle, not a rounded square")
+        XCTAssertLessThan(MotionPolicy.toolbarReveal, MotionPolicy.toolbarExpandSpring, "controls are in before the spring settles")
         XCTAssertLessThanOrEqual(ToolbarMetrics.entrySize + ToolbarMetrics.edgeGap, ToolbarMetrics.width, "its hit zone fits the capsule's width")
         XCTAssertEqual(MotionPolicy.toolbarHomeGlide(distance: 0), 0.30)
         XCTAssertEqual(MotionPolicy.toolbarHomeGlide(distance: 300), 0.40, accuracy: 0.0001)

@@ -301,14 +301,16 @@ final class Toolbar {
         var window = animation.flatMap { $0.window(at: CACurrentMediaTime() - $0.began) } ?? shell
         if let badgeRect { window = window.union(badgeRect) }
         if let entryZone { window = window.union(entryZone) }
-        // Controls ride along with the shell only once it has the capsule's size.
+        // Controls sit at their final place inside the shell, which clips them: a moving capsule
+        // carries them along, a growing one uncovers them from the grip end.
         let capsule = shell.size == frames.target.size
         let controls = NSRect(origin: capsule ? shell.origin : frames.target.origin, size: frames.target.size)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         if panel.frame != window { panel.setFrame(window, display: false) }
         root.frame = NSRect(origin: .zero, size: window.size)
         root.arrange(shell: shell.offsetBy(dx: -window.minX, dy: -window.minY),
-                     controls: controls.offsetBy(dx: -window.minX, dy: -window.minY), controlsAlpha: capsule ? controlsAlpha : 0,
+                     controls: controls.offsetBy(dx: -shell.minX, dy: -shell.minY), controlsAlpha: controlsAlpha,
+                     staggered: animation?.stagger ?? false,
                      badge: badgeRect?.offsetBy(dx: -window.minX, dy: -window.minY), iconAlpha: iconAlpha)
         root.interactive = shape == .expanded && animation == nil && !gesture
         CATransaction.commit()
@@ -507,6 +509,10 @@ private struct Transition {
     var window: NSRect?
     /// Going home: after reaching `to`, the entry moves on to `glide.to` without resizing.
     var glide: (to: NSRect, start: Double, duration: Double)? = nil
+    /// The shell follows a spring instead of ease-in-out.
+    var spring = false
+    /// The controls track drives a staggered reveal rather than one fade.
+    var stagger = false
     var duration: Double { max(shellStart + shellDuration, icon.end, controls.end, glide.map { $0.start + $0.duration } ?? 0) }
 
     /// The glide follows the entry with its own window, so the panel never spans the screen.
@@ -518,16 +524,28 @@ private struct Transition {
         if let glide, t >= glide.start {
             return Self.mix(to, glide.to, progress: glide.duration <= 0 ? 1 : (t - glide.start) / glide.duration)
         }
-        return Self.mix(from, to, progress: shellDuration <= 0 ? (t >= shellStart ? 1 : 0) : (t - shellStart) / shellDuration)
+        return Self.mix(from, to, progress: shellDuration <= 0 ? (t >= shellStart ? 1 : 0) : (t - shellStart) / shellDuration,
+                        spring: spring)
     }
-    /// A straight line with ease-in-out timing.
-    private static func mix(_ from: NSRect, _ to: NSRect, progress: Double) -> NSRect {
+    /// A straight line with ease-in-out timing, or a spring that overshoots by about 3%.
+    private static func mix(_ from: NSRect, _ to: NSRect, progress: Double, spring: Bool = false) -> NSRect {
         let raw = min(1, max(0, progress))
-        let p = raw < 0.5 ? 2 * raw * raw : 1 - pow(-2 * raw + 2, 2) / 2
+        let p = spring ? Self.spring(raw) : raw < 0.5 ? 2 * raw * raw : 1 - pow(-2 * raw + 2, 2) / 2
         func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * CGFloat(p) }
         return NSRect(x: mix(from.minX, to.minX), y: mix(from.minY, to.minY),
                       width: mix(from.width, to.width), height: mix(from.height, to.height))
     }
+
+    /// Stiffness 260, damping 24, unit mass, sampled over `toolbarExpandSpring`; what is left
+    /// at the end (about 0.25%) is under a point.
+    private static func spring(_ progress: Double) -> Double {
+        guard progress < 1 else { return 1 }
+        let omega = 260.0.squareRoot(), zeta = 24 / (2 * omega), damped = omega * (1 - zeta * zeta).squareRoot()
+        let t = progress * MotionPolicy.toolbarExpandSpring
+        return 1 - exp(-zeta * omega * t) * (cos(damped * t) + zeta * omega / damped * sin(damped * t))
+    }
+    /// Room around a springing shell for its overshoot.
+    private static let overshoot: CGFloat = 12
 
     private static let shellPhase = MotionPolicy.toolbarMorph - 0.08 // 180ms of the 260
     private static let fade = 0.08
@@ -553,14 +571,17 @@ private struct Transition {
             if controls < 1 { controlsTrack.segments.append((move, reduced ? MotionPolicy.reducedFade : fade * Double(1 - controls), controls, 1)) }
             return Transition(from: from, to: to, shellStart: 0, shellDuration: move, icon: iconTrack, controls: controlsTrack, window: nil)
         }
-        let shell = reduced ? 0 : shellPhase * remaining(from, to, full: circle)
-        // Controls laid out for another size cannot be shown while the shell changes.
+        let shell = reduced ? 0 : MotionPolicy.toolbarExpandSpring * remaining(from, to, full: circle)
+        // Controls caught mid-fade leave first, then return one by one as the shell uncovers them.
         let pre = controls > 0 && !reduced ? fade * Double(controls) : 0
         if controls > 0 { controlsTrack.segments.append((0, pre, controls, 0)) }
         if icon > 0 { iconTrack.segments.append((pre, reduced ? MotionPolicy.reducedFade : min(0.1, max(shell, 0.04)), icon, 0)) }
-        controlsTrack.segments.append((pre + shell, reduced ? MotionPolicy.reducedFade : fade, 0, 1))
-        return Transition(from: from, to: to, shellStart: pre, shellDuration: shell, icon: iconTrack, controls: controlsTrack,
-                          window: from.union(to))
+        if reduced { controlsTrack.segments.append((pre, MotionPolicy.reducedFade, 0, 1)) }
+        else { controlsTrack.segments.append((pre + 0.08, MotionPolicy.toolbarReveal, 0, 1)) }
+        var transition = Transition(from: from, to: to, shellStart: pre, shellDuration: shell, icon: iconTrack, controls: controlsTrack,
+                                    window: from.union(to).insetBy(dx: -overshoot, dy: -overshoot))
+        transition.spring = true; transition.stagger = !reduced
+        return transition
     }
     /// From elsewhere to home: the controls fade, the capsule shrinks to `entry` at its grip
     /// end, then the entry glides to `to`, taking longer for longer trips.
@@ -629,7 +650,8 @@ private final class FrameLink: NSObject {
 /// visible shape it takes no events.
 final class ToolbarRoot: NSView {
     weak var owner: Toolbar?
-    let shell = NSView()
+    /// System material, popover by day and HUD by night; Reduce Transparency makes it opaque.
+    let shell = NSVisualEffectView()
     let content = ToolbarView()
     let entry = ToolbarEntry()
     let badge = ToolbarBadge()
@@ -639,23 +661,26 @@ final class ToolbarRoot: NSView {
     init() {
         super.init(frame: .zero)
         wantsLayer = true
+        shell.blendingMode = .behindWindow; shell.state = .active // the panel is never key
         shell.wantsLayer = true; shell.layer?.masksToBounds = true; shell.layer?.borderWidth = 0.5
-        [shell, content, entry, badge].forEach { addSubview($0) }
+        shell.addSubview(content)
+        [shell, entry, badge].forEach { addSubview($0) }
         colors()
     }
     required init?(coder: NSCoder) { fatalError() }
-    func arrange(shell rect: NSRect, controls: NSRect, controlsAlpha: CGFloat, badge badgeRect: NSRect?, iconAlpha: CGFloat) {
+    /// `controls` is in the shell's coordinates.
+    func arrange(shell rect: NSRect, controls: NSRect, controlsAlpha: CGFloat, staggered: Bool, badge badgeRect: NSRect?, iconAlpha: CGFloat) {
         shell.frame = rect
         shell.layer?.cornerRadius = Self.cornerRadius(rect)
         if content.frame != controls { content.frame = controls }
-        content.alphaValue = controlsAlpha; content.isHidden = controlsAlpha <= 0
+        content.reveal(controlsAlpha, staggered: staggered)
         let side = ToolbarMetrics.entrySize
         entry.frame = NSRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side)
         entry.alphaValue = iconAlpha; entry.isHidden = iconAlpha <= 0
         if let badgeRect { badge.frame = badgeRect }
         badge.alphaValue = iconAlpha; badge.isHidden = badgeRect == nil
     }
-    /// A capsule's ends are semicircles and the entry a soft square; sizes between ease from one to the other.
+    /// A capsule's ends are semicircles and the entry a circle, so every size in between is round-ended too.
     static func cornerRadius(_ rect: NSRect) -> CGFloat {
         let half = min(rect.width, rect.height) / 2, long = max(rect.width, rect.height)
         let entry = CGFloat(ToolbarMetrics.entrySize), square = min(half, CGFloat(ToolbarMetrics.entryCornerRadius))
@@ -694,10 +719,9 @@ final class ToolbarRoot: NSView {
     override func mouseExited(with event: NSEvent) { owner?.pointerChanged() }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); colors() }
     private func colors() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            shell.layer?.backgroundColor = NoteTheme.toolbarBackground.cgColor
-            shell.layer?.borderColor = NoteTheme.toolbarBorder.cgColor
-        }
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        shell.material = dark ? .hudWindow : .popover
+        effectiveAppearance.performAsCurrentDrawingAppearance { shell.layer?.borderColor = NoteTheme.toolbarBorder.cgColor }
     }
 }
 
@@ -750,6 +774,9 @@ final class ToolbarView: NSView {
     let pager = ToolbarPager()
     let count = NSTextField(labelWithString: "")
     private let rule = NSView()
+    /// One hover plate shared by the buttons: it slides from one to the next instead of blinking.
+    private let plate = NSView()
+    private weak var hovered: ToolbarButton?
     /// Everything after the grip; it scrolls when the display is too small for all of it.
     private let strip = NSScrollView()
     private let items = FlippedView()
@@ -762,12 +789,16 @@ final class ToolbarView: NSView {
         wantsLayer = true
         count.font = .systemFont(ofSize: 11, weight: .medium); count.textColor = NoteTheme.toolbarSecondary; count.alignment = .center
         rule.wantsLayer = true
+        plate.wantsLayer = true; plate.layer?.cornerRadius = 10; plate.alphaValue = 0
         strip.drawsBackground = false; strip.hasVerticalScroller = false; strip.hasHorizontalScroller = false
         strip.verticalScrollElasticity = .none; strip.horizontalScrollElasticity = .none
         strip.automaticallyAdjustsContentInsets = false; strip.contentInsets = NSEdgeInsetsZero
         strip.documentView = items
-        [rule, count, pager].forEach { items.addSubview($0) }
-        buttons.forEach { items.addSubview($0) }
+        [plate, rule, count, pager].forEach { items.addSubview($0) }
+        buttons.forEach { button in
+            items.addSubview(button)
+            button.hoverChanged = { [weak self, weak button] inside in if let button { self?.hover(button, inside) } }
+        }
         [grip, strip].forEach { addSubview($0) }
         pager.isHidden = true
         setAccessibilityElement(true); setAccessibilityRole(.toolbar); setAccessibilityLabel("DeskNodes 工具条")
@@ -803,11 +834,60 @@ final class ToolbarView: NSView {
             count.frame = NSRect(x: x + 4, y: (bounds.height - 15) / 2, width: CGFloat(ToolbarMetrics.footerWidth) - 6, height: 15)
             items.frame = NSRect(x: 0, y: 0, width: x + CGFloat(ToolbarMetrics.footerWidth), height: bounds.height)
         }
+        if let hovered { plate.frame = Self.plateFrame(hovered) }
         colors()
     }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); colors() }
     private func colors() {
-        effectiveAppearance.performAsCurrentDrawingAppearance { rule.layer?.backgroundColor = NoteTheme.hairline.cgColor }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            rule.layer?.backgroundColor = NoteTheme.hairline.cgColor
+            plate.layer?.backgroundColor = NoteTheme.toolbarInk.withAlphaComponent(0.07).cgColor
+        }
+    }
+    private static func plateFrame(_ button: ToolbarButton) -> NSRect { button.frame.insetBy(dx: 1, dy: 2) }
+    private func hover(_ button: ToolbarButton, _ inside: Bool) {
+        if inside {
+            guard button.isEnabled else { return }
+            // Still showing (or about to fade): slide over; otherwise appear in place.
+            let slide = plate.alphaValue > 0 && !Motion.reduced
+            hovered = button
+            if !slide { plate.frame = Self.plateFrame(button) }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = MotionPolicy.toolbarHover; context.timingFunction = Motion.easeOut
+                if slide { plate.animator().frame = Self.plateFrame(button) }
+                plate.animator().alphaValue = 1
+            }
+        } else if hovered === button {
+            hovered = nil
+            // Exit arrives before the neighbour's enter; wait a turn so the plate can slide there.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.hovered == nil else { return }
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.15
+                    self.plate.animator().alphaValue = 0
+                }
+            }
+        }
+    }
+    /// 0–1 of the controls track. Staggered, the grip, each button, the pager and the footer
+    /// fade in one after another, buttons settling a few points from above; otherwise
+    /// everything fades together.
+    func reveal(_ value: CGFloat, staggered: Bool) {
+        isHidden = value <= 0
+        alphaValue = staggered ? 1 : value
+        let t = Double(value) * MotionPolicy.toolbarReveal
+        func amount(_ index: Int) -> CGFloat {
+            guard staggered else { return 1 }
+            let p = min(1, max(0, (t - MotionPolicy.toolbarRevealStagger * Double(index)) / MotionPolicy.toolbarRevealItem))
+            return CGFloat(1 - pow(1 - p, 3))
+        }
+        grip.alphaValue = amount(0)
+        for (index, button) in buttons.enumerated() {
+            let a = amount(index + 1)
+            button.alphaValue = a; button.lift = (1 - a) * 6
+        }
+        pager.alphaValue = amount(5)
+        rule.alphaValue = amount(6); count.alphaValue = amount(6)
     }
 }
 
@@ -852,7 +932,11 @@ final class ToolbarButton: NSControl {
     var help: String { didSet { toolTip = help; setAccessibilityHelp(help) } }
     /// A toggle that is on keeps a tinted plate, like a pressed-in key.
     var isOn = false { didSet { needsDisplay = true; setAccessibilityValue(isOn ? "开" : "关") } }
-    private var hovering = false { didSet { needsDisplay = true } }
+    /// The shared hover plate lives in `ToolbarView`.
+    var hoverChanged: (Bool) -> Void = { _ in }
+    /// Points the icon and label sit above their place while revealing.
+    var lift: CGFloat = 0 { didSet { if lift != oldValue { needsDisplay = true } } }
+    private var hovering = false { didSet { needsDisplay = true; if hovering != oldValue { hoverChanged(hovering) } } }
     private var pressing = false { didSet { needsDisplay = true } }
     private var tracking: NSTrackingArea?
     override var isFlipped: Bool { true }
@@ -895,18 +979,18 @@ final class ToolbarButton: NSControl {
         let plate = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 2), xRadius: 10, yRadius: 10)
         if isOn {
             NoteTheme.accent.withAlphaComponent(pressing ? 0.26 : hovering ? 0.22 : 0.18).setFill(); plate.fill()
-        } else if isEnabled && (pressing || hovering) {
-            NoteTheme.toolbarInk.withAlphaComponent(pressing ? 0.12 : 0.06).setFill(); plate.fill()
+        } else if isEnabled && pressing {
+            NoteTheme.toolbarInk.withAlphaComponent(0.06).setFill(); plate.fill()
         }
         let ink: NSColor = isEnabled ? NoteTheme.toolbarInk : NoteTheme.toolbarDisabled
         let configuration = NSImage.SymbolConfiguration(pointSize: 17, weight: .medium).applying(.init(paletteColors: [ink]))
         if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(configuration) {
             let size = image.size
-            image.draw(in: NSRect(x: bounds.midX - size.width / 2, y: 18 - size.height / 2, width: size.width, height: size.height),
+            image.draw(in: NSRect(x: bounds.midX - size.width / 2, y: 18 - lift - size.height / 2, width: size.width, height: size.height),
                        from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
         let paragraph = NSMutableParagraphStyle(); paragraph.alignment = .center
-        (label as NSString).draw(in: NSRect(x: 0, y: 31, width: bounds.width, height: 18), withAttributes: [
+        (label as NSString).draw(in: NSRect(x: 0, y: 31 - lift, width: bounds.width, height: 18), withAttributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: ink, .paragraphStyle: paragraph])
     }
 }

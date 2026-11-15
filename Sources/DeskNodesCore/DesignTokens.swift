@@ -181,15 +181,15 @@ public enum NoteFont: String, CaseIterable, Sendable {
 }
 
 /// The resident toolbar: a capsule laid out vertically or horizontally, which shrinks to a
-/// rounded-square entry at its home on a display edge. All values are points.
+/// round entry at its home on a display edge. All values are points.
 public enum ToolbarMetrics {
     /// The capsule's short side, in either orientation.
     public static let width = 64.0
     /// Half the short side: the ends are full semicircles.
     public static let cornerRadius = 32.0
-    /// The shrunk entry: a rounded square, its hit area reaching out to the edge.
+    /// The shrunk entry: a circle, its hit area reaching out to the edge.
     public static let entrySize = 56.0
-    public static let entryCornerRadius = 14.0
+    public static let entryCornerRadius = entrySize / 2
     /// The home keeps the entry this far from either end of its edge, so its hit area never
     /// reaches a screen corner (and a hot corner there).
     public static let homeCornerClearance = 40.0
@@ -254,6 +254,15 @@ public enum MotionPolicy {
     /// Toolbar snap, and the entry's full expand or shrink.
     public static let toolbarSnap = 0.20
     public static let toolbarMorph = 0.26
+    /// Expanding from the entry: a spring (stiffness 260, damping 24) settles in this time.
+    public static let toolbarExpandSpring = 0.50
+    /// Controls appear one after another from the grip end, each over `toolbarRevealItem`.
+    public static let toolbarRevealStagger = 0.028
+    public static let toolbarRevealItem = 0.22
+    /// Grip, four buttons, pager, footer.
+    public static let toolbarReveal = toolbarRevealItem + toolbarRevealStagger * 6
+    /// The hover plate sliding from one button to the next.
+    public static let toolbarHover = 0.22
     /// Going home from elsewhere: shrink in place (controls fade first), then glide.
     public static let toolbarHomeShrink = 0.20
     public static func toolbarHomeGlide(distance: Double) -> Double {

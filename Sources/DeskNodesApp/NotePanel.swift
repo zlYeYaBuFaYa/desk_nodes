@@ -62,6 +62,8 @@ final class NotePanel: NSPanel, NSWindowDelegate {
         title = "便签"
         isOpaque = false; backgroundColor = .clear; hasShadow = true
         isFloatingPanel = false; hidesOnDeactivate = false; isReleasedWhenClosed = false
+        // Notes are paper: they stay light whatever the system appearance.
+        appearance = NSAppearance(named: .aqua)
         applyLevel()
     }
     /// Short ease-out slide and fade; the window closes when it ends.
