@@ -6,6 +6,7 @@ namespace DeskNodes.App;
 public partial class App : System.Windows.Application
 {
     private readonly AppCoordinator coordinator = new();
+    private Platform.SingleInstance? instance;
 
     private ResourceDictionary? highContrast;
 
@@ -33,7 +34,16 @@ public partial class App : System.Windows.Application
         SystemParameters.StaticPropertyChanged += SystemParametersChanged;
         try
         {
+            instance = new(Core.Storage.DataDirectory.Resolve());
+            if (!instance.IsFirst)
+            {
+                instance.SignalAsync().GetAwaiter().GetResult();
+                Shutdown();
+                return;
+            }
             coordinator.Start();
+            _ = instance.ListenAsync(() => Dispatcher.BeginInvoke(coordinator.ShowToolbar),
+                error => coordinator.Log.Error("单实例恢复入口通信失败。", error));
         }
         catch (Exception exception)
         {
@@ -49,6 +59,7 @@ public partial class App : System.Windows.Application
     {
         SystemParameters.StaticPropertyChanged -= SystemParametersChanged;
         coordinator.Stop();
+        instance?.Dispose();
         base.OnExit(e);
     }
 }

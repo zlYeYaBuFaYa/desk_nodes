@@ -25,6 +25,18 @@ internal sealed partial class NoteWindow : Window
     private bool selected;
     private bool initialized;
     private int openMenus;
+    public void SetTemporarilyRaised(bool raised)
+    {
+        if (levels is null) return;
+        levels.TemporarilyRaised = raised;
+        levels.Apply(!raised);
+    }
+    public double MeasureForArrangement(double width)
+    {
+        rows.Measure(new Size(Math.Max(1, width - 36), double.PositiveInfinity));
+        var screen = app.Screens.GetScreens().Resolve(note.Placement.DisplayDeviceHint);
+        return type.AutomaticHeight(rows.DesiredSize.Height, screen.WorkArea.Height);
+    }
     public void SetSelected(bool value)
     {
         selected = value;

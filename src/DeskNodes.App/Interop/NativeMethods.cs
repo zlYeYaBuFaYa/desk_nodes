@@ -4,6 +4,22 @@ namespace DeskNodes.App.Interop;
 
 internal static partial class NativeMethods
 {
+    [LibraryImport("gdi32.dll")]
+    internal static partial nint CreateRoundRectRgn(int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight);
+    [LibraryImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DeleteObject(nint value);
+    [LibraryImport("user32.dll")]
+    internal static partial int SetWindowRgn(nint window, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
+    internal const int VK_ESCAPE = 0x1B;
+    [LibraryImport("user32.dll")]
+    internal static partial short GetAsyncKeyState(int key);
+    internal const uint SPI_GETSCREENREADER = 0x0046;
+    internal const int WS_EX_NOACTIVATE = 0x08000000;
+    internal const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial uint RegisterWindowMessage(string name);
+    [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetCursorPos(out Point point);
     internal const int GWL_EXSTYLE = -20;
     internal const int WS_EX_TOOLWINDOW = 0x80;
     internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;

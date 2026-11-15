@@ -27,4 +27,12 @@
     <SolidColorBrush x:Key="HoverPlate" Color="#14000000"/>
     <SolidColorBrush x:Key="Divider" Color="#18000000"/>
     <SolidColorBrush x:Key="CompletionMark" Color="White"/>
+    <SolidColorBrush x:Key="ToolbarHover" Color="#1224282D"/>
+    <SolidColorBrush x:Key="ToolbarBackgroundDark" Color="#272A2E"/>
+    <SolidColorBrush x:Key="ToolbarForegroundDark" Color="#F2F4F6"/>
+    <SolidColorBrush x:Key="ToolbarSecondaryDark" Color="#BDC4CC"/>
+    <SolidColorBrush x:Key="ToolbarDisabledDark" Color="#858D97"/>
+    <SolidColorBrush x:Key="ToolbarBorderDark" Color="#24FFFFFF"/>
+    <SolidColorBrush x:Key="ToolbarHoverDark" Color="#12F2F4F6"/>
+    <SolidColorBrush x:Key="ToolbarHitArea" Color="#01000000"/>
 </ResourceDictionary>

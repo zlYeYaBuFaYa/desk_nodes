@@ -1,0 +1,4 @@
+<UserControl x:Class="DeskNodes.App.Views.EntranceHitView" x:ClassModifier="internal"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" AllowDrop="True">
+ <Canvas><Path Data="{Binding HitGeometry, RelativeSource={RelativeSource AncestorType=UserControl}}" Fill="{DynamicResource ToolbarHitArea}"/></Canvas>
+</UserControl>
