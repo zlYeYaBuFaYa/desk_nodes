@@ -50,18 +50,18 @@ internal sealed class SystemServiceWindow : IDisposable
                 else if ((int)wParam is NativeMethods.PBT_APMRESUMEAUTOMATIC or NativeMethods.PBT_APMRESUMESUSPEND)
                 {
                     app.ResetIdle();
-                    app.CheckSystemDay();
+                    QueueDayCheck();
                 }
             }
             else if (message == NativeMethods.WM_TIMECHANGE)
-                app.CheckSystemDay();
+                QueueDayCheck();
             else if (message == NativeMethods.WM_SETTINGCHANGE)
             {
                 app.Animations.Refresh();
                 ((App)System.Windows.Application.Current).RefreshAppearance();
                 app.Screens.NotifyWindowMessage(message);
                 if (RefreshTimeZone())
-                    app.CheckSystemDay();
+                    QueueDayCheck();
                 app.ResetIdle();
             }
             else if (message == NativeMethods.WM_DPICHANGED)
@@ -74,6 +74,18 @@ internal sealed class SystemServiceWindow : IDisposable
             app.Log.Error("系统消息处理失败，将在下次检查重试。", exception);
         }
         return 0;
+    }
+    private bool dayCheckQueued;
+    private void QueueDayCheck()
+    {
+        if (dayCheckQueued)
+            return;
+        dayCheckQueued = true;
+        source.Dispatcher.BeginInvoke(() =>
+        {
+            dayCheckQueued = false;
+            app.Run(app.CheckSystemDay);
+        });
     }
     public void Dispose()
     {

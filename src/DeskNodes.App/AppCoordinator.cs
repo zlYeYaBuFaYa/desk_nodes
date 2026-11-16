@@ -105,6 +105,7 @@ internal sealed partial class AppCoordinator
     public BusinessDayContext BusinessDays { get; private set; } = null!;
     private DayRolloverService rollover = null!;
     private LocalPreferencesStore preferencesStore = null!;
+    private PreferencesState preferenceState = null!;
     private readonly Dictionary<NoteId, NoteWindow> windows = [];
     public string? DataDirectoryPath { get; private set; }
     public NoteRepository Repository { get; private set; } = null!;
@@ -115,7 +116,13 @@ internal sealed partial class AppCoordinator
     public ScreenProvider Screens { get; private set; } = null!;
     public LocalPreferences Preferences { get; private set; } = new();
     public IClock Clock { get; }
-    public AppCoordinator(IClock? clock = null) => Clock = clock ?? new SystemClock();
+    public TimeProvider TimeProvider { get; }
+    public long HistoryGeneration { get; private set; }
+    public AppCoordinator(IClock? clock = null, TimeProvider? timeProvider = null)
+    {
+        Clock = clock ?? new SystemClock();
+        TimeProvider = timeProvider ?? TimeProvider.System;
+    }
     public bool NewInputSinceDeletion { get; set; }
     public void Start()
     {
@@ -124,6 +131,7 @@ internal sealed partial class AppCoordinator
         database = DeskNodesDatabase.Open(Path.Combine(DataDirectoryPath, DataDirectory.DatabaseFileName));
         preferencesStore = new(Log, DataDirectoryPath);
         Preferences = preferencesStore.Load();
+        preferenceState = new(Preferences, preferencesStore.Save);
         Editors = new(Log);
         Editors.TextInput += (_, _) => NewInputSinceDeletion = true;
         var clock = Clock;
@@ -137,15 +145,22 @@ internal sealed partial class AppCoordinator
         BusinessPreferences = businessStore.Load();
         rollover = new(database, clock, Editors, new(database, DataDirectoryPath, Log), Log);
         Presentation = new(this);
-        CheckSystemDay();
         Editors.SaveFailed += (_, _) => Presentation.Error("保存失败，请重试；编辑内容已保留。");
-        Refresh();
         Screens.Changed += (_, _) => Refresh();
         History = new(database);
         Deleted = new(database, Clock, Undo);
         BusinessDays = new(database, Clock);
         Menus = new(this);
-        toolbar = new(this);
+        StartupSequence.Run(AdvanceBusinessDay, () => Refresh(present: false), result =>
+        {
+            if (windows.Count == 0 && Preferences.DeskCollapsed)
+                SavePreferences(Preferences with { DeskCollapsed = false });
+            else
+                Presentation.Refresh();
+            toolbar = new(this);
+            if (result.Status == RolloverStatus.Failed)
+                Presentation.Error("跨天处理失败，当前内容已保留。稍后将重试。");
+        });
         Screens.Changed += (_, _) => ShowToolbar();
         Screens.Changed += (_, _) => RefreshTrayIcon();
         var menu = trayMenu = new Forms.ContextMenuStrip();
@@ -247,7 +262,7 @@ internal sealed partial class AppCoordinator
         tray.Visible = true;
     }
     public void ShowToolbar() => toolbar?.RestoreExpanded();
-    public void SavePreferences(LocalPreferences value)
+    public bool SavePreferences(LocalPreferences value)
     {
         value = value.Normalize();
         bool typographyChanged = value.Font != Preferences.Font || value.TextSize != Preferences.TextSize;
@@ -255,8 +270,13 @@ internal sealed partial class AppCoordinator
             throw new InvalidOperationException("请先结束组词或完成当前编辑，再切换字体和字号。");
         if (typographyChanged && !new Themes.NoteFonts().Resolve(value.Font).Available)
             throw new InvalidOperationException(value.Font == NoteFont.Wenkai ? "此版本未包含文楷字体，请选择其他字体。" : "所选字体未安装。");
-        preferencesStore.Save(value);
-        Preferences = value;
+        if (!preferenceState.TrySave(value, out var failure))
+        {
+            Log.Error("保存本机偏好失败，保留上次成功设置。", failure!);
+            Presentation.Error("无法保存设置，请检查磁盘空间和文件权限；已恢复上次设置。");
+            return false;
+        }
+        Preferences = preferenceState.Value;
         if (typographyChanged)
             foreach (var window in windows.Values) window.RefreshTypography();
         PreferencesChanged?.Invoke(this, EventArgs.Empty);
@@ -264,6 +284,7 @@ internal sealed partial class AppCoordinator
         toolbar?.Rebuild();
         toolbar?.InputChanged();
         RefreshVisibility();
+        return true;
     }
     public void Exit() => Application.Current.Shutdown();
     public void ToggleCollapsed() => Presentation.Collapse(!Preferences.DeskCollapsed);
@@ -348,8 +369,9 @@ internal sealed partial class AppCoordinator
         toolbar?.RefreshTheme();
     }
 
-    public void Refresh()
+    public void Refresh(bool present = true)
     {
+        HistoryGeneration++;
         var notes = Repository.GetNotes();
         foreach (var id in windows.Keys.Except(notes.Select(n => n.Id)).ToArray())
         {
@@ -371,10 +393,13 @@ internal sealed partial class AppCoordinator
         if (notes.Count == 0)
         {
             Raised = false;
-            if (Preferences.DeskCollapsed) SavePreferences(Preferences with { DeskCollapsed = false });
+            if (present && Preferences.DeskCollapsed) SavePreferences(Preferences with { DeskCollapsed = false });
         }
-        RefreshVisibility();
-        toolbar?.Rebuild();
+        if (present)
+        {
+            RefreshVisibility();
+            toolbar?.Rebuild();
+        }
     }
 
     public void CreateNote()
@@ -390,18 +415,14 @@ internal sealed partial class AppCoordinator
         var created = Actions.CreateNote(new(new(bounds.X - screen.Bounds.X, bounds.Y - screen.Bounds.Y, bounds.Width, bounds.Height), screen.DeviceHint), Preferences.NewHeight == 0);
         if (Preferences.DeskCollapsed)
         {
-            Preferences = Preferences with
-            {
-                DeskCollapsed = false
-            };
-            preferencesStore.Save(Preferences);
+            SavePreferences(Preferences with { DeskCollapsed = false });
         }
         Refresh();
         var window = windows[created.Note.Id];
         if (NativeMethods.SetForegroundWindow(new WindowInteropHelper(window).Handle))
             window.FocusItem(created.FirstItemId);
         else
-            Log.Warn("系统拒绝前台激活，请点击新便签继续编辑。");
+            Presentation.Error("点击新便签继续编辑");
     }
 
     public void ChangeSize(int delta, bool reset = false) => Run(() =>

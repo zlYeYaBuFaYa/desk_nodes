@@ -73,14 +73,21 @@ internal partial class ToolbarWindow
         dragging = false;
         dragWatch.Stop();
         ReleaseMouseCapture();
+        bool saved = true;
         if (moved)
         {
-            if (round && projected is not null) app.SavePreferences(app.Preferences with { Home = projected });
+            if (round && projected is not null) saved = app.SavePreferences(app.Preferences with { Home = projected });
             else
             {
                 var placement = ToolbarGeometry.Release(app.Screens.GetScreens(), Pointer(), screen.Id, Bounds, app.Preferences.Anchor?.Edge);
-                app.SavePreferences(app.Preferences with { Anchor = ToolbarRules.Anchor(placement) });
+                saved = app.SavePreferences(app.Preferences with { Anchor = ToolbarRules.Anchor(placement) });
             }
+        }
+        if (!saved)
+        {
+            RestoreStable();
+            e.Handled = true;
+            return;
         }
         UpdateEntranceHit();
         Tick(clicked: !moved, completed: moved && idle.State == ToolbarIdleState.Collapsing, completedGeneration: idle.Generation);

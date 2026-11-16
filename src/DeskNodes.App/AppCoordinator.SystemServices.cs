@@ -23,16 +23,24 @@ internal sealed partial class AppCoordinator
     {
         if (dataOperation)
             return;
+        RefreshDayPresentation(AdvanceBusinessDay());
+    }
+    private RolloverResult AdvanceBusinessDay()
+    {
         systemWindow?.RefreshTimeZone();
-        var result = rollover.CheckAndAdvance();
+        return rollover.CheckAndAdvance();
+    }
+    private void RefreshDayPresentation(RolloverResult result)
+    {
         if (result.Status == RolloverStatus.Sealed)
         {
             Refresh();
             historyWindow?.Reload();
         }
+        else
+            Presentation.Refresh();
         if (result.Status == RolloverStatus.Failed)
             Presentation.Error("跨天处理失败，当前内容已保留。稍后将重试。");
-        Presentation.Refresh();
     }
     private void RegisterInitialHotkeys()
     {
@@ -136,7 +144,7 @@ internal sealed partial class AppCoordinator
             dataOperation = false;
         }
     }
-    public async void ImportData()
+    public async Task ImportDataAsync()
     {
         if (dataOperation || !CommitForDataOperation())
             return;

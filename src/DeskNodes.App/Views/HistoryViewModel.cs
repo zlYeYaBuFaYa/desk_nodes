@@ -13,6 +13,8 @@ internal sealed record HistoryNoteView(string Title, string ColorKey, bool Delet
 internal sealed record DeletedEntryView(DeletedEntry Entry, string ColorKey, string Time, string Preview, bool CanRestore, string Explanation);
 internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChanged
 {
+    private readonly HistoryMonthCache months = new(app.History.MonthStats);
+    private long generation;
     public event PropertyChangedEventHandler? PropertyChanged;
     public CalendarNavigator Navigator { get; } = new(app.BusinessDays.Current, app.BusinessDays.Current);
     public string MonthTitle => Navigator.SelectedDay.Value.ToString("yyyy年M月", CultureInfo.InvariantCulture);
@@ -27,8 +29,21 @@ internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChan
     public Visibility Failure { get; private set; } = Visibility.Collapsed;
     public Visibility DeletedEmpty { get; private set; } = Visibility.Collapsed;
     public string Error { get; private set; } = "";
+    public void Invalidate() => generation++;
     public void Reload(bool deleted)
     {
+        long request = ++generation;
+        long dataGeneration = app.HistoryGeneration;
+        months.Invalidate(dataGeneration);
+        var MonthRate = this.MonthRate;
+        var Cells = this.Cells;
+        var Notes = this.Notes;
+        var DeletedNotes = this.DeletedNotes;
+        var DeletedItems = this.DeletedItems;
+        var Empty = this.Empty;
+        var Failure = this.Failure;
+        var DeletedEmpty = this.DeletedEmpty;
+        var Error = this.Error;
         Navigator.ReloadToday(app.BusinessDays.Current);
         Failure = Visibility.Collapsed;
         Empty = Visibility.Collapsed;
@@ -53,11 +68,11 @@ internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChan
             else
             {
                 var date = Navigator.SelectedDay.Value;
-                var stats = app.History.MonthStats(date.Year, date.Month);
+                var stats = months.Get(date.Year, date.Month) ?? throw new InvalidOperationException("历史数据已更新，请重试。");
                 MonthRate = stats.Progress.Total == 0 ? "—" : $"{100.0 * stats.Progress.Completed / stats.Progress.Total:0}%";
                 var grid = Navigator.MonthGrid();
                 var gridStats = grid.Where(d => d is not null).Select(d => (d!.Value.Value.Year, d.Value.Value.Month))
-                    .Distinct().SelectMany(m => m.Year == date.Year && m.Month == date.Month ? stats.Days : app.History.MonthStats(m.Year, m.Month).Days)
+                    .Distinct().SelectMany(m => m.Year == date.Year && m.Month == date.Month ? stats.Days : (months.Get(m.Year, m.Month) ?? throw new InvalidOperationException("历史数据已更新，请重试。")).Days)
                     .ToDictionary(s => s.Day);
                 Cells = grid.Select(day =>
                 {
@@ -87,6 +102,17 @@ internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChan
             Failure = Visibility.Visible;
             app.Log.Error("无法读取历史窗口。", ex);
         }
+        if (request != generation || dataGeneration != app.HistoryGeneration)
+            return;
+        this.MonthRate = MonthRate;
+        this.Cells = Cells;
+        this.Notes = Notes;
+        this.DeletedNotes = DeletedNotes;
+        this.DeletedItems = DeletedItems;
+        this.Empty = Empty;
+        this.Failure = Failure;
+        this.DeletedEmpty = DeletedEmpty;
+        this.Error = Error;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     }
 }

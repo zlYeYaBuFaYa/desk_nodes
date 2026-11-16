@@ -17,17 +17,8 @@ internal partial class ToolbarWindow : Window
     private ToolbarIdleMachine idle = new();
     private readonly DispatcherTimer wake = new();
     private readonly DispatcherTimer frames = new() { Interval = TimeSpan.FromMilliseconds(16) };
-    private readonly DateTimeOffset timeOrigin;
-    private TimeSpan elapsed;
-    private TimeSpan Now
-    {
-        get
-        {
-            var candidate = app.Clock.UtcNow - timeOrigin;
-            if (candidate > elapsed) elapsed = candidate;
-            return elapsed;
-        }
-    }
+    private readonly MonotonicTimeline timeline;
+    private TimeSpan Now => timeline.Elapsed;
     private bool pressed, dragging, menuOpen, animating, round, externalDrag;
     private PointD downPixels;
     private RectD safe;
@@ -45,7 +36,7 @@ internal partial class ToolbarWindow : Window
     public ToolbarWindow(AppCoordinator app)
     {
         this.app = app;
-        timeOrigin = app.Clock.UtcNow;
+        timeline = new(app.TimeProvider);
         InitializeComponent();
         DataContext = model;
         theme = ((App)Application.Current).Theme;

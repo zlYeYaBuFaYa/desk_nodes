@@ -63,37 +63,31 @@ internal sealed class PresentationCoordinator : IDisposable
     {
         var notes = app.Repository.GetNotes();
         var screens = app.Screens.GetScreens();
+        var byId = notes.ToDictionary(n => n.Id);
+        var lastPages = notes.GroupBy(n => screens.Resolve(n.Placement.DisplayDeviceHint).Id)
+            .ToDictionary(g => g.Key, g => g.Max(n => app.Preferences.Pages.GetValueOrDefault(n.Id.ToString())));
+        var docks = new Dictionary<(string Screen, DockEdge Edge), DockResult>();
+        var anchorScreen = ToolbarGeometry.AnchorScreen(screens, app.Preferences).Id;
         Suppressed.Clear();
         var overflow = new HashSet<NoteId>();
         foreach (var group in notes.Where(n => n.Placement.DockEdge is not null).GroupBy(n => (screens.Resolve(n.Placement.DisplayDeviceHint).Id, Edge: n.Placement.DockEdge!.Value)))
         {
             var screen = screens.Resolve(group.Key.Id);
-            var result = Dock(screen, group.Key.Edge);
-            overflow.UnionWith(result.Overflow);
+            RectD? home = screen.Id == anchorScreen ? ToolbarGeometry.Home(screens, screen, app.Preferences.Home).HomeZone : null;
             var key = (screen.Id, group.Key.Edge);
+            var result = DockLayout.Arrange(screen, group.Key.Edge,
+                group.Select(n => new DockItem(n.Id, n.Placement.DockOrder ?? 0, n.Collapsed ? 32 : n.Placement.Bounds.Height)),
+                home, dockPages.GetValueOrDefault(key));
+            docks[key] = result;
+            overflow.UnionWith(result.Overflow);
             if (result.Overflow.Count > 0)
             {
                 if (!dockLabels.TryGetValue(key, out var label))
                 {
-                    label = new(delta =>
-                    {
-                        dockPages[key] = (Dock(screen, key.Item2).Page + delta + result.PageCount) % result.PageCount;
-                        foreach (var window in app.Windows.Values) window.Place();
-                        Refresh();
-                    }, id =>
-                    {
-                        for (int page = 0; page < result.PageCount; page++)
-                        {
-                            dockPages[key] = page;
-                            if (Dock(screen, key.Item2).Visible.Any(n => n.Id == id)) break;
-                        }
-                        foreach (var window in app.Windows.Values) window.Place();
-                        Refresh();
-                        app.Windows[id].SetTemporarilyRaised(true);
-                    });
+                    label = new(delta => ChangeDockPage(key, delta), id => SelectDockNote(key, id));
                     dockLabels.Add(key, label);
                 }
-                label.DataContext = new DockOverflowModel($"{result.Page + 1}/{result.PageCount}", result.Overflow.Select(id => new DockOverflowEntry(id, notes.First(n => n.Id == id).Title)).ToArray());
+                label.DataContext = new DockOverflowModel($"{result.Page + 1}/{result.PageCount}", result.Overflow.Select(id => new DockOverflowEntry(id, byId[id].Title)).ToArray());
                 if (result.OverflowBounds is { } bounds)
                 {
                     label.Left = bounds.X;
@@ -107,17 +101,21 @@ internal sealed class PresentationCoordinator : IDisposable
         }
         foreach (var key in dockLabels.Keys.ToArray())
         {
-            if (notes.Any(n => n.Placement.DockEdge == key.Edge && screens.Resolve(n.Placement.DisplayDeviceHint).Id == key.Screen) && Dock(screens.Resolve(key.Screen), key.Edge).Overflow.Count > 0) continue;
+            if (docks.TryGetValue(key, out var current) && current.Overflow.Count > 0) continue;
             dockLabels[key].Close();
             dockLabels.Remove(key);
         }
         foreach (var note in notes)
         {
-            var window = app.Windows[note.Id];
+            if (!app.Windows.TryGetValue(note.Id, out var window))
+            {
+                System.Diagnostics.Debug.Assert(false, "便签窗口与存储不同步。");
+                app.Log.Warn($"展示刷新缺少便签窗口：{note.Id}");
+                continue;
+            }
             var handle = new WindowInteropHelper(window).EnsureHandle();
             string screen = screens.Resolve(note.Placement.DisplayDeviceHint).Id;
-            int last = notes.Where(n => screens.Resolve(n.Placement.DisplayDeviceHint).Id == screen)
-                .Select(n => app.Preferences.Pages.GetValueOrDefault(n.Id.ToString())).DefaultIfEmpty().Max();
+            int last = lastPages[screen];
             var reasons = PresentationRules.Suppressed(app.Preferences.DeskCollapsed,
                 app.Preferences.Pages.TryGetValue(note.Id.ToString(), out int page) ? page : null, app.Preferences.Page, last,
                 overflow.Contains(note.Id), desktop.IsCurrent(handle));
@@ -135,13 +133,45 @@ internal sealed class PresentationCoordinator : IDisposable
             NativeMethods.SetWindowPos(new WindowInteropHelper(selectionBar).Handle, NativeMethods.Topmost, 0, 0, 0, 0,
                 NativeMethods.NoActivate | NativeMethods.NoMove | NativeMethods.NoSize);
     }
+    private DockResult? CurrentDock((string Screen, DockEdge Edge) key)
+    {
+        var screen = app.Screens.GetScreens().Screens.FirstOrDefault(s => s.Id == key.Screen);
+        return screen is null ? null : Dock(screen, key.Edge);
+    }
+    private void ChangeDockPage((string Screen, DockEdge Edge) key, int delta)
+    {
+        var result = CurrentDock(key);
+        if (result is null)
+            return;
+        dockPages[key] = (result.Page + delta % result.PageCount + result.PageCount) % result.PageCount;
+        foreach (var window in app.Windows.Values)
+            window.Place();
+        Refresh();
+    }
+    private void SelectDockNote((string Screen, DockEdge Edge) key, NoteId id)
+    {
+        var result = CurrentDock(key);
+        if (result is null || DockLayout.PageForNote(result, id) is not { } page)
+            return;
+        dockPages[key] = page;
+        foreach (var window in app.Windows.Values)
+            window.Place();
+        Refresh();
+        if (app.Windows.TryGetValue(id, out var target))
+            target.SetTemporarilyRaised(true);
+    }
     private IEnumerable<NoteId> Visible() => Suppressed.Where(p => p.Value == SuppressionReason.None).Select(p => p.Key);
     public void Collapse(bool collapsed)
     {
         ExitSelection();
         if (collapsed) app.EndRaised();
         long generation = state.Request(collapsed);
-        app.SavePreferences(app.Preferences with { DeskCollapsed = collapsed });
+        if (!app.SavePreferences(app.Preferences with { DeskCollapsed = collapsed }))
+        {
+            state.Complete(generation);
+            Refresh();
+            return;
+        }
         var screens = app.Screens.GetScreens();
         var screen = ToolbarGeometry.AnchorScreen(screens, app.Preferences);
         var entry = app.CollapseEntrance;

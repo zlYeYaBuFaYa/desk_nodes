@@ -44,6 +44,7 @@ internal partial class HistoryWindow : Window
         InitializeComponent();
         DataContext = model;
         Activated += (_, _) => Reload();
+        Closed += (_, _) => model.Invalidate();
     }
     internal void RefreshTheme() => Reload();
     private void PositionAtPointer() => Platform.AuxiliaryWindowPlacement.Position(this, app.Screens,

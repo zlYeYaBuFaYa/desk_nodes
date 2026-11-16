@@ -106,12 +106,18 @@ internal partial class ToolbarWindow
                 child.Opacity = 1;
                 child.RenderTransform = Transform.Identity;
             }
+            bool saved;
             if (expand)
-                app.SavePreferences(app.Preferences with { Anchor = new(new(end.Center.X * screen.DpiScale, end.Center.Y * screen.DpiScale)) });
+                saved = app.SavePreferences(app.Preferences with { Anchor = new(new(end.Center.X * screen.DpiScale, end.Center.Y * screen.DpiScale)) });
             else
             {
                 var fullAtHome = ToolbarGeometry.Expand(home, screen.WorkArea, app.Preferences.Orientation, Paging);
-                app.SavePreferences(app.Preferences with { Anchor = ToolbarRules.Anchor(new(screen, fullAtHome, home.Position.Edge)) });
+                saved = app.SavePreferences(app.Preferences with { Anchor = ToolbarRules.Anchor(new(screen, fullAtHome, home.Position.Edge)) });
+            }
+            if (!saved)
+            {
+                RestoreStable();
+                return;
             }
             Rebuild();
             Tick(completed: true, completedGeneration: idleGeneration);
@@ -119,6 +125,7 @@ internal partial class ToolbarWindow
         if (reduce) finished();
         else frames.Start();
     }
+    private void RestoreStable() => RestoreExpanded();
     private void RenderFrame()
     {
         double elapsed = ReducedMotion ? duration : (Now - started).TotalSeconds;

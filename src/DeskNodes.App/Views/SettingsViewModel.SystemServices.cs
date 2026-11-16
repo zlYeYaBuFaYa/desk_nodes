@@ -45,10 +45,18 @@ internal sealed partial class SettingsViewModel
             CancelRecording();
             app.ExportData();
         });
-        Import = new RelayCommand(() =>
+        Import = new RelayCommand(async () =>
         {
             CancelRecording();
-            app.ImportData();
+            try
+            {
+                await app.ImportDataAsync();
+            }
+            catch (Exception exception)
+            {
+                app.Log.Error("导入命令失败。", exception);
+                app.RecordError("导入失败，请重试。");
+            }
         });
     }
     private void BeginRecording(HotkeyAction action)
