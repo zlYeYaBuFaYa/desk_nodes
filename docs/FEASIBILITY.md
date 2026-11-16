@@ -1,6 +1,6 @@
 # DeskNodes Windows 可行性、选型与验证
 
-核对日期 2026-11-15。产品依据为 feat-mac `e0b23e660d361fb7963db9c3c1858729ae2ca356`（文档声明核对代码 `d32a827`），来源见 [入口](README.md)，不是更早的 cursor／macos-native-desknodes 文档。本文件基于公开文档和设计分析；环境为 Linux，无 Windows SDK、桌面运行时或真机测试。**所有 Windows 系统交互结果均需 Windows 真机验证**，“可行”表示有合理公开实现路径，不表示已实现／已验收。
+核对日期 2026-11-15。产品依据为 feat-mac `e0b23e660d361fb7963db9c3c1858729ae2ca356`（文档声明核对代码 `d32a827`），来源见 [入口](README.md)，不是更早的 cursor／macos-native-desknodes 文档。本文件的平台裁决基于公开文档和设计分析；已有 WPF/.NET 10 实现，在 Linux 使用 .NET SDK 及 Windows targeting 资源交叉构建，无 Windows 桌面运行或真机测试。**所有 Windows 系统交互结果均需 Windows 真机验证**，“可行”表示有合理公开实现路径，不表示已在 Windows 验收。
 
 ## 最低版本与裁决定义
 
@@ -33,7 +33,7 @@ Windows 10 21H2 上托盘、WPF、热键、Per-Monitor V2 等核心路径并非�
 | [FR-10](REQUIREMENTS.md#fr-10) 跨天／归档／备份 | 可行 | 当前时区、公历、04:00 可改、DST、约30s／启动唤醒时钟变化、初始不造历史、只封存已观察日、不补中间日、回拨高水位、冻结、组词延期、单事务推进、失败仅日志／7份副本可做；电源消息非执行时刻保证，依 H。 |
 | [FR-11](REQUIREMENTS.md#fr-11) 历史 | 可行 | 最近 7 个已封存业务日菜单、聚合计数与失败态、键盘日／周／月导航、日格色阶、周一起始、冻结详情、删除／顺延、分母排除划掉但含删除、跨日按次数、月不平均、零分母“—”、只读／空态均可做。 |
 | [FR-12](REQUIREMENTS.md#fr-12) 设置／热键／启动 | 可行但有差异 | 菜单／Ctrl+,、新版分组、三种应用外观与浅色便签、即时修改、首次拒绝不再问、导入不动系统项可做。Carbon 物理 ANSI 和 Mac 禁用组合不照搬，RegisterHotKey VK 有保留键／AltGr；SMAppService 状态不能套 Run 项。替代 D、H。 |
-| [FR-13](REQUIREMENTS.md#fr-13) 导出／导入／本地 | 可行但有差异 | 提交→一致快照→文件面板→原子发布，staging／替换确认／候选热键／事务替库、失败保旧、浮起键后失败不回滚、成功清会话、偏好归属、后续跨天可做。Mac JSON 字段编码／坐标不直接等价，Windows 协议待冻结。替代 I。 |
+| [FR-13](REQUIREMENTS.md#fr-13) 导出／导入／本地 | 可行但有差异 | 提交→一致快照→文件面板→原子发布，staging／替换确认／候选热键／事务替库、失败保旧、浮起键后失败不回滚、成功清会话、偏好归属、后续跨天可做。Mac JSON 字段编码／坐标不直接等价，Windows 独立 v1 协议已实现，见 [BACKUP_FORMAT](BACKUP_FORMAT.md)，不保证 Mac 互通。替代 I。 |
 | [FR-14](REQUIREMENTS.md#fr-14) 文字大小与字体 | 可行但有差异 | 四档字号与四字体、示例、全便签、端点、自动／固定高、停靠重排、组词拒绝、本机偏好不导出均可做。⌘→Ctrl，字体度量／系统文本缩放另适配；字形集合、下载、打包及回退不同。替代 E、G、K。 |
 | [FR-15](REQUIREMENTS.md#fr-15) 多选 | 可行但有差异 | 同手势进入、勾选／框替换追加、空白清空、当前可见全选、批删及撤销、真实窗提升、覆盖层、隐藏排除、退出恢复原浮起、模式外桌面归系统均可做。⌘→Ctrl，跨屏物理坐标转换和当前虚拟桌面可见过滤；不全局截桌面事件。替代 D、E、G。 |
 | 错误／质量边界 | 可行但有差异 | 明确启动错误、非激活后台提示、设置可复制、历史重试、按应用外观选择深浅（默认跟随系统）／减少动画／关键名称可做。Windows 高对比、UI Automation／Narrator 替代 VoiceOver；强制终止／关机不受提交取消保证。替代 E、G、H。 |
@@ -136,9 +136,9 @@ Reduce Motion／深浅／高对比 **可行但有差异**。①**推荐应用三
 
 Windows 本地 SQLite 与独立 JSON 备份 **可行**；直接宣称现有 Mac 格式可互通 **可行但有差异，当前未定义兼容支持**。
 
-1. **推荐 Windows 独立显式 DTO／版本协议**，能完整定义字段和回滚，开发少；初期不能直接导入 Mac 文件。实施前冻结协议与样本，见 [技术协议边界](TECHNICAL_DESIGN.md#backup)。
+1. **推荐 Windows 独立显式 DTO／版本协议**，能完整定义字段和回滚，开发少；初期不能直接导入 Mac 文件。当前 Windows 独立 v1 已实现，见 [备份协议](BACKUP_FORMAT.md) 与 [技术协议边界](TECHNICAL_DESIGN.md#backup)。
 2. 单独 Mac→Windows 转换器：取得真实导出样本、验证 Swift 日期／ID／枚举、转换坐标及热键，保留业务语义；需要双平台黄金样本和兼容测试，不能本轮猜载荷。
-3. 从第一版就统一跨平台协议：长期互通好；需要 Mac 侧协同与迁移，超出本轮只写 Windows 文档范围，不能修改只读来源来达成。
+3. 从第一版就统一跨平台协议：长期互通好；需要 Mac 侧协同与迁移，超出当前 Windows 实现范围，不能修改只读来源来达成。
 
 <a id="privacy"></a>
 ### J：截图保护与不在范围功能
@@ -155,9 +155,9 @@ Windows 本地 SQLite 与独立 JSON 备份 **可行**；直接宣称现有 Mac 
 1. **默认**采用 Segoe UI + Microsoft YaHei UI，保留系统 fallback；实际中英混排度量需真机校准。
 2. **圆体**：mac 的系统 rounded 西文 + Yuanti SC 及其 CTFontDescriptorMatchFontDescriptorsWithProgressHandler 下载路径在 Windows 没有对等合同，Windows 没有圆体 SC。A **推荐已安装幼圆 YouYuan**，西文用系统无衬线；未安装按需求拒绝切换，不自动下载、不捆绑微软字体，幼圆不可再分发。B 实施时许可审核后可改捆绑某个 SIL OFL 中文圆体，再将“未安装”改为打包策略，本轮不指定未审核字体。C 用微软雅黑替代虽省事，视觉并非圆体，不推荐默认映射。[微软字体再分发说明](https://learn.microsoft.com/en-us/typography/fonts/font-faq)
 3. **宋体**：mac 的系统 serif + Songti SC 改为系统衬线西文与已安装宋体／新宋体。SimSun 小字号可能走点阵，高 DPI 品质需真机观察。若品质不足，可在实施阶段经许可审核捆绑 Source Han Serif／Noto Serif CJK（OFL）；本轮不确定捆绑方案。
-4. **文楷**：推荐固定霞鹜文楷 v1.530，获取 Regular／Medium 与 OFL.txt，固定 SHA-256 校验，原始字体资源不入库源码，构建时获取并打包。按 [技术设计](TECHNICAL_DESIGN.md#fonts) 私有加载与回退，不安装系统字体。未打包拒绝切换；授权优先包内 OFL，缺失转项目在线授权页。直接运行未打包开发会话不等于原生字体验收。[上游版本](https://github.com/lxgw/LxgwWenKai/releases/tag/v1.530)、[上游授权](https://github.com/lxgw/LxgwWenKai/blob/v1.530/OFL.txt)、[WPF 应用字体资源](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/packaging-fonts-with-applications)
+4. **文楷**：推荐固定霞鹜文楷 v1.530，获取 Regular／Medium 与 OFL.txt，固定 SHA-256 校验，原始字体资源不入库源码，显式脚本获取、存在时构建打包。按 [技术设计](TECHNICAL_DESIGN.md#fonts) 私有加载与回退，不安装系统字体。未打包拒绝切换；授权优先包内 OFL，缺失转项目在线授权页。直接运行未打包开发会话不等于原生字体验收。[上游版本](https://github.com/lxgw/LxgwWenKai/releases/tag/v1.530)、[上游授权](https://github.com/lxgw/LxgwWenKai/blob/v1.530/OFL.txt)、[WPF 应用字体资源](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/packaging-fonts-with-applications)
 
-本仓库尚无 Windows 字体获取／构建脚本。实施时锁定资源来源、哈希、打包与授权文件，核对实际字体族、字形、字重和回退结果；不能把有资源或跳过字体测试写成通过。
+已提供 [fetch-fonts.ps1](../build/fetch-fonts.ps1) 和 [fetch-fonts.sh](../build/fetch-fonts.sh)，固定版本与哈希；构建不会自动联网。仍需在 Windows 核对实际字体族、字形、字重和回退结果，不能把有资源或跳过字体测试写成通过。
 
 <a id="stack"></a>
 ## 技术栈比较与唯一推荐
@@ -196,4 +196,4 @@ Windows 本地 SQLite 与独立 JSON 备份 **可行**；直接宣称现有 Mac 
 
 ## 本轮证据范围
 
-本轮仅更新文档并做静态核对；没有 Windows 工程、构建命令、SDK 调用或运行截图。
+已有 Core、WPF App 和 xUnit 测试工程。本轮 Linux 执行 `dotnet build DeskNodes.sln -c Release`（0 警告、0 错误）、`dotnet test DeskNodes.sln -c Release`（371 通过、0 失败、0 跳过）及 win-x64 自包含单文件交叉发布成功。exe 为 227,572,819 字节（未打包文楷），未入库。没有 Windows 运行截图或真机验收证据，ARM64 未发布验证。命令、发布配置和未来手工清单见 [WINDOWS_BUILD](WINDOWS_BUILD.md)，实现取舍见 [DECISIONS](DECISIONS.md)。**Linux 交叉编译和单元测试通过 ≠ Windows 验收。**

@@ -64,6 +64,8 @@ internal sealed class SystemServiceWindow : IDisposable
                     app.CheckSystemDay();
                 app.ResetIdle();
             }
+            else if (message == NativeMethods.WM_DPICHANGED)
+                app.RefreshTrayIcon();
             else if (message == NativeMethods.WM_DISPLAYCHANGE)
                 app.Screens.NotifyWindowMessage(message);
         }

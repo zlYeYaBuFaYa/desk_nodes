@@ -147,6 +147,7 @@ internal sealed partial class AppCoordinator
         Menus = new(this);
         toolbar = new(this);
         Screens.Changed += (_, _) => ShowToolbar();
+        Screens.Changed += (_, _) => RefreshTrayIcon();
         var menu = trayMenu = new Forms.ContextMenuStrip();
         menu.Opening += (_, _) =>
         {
@@ -193,54 +194,56 @@ internal sealed partial class AppCoordinator
         timer.Start();
     }
 
-    private static System.Drawing.Icon CreateTrayIcon()
+    private System.Drawing.Icon CreateTrayIcon()
     {
-        byte[] Draw(int size)
+        // The notification area belongs to the main taskbar, including its overflow popup.
+        var taskbar = new NativeMethods.AppBarData
         {
-            using var bitmap = new System.Drawing.Bitmap(size, size);
-            using var graphics = System.Drawing.Graphics.FromImage(bitmap);
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            graphics.ScaleTransform(size / 32f, size / 32f);
-            using var paper = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(246, 241, 231));
-            using var pen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(36, 40, 45), 2);
-            graphics.FillEllipse(paper, 3, 3, 26, 26);
-            graphics.DrawEllipse(pen, 3, 3, 26, 26);
-            graphics.DrawLine(pen, 11, 11, 21, 11);
-            graphics.DrawLine(pen, 11, 16, 21, 16);
-            graphics.DrawLine(pen, 11, 21, 17, 21);
-            using var png = new MemoryStream();
-            bitmap.Save(png, System.Drawing.Imaging.ImageFormat.Png);
-            return png.ToArray();
-        }
-        var images = new[] { (Size: 16, Data: Draw(16)), (Size: 32, Data: Draw(32)) };
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, true);
-        writer.Write((ushort)0);
-        writer.Write((ushort)1);
-        writer.Write((ushort)images.Length);
-        int offset = 6 + images.Length * 16;
-        foreach (var image in images)
+            Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.AppBarData>()
+        };
+        uint dpi = 96;
+        if (NativeMethods.SHAppBarMessage(NativeMethods.ABM_GETTASKBARPOS, ref taskbar) != 0)
         {
-            writer.Write((byte)image.Size);
-            writer.Write((byte)image.Size);
-            writer.Write((byte)0);
-            writer.Write((byte)0);
-            writer.Write((ushort)1);
-            writer.Write((ushort)32);
-            writer.Write(image.Data.Length);
-            writer.Write(offset);
-            offset += image.Data.Length;
+            var center = new NativeMethods.Point
+            {
+                X = taskbar.Bounds.Left + (taskbar.Bounds.Right - taskbar.Bounds.Left) / 2,
+                Y = taskbar.Bounds.Top + (taskbar.Bounds.Bottom - taskbar.Bounds.Top) / 2
+            };
+            var monitor = NativeMethods.MonitorFromPoint(center, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            if (NativeMethods.GetDpiForMonitor(monitor, NativeMethods.MDT_EFFECTIVE_DPI, out uint monitorDpi, out _) == 0 && monitorDpi > 0)
+                dpi = monitorDpi;
         }
-        foreach (var image in images) writer.Write(image.Data);
-        stream.Position = 0;
-        using var icon = new System.Drawing.Icon(stream);
-        return (System.Drawing.Icon)icon.Clone();
+        int size = NativeMethods.GetSystemMetricsForDpi(NativeMethods.SM_CXSMICON, dpi);
+        try
+        {
+            using var stream = Application.GetResourceStream(
+                new Uri("pack://application:,,,/Assets/DeskNodes.ico"))?.Stream
+                ?? throw new IOException("内嵌应用图标资源不存在。");
+            using var icon = new System.Drawing.Icon(stream, size, size);
+            return (System.Drawing.Icon)icon.Clone();
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException or System.Runtime.InteropServices.ExternalException)
+        {
+            Log.Error("加载托盘图标失败，使用系统默认应用图标。", exception);
+            return (System.Drawing.Icon)System.Drawing.SystemIcons.Application.Clone();
+        }
+    }
+    public void RefreshTrayIcon()
+    {
+        if (tray is null)
+            return;
+        var replacement = CreateTrayIcon();
+        var previous = trayIcon;
+        tray.Icon = replacement;
+        trayIcon = replacement;
+        previous?.Dispose();
     }
     public void RebuildTray()
     {
-        if (tray is null) return;
+        if (tray is null)
+            return;
         tray.Visible = false;
-        tray.Icon = trayIcon;
+        RefreshTrayIcon();
         tray.Visible = true;
     }
     public void ShowToolbar() => toolbar?.RestoreExpanded();

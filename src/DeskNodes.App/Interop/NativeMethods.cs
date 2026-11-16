@@ -19,6 +19,22 @@ internal static partial class NativeMethods
     internal static partial bool DeleteObject(nint value);
     [LibraryImport("user32.dll")]
     internal static partial int SetWindowRgn(nint window, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
+    internal const int SM_CXSMICON = 49, WM_DPICHANGED = 0x02E0;
+    internal const uint ABM_GETTASKBARPOS = 5;
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct AppBarData
+    {
+        public uint Size;
+        public nint Window;
+        public uint CallbackMessage;
+        public uint Edge;
+        public Rect Bounds;
+        public nint Parameter;
+    }
+    [LibraryImport("shell32.dll")]
+    internal static partial nuint SHAppBarMessage(uint message, ref AppBarData data);
+    [LibraryImport("user32.dll")]
+    internal static partial int GetSystemMetricsForDpi(int index, uint dpi);
     internal const int VK_ESCAPE = 0x1B;
     [LibraryImport("user32.dll")]
     internal static partial short GetAsyncKeyState(int key);

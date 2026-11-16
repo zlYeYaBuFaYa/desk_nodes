@@ -1,13 +1,13 @@
 # DeskNodes Windows 技术设计
 
-这是待实施架构，未创建工程或应用代码。行为见 [需求](REQUIREMENTS.md)，数值见 [UI](UI_SPEC.md)，平台裁决及技术栈完整比较见 [可行性](FEASIBILITY.md)。
+已有 WPF/.NET 10 实现：Core 与测试运行于 net10.0，App 为 net10.0-windows，启用 EnableWindowsTargeting。Linux 构建、测试和 x64 交叉发布通过，尚未在 Windows 真机验收。构建步骤见 [WINDOWS_BUILD](WINDOWS_BUILD.md)，取舍见 [DECISIONS](DECISIONS.md)。行为见 [需求](REQUIREMENTS.md)，数值见 [UI](UI_SPEC.md)，平台裁决及技术栈完整比较见 [可行性](FEASIBILITY.md)。
 
 <a id="architecture"></a>
 ## 技术栈与职责
 
-推荐 **C# + WPF（实施时锁定受支持的稳定 .NET LTS）+ SQLite + 少量公开 Win32 互操作**，Windows 11 22H2 起。优先保留系统文字服务、焦点、选区、撤销，再以 XAML 模板形成精致卡片和工具条。WPF 的向量布局与模板支持此方向；这属于设计判断，不是性能或 IME 实测排名。[WPF 官方概览](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/overview/)
+已采用 **C# + WPF/.NET 10 LTS + Microsoft.Data.Sqlite + 少量公开 Win32 互操作**，Windows 11 22H2 起。优先保留系统文字服务、焦点、选区、撤销，再以 XAML 模板形成精致卡片和工具条。WPF 的向量布局与模板支持此方向；这属于设计判断，不是性能或 IME 实测排名。[WPF 官方概览](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/overview/)
 
-不必为此引入 Windows App SDK 运行时；将来若采用其能力，应单独评估部署与版本。按职责分层，以下是建议模块名而非已有类型：
+不必为此引入 Windows App SDK 运行时；将来若采用其能力，应单独评估部署与版本。按职责分层，以下保留设计模块名，实际类型对应表见下方：
 
 | 模块 | 职责与所有权 |
 |---|---|
@@ -23,7 +23,23 @@
 | Theme／NoteFonts | 应用外观资源、便签固定浅色、字号度量、字体可用性与回退 |
 | WindowsServices | Windows 特有托盘恢复入口、热键、登录启动、DPI、电源／时钟／主题及虚拟桌面查询 |
 
-UI 和 HWND 在同一 STA Dispatcher 上操作。持久化由一个串行仓库队列管理；事务内部不 await、不跨线程。UI 在进入事务前提供已提交文本的不可变快照，不从存储线程触碰编辑器。单实例拟用命名 Mutex 和当前用户范围的命名管道；第二次启动只请求显示工具条，不能抢占第一实例的热键或开第二套写库。隔离验证实例必须用独立库／偏好，且明确禁止修改个人登录项。
+### 设计模块与实际实现对应
+
+| 设计模块 | 当前实现（源码路径相对 src） |
+|---|---|
+| AppCoordinator | [App/AppCoordinator.cs](../src/DeskNodes.App/AppCoordinator.cs) 及 SystemServices 分部 |
+| Domain | Core/Domain、Core/Presentation 中业务日、几何与布局规则 |
+| Store | [DeskNodesDatabase](../src/DeskNodes.Core/Storage/DeskNodesDatabase.cs)、Schema、NoteRepository、WindowsBackupCodec（未发布 v1，不提供历史迁移） |
+| NoteActions | Core/Services/NoteActions、DeletionUndoQueue、RecentlyDeleted；App 提交屏障 |
+| EditorCoordinator | [App/Editing/EditorCoordinator.cs](../src/DeskNodes.App/Editing/EditorCoordinator.cs) |
+| NoteSurfaces | AppCoordinator 窗口集合、Views/NoteWindow 各分部（无同名独立类型） |
+| PresentationCoordinator | [App/PresentationCoordinator.cs](../src/DeskNodes.App/PresentationCoordinator.cs) |
+| Dock／ToolbarLayout | Core/Presentation/DockLayout、ToolbarGeometry、ToolbarIdleMachine；App/Views/ToolbarWindow |
+| Settings／HistoryPresentation | App/Views/SettingsViewModel、HistoryViewModel、对应 XAML 窗口；Core/Services/CalendarNavigator、HistoryQueries |
+| Theme／NoteFonts | App/Themes/ThemeService、NoteFonts 与资源字典；Core/Presentation/ThemeRules、NoteTypography |
+| WindowsServices | App/Platform/SingleInstance、SystemServiceWindow、HotkeyService、LoginItemService、ScreenProvider、WindowLevelService、VirtualDesktop；AppCoordinator 托盘 |
+
+UI 和 HWND 在同一 STA Dispatcher 上操作。当前持久化由 DeskNodesDatabase 的同步锁串行化；事务内部不 await、不跨线程。UI 在进入事务前提供已提交文本的不可变快照，不从存储线程触碰编辑器。单实例采用命名 Mutex 和当前用户范围的命名管道；第二次启动只请求显示工具条，不能抢占第一实例的热键或开第二套写库。隔离验证实例必须用独立库／偏好，且明确禁止修改个人登录项。
 
 <a id="models"></a>
 ## 数据模型与边界
@@ -34,16 +50,16 @@ DailySnapshot／SnapshotNote／SnapshotItem 保存冻结成员，包括删除、
 
 Windows placement 使用显示器相对 DIP 矩形与可识别的显示设备线索、停靠边及序号、自由还原位置。Windows 屏幕坐标左上原点、Y 向下，虚拟屏幕可有负坐标，不能复制 Mac 左下原点值。显示器句柄不跨重启存储；标识失配时按已连接屏幕、工作区和最近位置回退主屏。业务库不保存 HWND、瞬时 DPI 或动画坐标。
 
-业务偏好保留跨天时间、快捷键和登录意愿；本机偏好另存全局收起目标、工具条锚点／固定位置／方向／闲置、应用外观、字号／字体、新建尺寸、整理页。自由锚点用中心、吸边用边及归一化比例。选择、焦点、浮起、多选、过渡、撤销和保存任务不序列化。Windows 无已有发布 schema，不冒称继承 Mac v8 迁移；以后明确 Windows schema 和 application_id 后才冻结格式。
+业务偏好保留跨天时间、快捷键和登录意愿；本机偏好另存全局收起目标、工具条锚点／固定位置／方向／闲置、应用外观、字号／字体、新建尺寸、整理页。自由锚点用中心、吸边用边及归一化比例。选择、焦点、浮起、多选、过渡、撤销和保存任务不序列化。Windows 当前为未发布 schema v1，application_id=0x44534B4E；直接修订 v1，不提供 Mac 或旧版迁移。独立备份协议见 [BACKUP_FORMAT](BACKUP_FORMAT.md)。
 
 <a id="storage"></a>
 ## 存储、事务与恢复
 
 拟存 `%LOCALAPPDATA%\DeskNodes\DeskNodes.sqlite3`，通过 LocalApplicationData 已知目录解析，不硬编码用户名；用户目录 ACL 隔离，不声称等价 Unix 0700 或加密。非空 `DESKNODES_DATA_DIR` 可重定向数据目录，偏好也应以隔离配置名分开；此开关不应自动注册启动项。
 
-SQLite 使用外键、WAL、synchronous=FULL、5 秒 busy timeout；外层 BEGIN IMMEDIATE，嵌套 savepoint，失败回滚。迁移先核对身份和版本、拒绝未来／无关库，独占事务执行。冻结记录用约束／触发器阻止 UPDATE／DELETE 及封存后补插；先成员后 header，延迟外键提交。不能清空数据来修复布局。以上为拟定协议，不是现有库声明。
+SQLite 使用外键、WAL、synchronous=FULL、5 秒 busy timeout；外层 BEGIN IMMEDIATE，嵌套 savepoint，失败回滚。打开时先核对身份和版本、拒绝未来／无关库；当前无历史版本迁移。冻结记录用约束／触发器阻止 UPDATE／DELETE 及封存后补插；先成员后 header，延迟外键提交。不能清空数据来修复布局。当前实现见 DeskNodesDatabase 与 Schema；Windows 文件系统故障行为仍待真机验证。
 
-导入 staging、业务库和自动副本必须在同一串行调度下协调。SQLite 活库不能只复制主文件，WAL／SHM 不能混用。自动副本拟用 VACUUM INTO 写数据库目录 Backups 中唯一 `.partial-UUID.sqlite3`，成功关闭输出后重命名为 `DeskNodes-YYYY-MM-DD.sqlite3`，同日不覆盖，按有效文件名保留最新 7 份；失败仅日志，残余 partial 不计有效副本。[SQLite VACUUM INTO](https://www.sqlite.org/lang_vacuum.html)
+导入 staging、业务库和自动副本必须在同一串行调度下协调。SQLite 活库不能只复制主文件，WAL／SHM 不能混用。自动副本使用 VACUUM INTO 写数据库目录 Backups 中唯一 `.partial-UUID.sqlite3`，成功关闭输出后重命名为 `DeskNodes-YYYY-MM-DD.sqlite3`，同日不覆盖，按有效文件名保留最新 7 份；失败仅日志，残余 partial 不计有效副本。[SQLite VACUUM INTO](https://www.sqlite.org/lang_vacuum.html)
 
 离线恢复必须退出进程、保留当前整个目录、把完整副本放进新目录作为主库，不带旧侧文件，再检查完整性、启动和历史。正常恢复通过不能推出断电恢复可靠。
 
@@ -102,23 +118,23 @@ manifest 声明 PerMonitorV2，WPF 内容为 96 DIP／英寸，Win32 边界为�
 
 建议 NoteFonts 从本机偏好初始化，按实际可用字体和字重建立中西文 fallback；具体组合只在 [UI 排版](UI_SPEC.md#type) 维护。切换字号／字体共用提交屏障及卡片布局刷新，组词时拒绝更新并回显实际选择。可用性检查须区分族存在和所需字形／字重；幼圆不可用不请求苹果系统字体下载。资源策略与授权边界见 [字体裁决](FEASIBILITY.md#k)。
 
-文楷构建获取脚本是设计要求，本仓库当前没有 Windows 构建脚本。实施时从固定版本获取 Regular／Medium 和 OFL.txt，以固定 SHA-256 校验，原始字体不入库源码，构建后打包为应用资源。WPF 优先用应用资源私有字体加载，或经验证的等价路径，不安装到系统字体目录；PrivateFontCollection 属于其他文字栈，不能假定自动供 WPF 使用。缺少 Medium 退 Regular，再退系统字体。授权入口优先打开包内 OFL，缺失时打开项目在线授权页；未打包开发会话不构成字体验收。
+已提供 [fetch-fonts.ps1](../build/fetch-fonts.ps1) 与 [fetch-fonts.sh](../build/fetch-fonts.sh)，显式获取固定 v1.530 的 Regular／Medium 和 OFL.txt，以三个固定 SHA-256 校验，原始字体不入库源码，构建后打包为应用资源。WPF 优先用应用资源私有字体加载，或经验证的等价路径，不安装到系统字体目录；PrivateFontCollection 属于其他文字栈，不能假定自动供 WPF 使用。缺少 Medium 退 Regular，再退系统字体。授权入口优先打开包内 OFL，缺失时打开项目在线授权页；未打包开发会话不构成字体验收。
 
-应用外观拟用 WPF 应用级主题／资源字典设置浅深；便签及停靠标签显式强制浅色资源，菜单、工具条与辅助窗用有效外观。`app.appearance` 未知值回退跟随系统。具体主题和公开 backdrop API 实施时锁定，需 Windows 真机验证；不套用 NSApp.appearance／aqua／darkAqua。
+应用外观采用 WPF 应用级主题／资源字典设置浅深；便签及停靠标签显式强制浅色资源，菜单、工具条与辅助窗用有效外观。`app.appearance` 未知值回退跟随系统。实现映射见 ThemeService 与 ToolbarWindow，需 Windows 真机验证；不套用 NSApp.appearance／aqua／darkAqua。
 
 <a id="history"></a>
 ## 历史展示与导航
 
 建议历史查询按封存日期倒序读取 `limit=7`，相对标签由当前业务日生成，菜单统计复用冻结统计模型。最近删除用 SQL 聚合计数，不加载完整列表。菜单每次打开触发读取；空数据、读取失败和计数失败分别呈现，业务规则见 [FR-11](REQUIREMENTS.md#fr-11)。
 
-HistoryPresentation 与普通历史窗口按需创建并复用，指定日时同步选中日期和月份。本地键盘处理只在该窗口日历模式接管，保留详情文本选择与完整键盘导航的普通方向键；最近删除模式不接管。逐日／周移动约束到 today，月导航定位月首且不设同样上限。today 在 reload 时更新，不另设计时器；日格色阶复用冻结完成率，数值见 [UI](UI_SPEC.md#windows)。以上均为建议职责，不是已有类型。
+HistoryPresentation 与普通历史窗口按需创建并复用，指定日时同步选中日期和月份。本地键盘处理只在该窗口日历模式接管，保留详情文本选择与完整键盘导航的普通方向键；最近删除模式不接管。逐日／周移动约束到 today，月导航定位月首且不设同样上限。today 在 reload 时更新，不另设计时器；日格色阶复用冻结完成率，数值见 [UI](UI_SPEC.md#windows)。当前由 HistoryViewModel、HistoryWindow 与 HistoryQueries 承担这些职责，键盘及视觉仍待 Windows 验证。
 
 <a id="backup"></a>
 ## JSON 协议与导入原子性
 
 Mac 源文档的协议为 `local.desknodes.native.backup`、version 1、schema 7／8；Date 默认基于 2001-01-01，StableID 为 rawValue 对象，Placement 为 Swift enum 合成 Codable。**这些信息不足以在本轮定义兼容解码器**；不能假设 Unix JSON 日期、扁平 ID 或相同坐标。Windows 不直接打开 Mac 库，不将本机热键字符当等价绑定。
 
-推荐 Windows 独立带 format／version／schema 的显式 DTO；在实现前以正式协议文档冻结字段、时间单位／时区、ID 形状、可选缺省值、枚举和限制，并生成往返黄金样本。当前不编造可导入 JSON 示例或宣称兼容版本。业务载荷须覆盖所有保留 notes／items、history、pendingNotes／pendingItems、跨天 settings、业务 preferences 和可选 checkpoint；排除本机偏好与实际系统启动注册。跨 Mac 导入只能作为以后显式转换器：取得真实导出样本、逐字段测试、转换布局和热键、用户确认平台差异后再发布。
+已实现 Windows 独立带 format／version／schema 的显式 DTO v1；字段、时间、ID、可选值、枚举与限制见 [BACKUP_FORMAT](BACKUP_FORMAT.md)，由 WindowsBackupCodec 校验并进行往返测试。业务载荷须覆盖所有保留 notes／items、history、pendingNotes／pendingItems、跨天 settings、业务 preferences 和可选 checkpoint；排除本机偏好与实际系统启动注册。跨 Mac 导入只能作为以后显式转换器：取得真实导出样本、逐字段测试、转换布局和热键、用户确认平台差异后再发布。
 
 导入校验 UUID 唯一、引用、顺序、时间、归档／顺延一致性、互斥状态和格式版本；staging 库跑 foreign_key_check／integrity_check，并通过正式导出路径复核。不得执行文件附带 SQL。安全提交→用户确认→热键候选预检后，在所有仓库读写暂停且外层无事务时，用 SQLite online backup API 把 staging 复制到目标连接；失败在 backup_finish 后回滚目标事务，保留旧编辑上下文和绑定；成功才切 generation 和刷新窗口。原子性与磁盘满行为须故障注入验证，不能把多文件复制称为原子替库。[SQLite backup API](https://www.sqlite.org/backup.html)
 
@@ -126,4 +142,4 @@ Mac 源文档的协议为 `local.desknodes.native.backup`、version 1、schema 7
 
 ## 实施门槛
 
-先做 Windows 小样证明中文输入、多便签焦点和圆角壳层，再进入业务实现；门槛与未验证项见 [验证提纲](FEASIBILITY.md#verification)。没有 SDK／运行时测试证据前，不能把这些建议模块写成已有 API 或已通过能力。
+工程与业务实现已存在，Linux Release 构建（0 警告／0 错误）、371 项测试和 x64 单文件交叉发布通过；这些结果不能替代中文输入、多便签焦点、DPI、圆角壳层和系统交互的 Windows 证据。发布前仍须逐项通过 [验证门槛](FEASIBILITY.md#verification) 与 [手工清单](WINDOWS_BUILD.md)。ARM64 尚未发布验证。
