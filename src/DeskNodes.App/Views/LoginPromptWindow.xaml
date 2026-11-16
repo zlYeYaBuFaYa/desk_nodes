@@ -9,7 +9,7 @@
     Background="{DynamicResource HistoryBackground}"
     Foreground="{DynamicResource HistoryForeground}">
     <StackPanel Margin="24">
-        <TextBlock Text="开机时启动 DeskNodes？" FontSize="16" Margin="0,0,0,12"/>
+        <TextBlock Text="开机时启动 DeskNodes？" FontSize="{DynamicResource TextSize16}" Margin="0,0,0,12"/>
         <TextBlock Text="稍后也可以在设置中更改。" TextWrapping="Wrap" Margin="0,0,0,16"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="暂不启用" Click="Decline" Style="{StaticResource SettingsButton}" Margin="0,0,12,0"/>

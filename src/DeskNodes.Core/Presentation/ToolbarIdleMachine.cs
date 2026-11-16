@@ -33,6 +33,17 @@ public sealed class ToolbarIdleMachine
         grace = false;
     }
 
+    private bool interruptedByPress;
+
+    public void BeginGesture(bool interruptedAnimation) => interruptedByPress = interruptedAnimation;
+
+    public IdleOutput EndGesture(bool dragged)
+    {
+        bool resume = interruptedByPress && (!dragged || State == ToolbarIdleState.Expanding);
+        interruptedByPress = false;
+        return resume ? ResumeAnimation() : new(ToolbarIdleAction.None, null, Generation);
+    }
+
     public IdleOutput ResumeAnimation() => new(State switch
     {
         ToolbarIdleState.Collapsing => returning ? ToolbarIdleAction.StartShrinkToHome : ToolbarIdleAction.StartShrinkInPlace,

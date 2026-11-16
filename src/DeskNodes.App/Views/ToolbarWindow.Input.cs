@@ -26,11 +26,10 @@ internal partial class ToolbarWindow
         }
         return false;
     }
-    private bool resumeInterrupted;
     private void Down(object sender, MouseButtonEventArgs e)
     {
         if (!round && grip?.IsMouseOver != true) return;
-        resumeInterrupted = animating;
+        idle.BeginGesture(animating);
         frames.Stop();
         entranceHit.IsOpen = false;
         animating = false;
@@ -71,10 +70,7 @@ internal partial class ToolbarWindow
     {
         if (!pressed) return;
         bool moved = dragging;
-        pressed = false;
-        dragging = false;
-        dragWatch.Stop();
-        ReleaseMouseCapture();
+        EndGesture();
         bool saved = true;
         if (moved)
         {
@@ -98,25 +94,23 @@ internal partial class ToolbarWindow
     private void CancelDrag()
     {
         if (!pressed) return;
-        pressed = dragging = false;
-        dragWatch.Stop();
         screen = safeScreen;
         Place(safe);
-        ReleaseMouseCapture();
+        EndGesture();
         UpdateEntranceHit();
-        if (resumeInterrupted)
+        Tick();
+    }
+    private void EndGesture()
+    {
+        var resume = idle.EndGesture(dragging);
+        pressed = false;
+        dragging = false;
+        dragWatch.Stop();
+        ReleaseMouseCapture();
+        if (resume.Action != ToolbarIdleAction.None)
         {
-            resumeInterrupted = false;
-            var resume = idle.ResumeAnimation();
-            if (resume.Action != ToolbarIdleAction.None)
-            {
-                animating = true;
-                Transition(resume.Action, resume.Generation);
-            }
-            else
-                Tick();
+            animating = true;
+            Transition(resume.Action, resume.Generation);
         }
-        else
-            Tick();
     }
 }

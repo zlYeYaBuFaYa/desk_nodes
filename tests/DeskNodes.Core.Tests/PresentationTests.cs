@@ -50,6 +50,7 @@ public sealed class PresentationTests
         var screen = Screen(width: 100, height: 70);
         var result = DockLayout.Arrange(screen, DockEdge.Left, [new(NoteId.New(), 0), new(NoteId.New(), 1)]);
         Assert.Equal(new RectD(8, 35, 84, 27), result.OverflowBounds);
+        Assert.Equal(new RectD(8, 8, 84, 54), Assert.Single(result.Visible).Bounds);
         Assert.Single(result.Visible);
         Assert.Single(result.Overflow);
     }

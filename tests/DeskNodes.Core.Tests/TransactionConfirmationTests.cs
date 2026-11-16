@@ -110,6 +110,12 @@ public sealed class TransactionConfirmationTests
                 throw new IOException("disk full");
             disk = value;
         });
+        int restores = 0;
+        void Restore()
+        {
+            restores++;
+            Save(old);
+        }
         void Save(LocalPreferences value)
         {
             if (!state.TrySave(value, out var failure))
@@ -122,7 +128,8 @@ public sealed class TransactionConfirmationTests
                 Execute(c, "INSERT INTO snapshot_notes SELECT '2026-11-14', n.*, 0 FROM notes n");
         });
         var coordinator = new CombinedCommitCoordinator(database);
-        Assert.ThrowsAny<Exception>(() => coordinator.Commit(Write, () => Save(candidate), () => Save(old)));
+        Assert.ThrowsAny<Exception>(() => coordinator.Commit(Write, () => Save(candidate), Restore));
+        Assert.Equal(commitFailure ? 1 : 0, restores);
         Assert.Equal(old, disk);
         Assert.Equal(old, state.Value);
         Assert.NotEqual("changed", Assert.Single(repository.GetNotes()).Title);
@@ -130,6 +137,56 @@ public sealed class TransactionConfirmationTests
             () => Save(old with { Page = 1 }), () => Save(old));
         Assert.Equal(1, disk.Page);
         Assert.Equal("retry", Assert.Single(repository.GetNotes()).Title);
+    }
+
+    [Fact]
+    public void CombinedPublicationFailureIsReportedAfterOuterCommitAndKeepsPreferences()
+    {
+        using var directory = new TestDirectory();
+        using var database = directory.Open();
+        var repository = new NoteRepository(database);
+        repository.Insert(Note());
+        var old = new LocalPreferences { Page = 2 };
+        var disk = old;
+        var state = new PreferencesState(old, value => disk = value);
+        var publication = new IOException("refresh failed");
+        int restores = 0;
+        var failure = Assert.Throws<AggregateException>(() => database.Transaction(connection =>
+        {
+            new CombinedCommitCoordinator(database).Commit(
+                () => database.Transaction(c => Execute(c, "UPDATE notes SET title='committed'")),
+                () => Assert.True(state.TrySave(old with { Page = 0 }, out _)),
+                () => restores++,
+                () =>
+                {
+                    Assert.Equal("committed", Assert.Single(repository.GetNotes()).Title);
+                    throw publication;
+                });
+            Assert.Equal(0, restores);
+        }));
+        Assert.Same(publication, Assert.Single(failure.InnerExceptions));
+        Assert.Equal("committed", Assert.Single(repository.GetNotes()).Title);
+        Assert.Equal(0, state.Value.Page);
+        Assert.Equal(state.Value, disk);
+        Assert.Equal(0, restores);
+    }
+
+    [Fact]
+    public void CombinedRestoreFailureKeepsOriginalCommitFailure()
+    {
+        using var directory = new TestDirectory();
+        using var database = directory.Open();
+        new NoteRepository(database).Insert(Note());
+        var restoreFailure = new IOException("restore failed");
+        int restores = 0;
+        var failure = Assert.Throws<AggregateException>(() => new CombinedCommitCoordinator(database).Commit(
+            () => database.Transaction(c => Execute(c, "INSERT INTO snapshot_notes SELECT '2026-11-14', n.*, 0 FROM notes n")),
+            () => { },
+            () => { restores++; throw restoreFailure; }));
+        Assert.IsType<SqliteException>(failure.InnerExceptions[0]);
+        Assert.Same(restoreFailure, failure.InnerExceptions[1]);
+        Assert.Equal(1, restores);
+        Assert.Equal(0L, database.Read(c => Scalar(c, "SELECT count(*) FROM snapshot_notes")));
     }
 
     [Theory]

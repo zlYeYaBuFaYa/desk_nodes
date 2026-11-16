@@ -10,6 +10,9 @@ public sealed record DockResult(IReadOnlyList<DockedNote> Visible, IReadOnlyList
 }
 public static class DockLayout
 {
+    private const double OverflowLength = 96;
+    private const double MinimumNoteLength = 120;
+    private const double DockSpacing = 12;
     public static DockResult Arrange(ScreenInfo screen, DockEdge edge, IEnumerable<DockItem> items,
         RectD? homeZone = null, int page = 0)
     {
@@ -22,13 +25,13 @@ public static class DockLayout
             var strip = top ? new RectD(w.X, w.Y, w.Width, cross) : new RectD(edge == DockEdge.Left ? w.X : w.Right - cross, w.Y, cross, w.Height);
             if (strip.Intersects(zone))
             {
-                double before = Math.Clamp((top ? zone.X : zone.Y) - 12, start, end);
-                double after = Math.Clamp((top ? zone.Right : zone.Bottom) + 12, start, end);
+                double before = Math.Clamp((top ? zone.X : zone.Y) - DockSpacing, start, end);
+                double after = Math.Clamp((top ? zone.Right : zone.Bottom) + DockSpacing, start, end);
                 if (before - start >= end - after) end = before; else start = after;
             }
         }
         var ordered = items.OrderBy(i => i.Order).ToArray();
-        double Length(DockItem i) => top ? Math.Min(220, w.Width) : Math.Min(Math.Clamp(i.Height, 120, 600), w.Height);
+        double Length(DockItem i) => top ? Math.Min(220, w.Width) : Math.Min(Math.Clamp(i.Height, MinimumNoteLength, 600), w.Height);
         // If the reservation consumes the entire strip, keep notes reachable on the strip.
         if (end <= start)
         {
@@ -36,14 +39,15 @@ public static class DockLayout
             end = top ? w.Right : w.Bottom;
         }
         double available = end - start;
-        bool overflow = ordered.Sum(i => Length(i) + 12) - 12 > available;
-        // At exactly 120 DIP there is no remainder: overlay the entry rather than make it unhittable.
-        double overflowLength = available <= 120 ? Math.Min(96, available / 2) : Math.Min(96, available - 120);
+        bool overflow = ordered.Sum(i => Length(i) + DockSpacing) - DockSpacing > available;
+        // Overlay when reserving a full overflow entry would shrink the note below its minimum.
+        bool overlay = available - MinimumNoteLength < OverflowLength;
+        double overflowLength = overlay ? Math.Min(OverflowLength, available / 2) : OverflowLength;
         RectD? overflowBounds = overflow
             ? top ? new(end - overflowLength, w.Y, overflowLength, cross)
                 : new(edge == DockEdge.Left ? w.X : w.Right - cross, end - overflowLength, cross, overflowLength)
             : null;
-        if (overflow && available > 120) available = Math.Max(0, available - overflowLength);
+        if (overflow && !overlay) available = Math.Max(0, available - overflowLength);
         var groups = new List<List<DockItem>> { new() };
         double used = 0;
         foreach (var item in ordered)
@@ -55,7 +59,7 @@ public static class DockLayout
                 used = 0;
             }
             groups[^1].Add(item);
-            used += length + 12;
+            used += length + DockSpacing;
         }
         page = Math.Clamp(page, 0, groups.Count - 1);
         var visible = new List<DockedNote>();
@@ -64,7 +68,7 @@ public static class DockLayout
         {
             double length = Math.Min(Length(item), available);
             visible.Add(new(item.Id, top ? new(cursor, w.Y, length, cross) : new(edge == DockEdge.Left ? w.X : w.Right - cross, cursor, cross, length)));
-            cursor += length + 12;
+            cursor += length + DockSpacing;
         }
         var ids = visible.Select(v => v.Id).ToHashSet();
         return new(visible.AsReadOnly(), Array.AsReadOnly(ordered.Where(i => !ids.Contains(i.Id)).Select(i => i.Id).ToArray()), page, groups.Count, overflowBounds)

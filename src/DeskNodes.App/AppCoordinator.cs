@@ -279,6 +279,11 @@ internal sealed partial class AppCoordinator
             return false;
         }
         Preferences = preferenceState.Value;
+        PublishPreferences(typographyChanged);
+        return true;
+    }
+    private void PublishPreferences(bool typographyChanged = false)
+    {
         if (typographyChanged)
             foreach (var window in windows.Values) window.RefreshTypography();
         PreferencesChanged?.Invoke(this, EventArgs.Empty);
@@ -286,12 +291,12 @@ internal sealed partial class AppCoordinator
         toolbar?.Rebuild();
         toolbar?.InputChanged();
         RefreshVisibility();
-        return true;
     }
     private void PersistPreferences(LocalPreferences value)
     {
-        if (!SavePreferences(value))
-            throw new IOException("无法保存本机偏好。");
+        if (!preferenceState.TrySave(value.Normalize(), out var failure))
+            throw new IOException("无法保存本机偏好。", failure);
+        Preferences = preferenceState.Value;
     }
     public void Exit() => Application.Current.Shutdown();
     public void ToggleCollapsed() => Presentation.Collapse(!Preferences.DeskCollapsed);
@@ -337,7 +342,7 @@ internal sealed partial class AppCoordinator
             }
         }, () => PersistPreferences(previous with { DeskCollapsed = false, Page = 0,
             Pages = arrangement.Notes.ToImmutableDictionary(n => n.Id.ToString(), n => n.Page) }),
-            () => PersistPreferences(previous));
+            () => PersistPreferences(previous), () => PublishPreferences());
         Refresh();
         foreach (var pair in windows.Where(p => p.Value.IsVisible)) pair.Value.ArrangeFrom(previousBounds[pair.Key]);
     }

@@ -264,15 +264,6 @@ internal sealed partial class AppCoordinator
         if (DataDirectoryPath is not null && (importTask is null || importTask.IsCompleted))
             CleanupAbandonedImports();
     }
-    private void CleanupAbandonedImports()
-    {
-        foreach (string path in Directory.EnumerateFiles(DataDirectoryPath!, ".import-*.sqlite3*"))
-        {
-            string name = Path.GetFileName(path);
-            if (name.EndsWith(".sqlite3", StringComparison.Ordinal) ||
-                name.EndsWith(".sqlite3-wal", StringComparison.Ordinal) ||
-                name.EndsWith(".sqlite3-shm", StringComparison.Ordinal))
-                CleanupImport(path.EndsWith("-wal", StringComparison.Ordinal) || path.EndsWith("-shm", StringComparison.Ordinal) ? path[..^4] : path);
-        }
-    }
+    private void CleanupAbandonedImports() =>
+        AbandonedImportCleanup.Run(DataDirectoryPath!, exception => Log.Error("清理导入临时文件失败。", exception));
 }

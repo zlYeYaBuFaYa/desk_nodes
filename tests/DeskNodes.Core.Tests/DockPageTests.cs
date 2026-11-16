@@ -28,30 +28,42 @@ public sealed class DockPageTests
     [Theory]
     [InlineData(119)]
     [InlineData(120)]
+    [InlineData(121)]
+    [InlineData(128)]
     [InlineData(148)]
+    [InlineData(215)]
+    [InlineData(216)]
     [InlineData(239)]
     [InlineData(240)]
     public void NarrowStripReservesNoteMinimumBeforeLabel(double available)
     {
         foreach (var edge in Enum.GetValues<DockEdge>())
         foreach (int count in new[] { 1, 3 })
+        foreach (bool reserve in new[] { false, true })
         {
-            double width = edge == DockEdge.Top ? available + 16 : 800;
-            double height = edge == DockEdge.Top ? 800 : available + 16;
+            double width = edge == DockEdge.Top && !reserve ? available + 16 : 800;
+            double height = edge != DockEdge.Top && !reserve ? available + 16 : 800;
             var screen = new ScreenInfo("s", "s", new(0, 0, width, height), new(0, 0, width, height));
             var items = Enumerable.Range(0, count).Select(i => new DockItem(NoteId.New(), i)).ToArray();
-            var layout = DockLayout.Arrange(screen, edge, items);
+            RectD? home = reserve ? edge == DockEdge.Top
+                ? new(available + 20, 0, 800, 800)
+                : new(0, available + 20, 800, 800) : null;
+            var layout = DockLayout.Arrange(screen, edge, items, home);
             foreach (var item in items)
             {
                 int page = Assert.IsType<int>(DockLayout.PageForNote(layout, item.Id));
-                var shown = DockLayout.Arrange(screen, edge, items, page: page);
+                var shown = DockLayout.Arrange(screen, edge, items, home, page);
                 var bounds = Assert.Single(shown.Visible, note => note.Id == item.Id).Bounds;
                 double length = edge == DockEdge.Top ? bounds.Width : bounds.Height;
+                if (count > 1) Assert.NotNull(shown.OverflowBounds);
                 Assert.True(length >= Math.Min(120, available));
                 if (shown.OverflowBounds is { } label)
                 {
                     Assert.True(label.Width > 0 && label.Height > 0);
-                    Assert.Equal(available <= 120, bounds.Intersects(label));
+                    double labelLength = edge == DockEdge.Top ? label.Width : label.Height;
+                    Assert.Equal(available < 216 ? Math.Min(96, available / 2) : 96, labelLength);
+                    if (available < 216) Assert.True(labelLength <= length / 2);
+                    Assert.Equal(available < 216, bounds.Intersects(label));
                 }
             }
         }

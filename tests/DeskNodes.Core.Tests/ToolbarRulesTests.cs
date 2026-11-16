@@ -6,6 +6,46 @@ namespace DeskNodes.Core.Tests;
 public sealed class ToolbarRulesTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void GestureEndResumesInterruptedExpansionOnlyOnce(bool dragged, bool cancelled)
+    {
+        var machine = new ToolbarIdleMachine();
+        machine.Update(TimeSpan.Zero, new());
+        machine.Update(TimeSpan.FromSeconds(15), new());
+        machine.Update(TimeSpan.FromSeconds(16), new(AnimationCompleted: true));
+        machine.Update(TimeSpan.FromSeconds(17), new(Clicked: true));
+        Assert.Equal(ToolbarIdleState.Expanding, machine.State);
+        machine.BeginGesture(true);
+        machine.Update(TimeSpan.FromSeconds(18), new(Pressed: true, Dragging: dragged));
+        // Cancellation and mouse-up share the same end operation.
+        var result = machine.EndGesture(dragged);
+        Assert.Equal(ToolbarIdleAction.StartExpand, result.Action);
+        Assert.Equal(ToolbarIdleState.Expanding, machine.State);
+        Assert.Equal(ToolbarIdleAction.None, machine.EndGesture(dragged).Action);
+        machine.Update(TimeSpan.FromSeconds(19), new(Clicked: !cancelled && !dragged,
+            AnimationCompleted: true, AnimationGeneration: result.Generation));
+        Assert.Equal(ToolbarIdleState.Expanded, machine.State);
+    }
+
+    [Fact]
+    public void DraggedInterruptedCollapseDoesNotResumeAndCompletesAsRound()
+    {
+        var machine = new ToolbarIdleMachine();
+        machine.Update(TimeSpan.Zero, new());
+        var shrink = machine.Update(TimeSpan.FromSeconds(15), new());
+        Assert.Equal(ToolbarIdleState.Collapsing, machine.State);
+        machine.BeginGesture(true);
+        machine.Update(TimeSpan.FromSeconds(16), new(Pressed: true, Dragging: true));
+        Assert.Equal(ToolbarIdleAction.None, machine.EndGesture(true).Action);
+        Assert.Equal(ToolbarIdleAction.None, machine.EndGesture(true).Action);
+        machine.Update(TimeSpan.FromSeconds(17), new(AnimationCompleted: true, AnimationGeneration: shrink.Generation));
+        Assert.Equal(ToolbarIdleState.Round, machine.State);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void InterruptedTransitionResumesAndSupportsHoverAndIdleAgain(bool atHome)
