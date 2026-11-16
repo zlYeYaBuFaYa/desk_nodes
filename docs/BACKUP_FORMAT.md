@@ -24,9 +24,9 @@ ID 为非空、小写、带连字符 GUID；业务日为有效公历 YYYY-MM-DD�
 停靠边和序号同时存在或同时为空；自由还原四坐标同时存在或同时为空。
 notes/items 的 deleted_at 非空表示 tombstone；snapshot 的 deleted 与 deleted_at 保持一致。
 完成与划掉互斥；归档事项须完成或划掉；carried_to 必须晚于快照日且事项、便签均未删除，事项未完成、未划掉、未归档。
-历史 ID 可跨日复用，唯一键分别为 (day,note_id)、(day,item_id)，当前 notes/items ID 彼此不同。
+历史 ID 可跨日复用，唯一键分别为 (day,note_id)、(day,item_id)，当前 notes/items ID 彼此不同；同日快照便签 ID 与快照事项 ID 不得相同。
 快照事项引用同日快照便签。pending 删除时间须与 tombstone 相同；note_deletion_items 只能关联该已删除便签的已删除事项。
-checkpoint.high_water >= active_day。business_settings.rollover_minutes 为 0–1439。
+存在快照时 checkpoint 必须存在，且所有快照日严格早于 active_day。checkpoint.high_water >= active_day。business_settings.rollover_minutes 为 0–1439。
 热键须经 HotkeyGesture 校验且两个组合不同；hotkey_float 可为空。登录意愿是业务数据，导入不触碰系统 Run 注册项。
 不包含本机外观、工具条、字号、字体、分页、临时选择、撤销或实际系统启动状态。
 输入限制：UTF-8 文件最多 64 MiB（67,108,864 字节，含 BOM 和空白）；单个字符串（含字段名）最多 1,048,576 个解码后的 UTF-16 代码单元；每个数组最多 100,000 条；JSON 最大容器嵌套深度 16（根对象计第 1 层）。边界值允许，超限抛出带分类的 BackupLimitException 并提示具体限制。流读取期间按实际字节及 token 校验，不依赖文件长度元数据；DTO 构造前完成限制检查。

@@ -83,8 +83,12 @@ public static partial class WindowsBackupCodec
             }
             payload[table.Name] = rows;
         }
+        ValidateState(connection);
         transaction.Commit();
-        return Parse(JsonSerializer.Serialize(payload, JsonOptions));
+        var backup = JsonSerializer.SerializeToElement(payload, JsonOptions).Deserialize<WindowsBackup>(JsonOptions)
+            ?? throw new InvalidDataException("备份内容为空。");
+        ValidateHeader(backup);
+        return backup;
     });
 
     public static DeskNodesDatabase Stage(WindowsBackup backup, string path)

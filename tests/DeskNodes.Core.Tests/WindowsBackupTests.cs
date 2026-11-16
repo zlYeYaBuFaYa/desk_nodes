@@ -15,6 +15,23 @@ public sealed class WindowsBackupTests
         public DateTimeOffset UtcNow => Now;
         public TimeZoneInfo TimeZone => TimeZoneInfo.Utc;
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CheckpointMayBeAbsentOnlyWithoutSnapshots(bool hasCheckpoint)
+    {
+        using var directory = new TestDirectory();
+        var root = JsonNode.Parse(Golden)!;
+        root["snapshots"] = new JsonArray();
+        root["snapshot_notes"] = new JsonArray();
+        root["snapshot_items"] = new JsonArray();
+        if (!hasCheckpoint)
+            root["checkpoint"] = new JsonArray();
+        using var stage = WindowsBackupCodec.Stage(WindowsBackupCodec.Parse(root.ToJsonString()),
+            Path.Combine(directory.DirectoryPath, "stage.sqlite3"));
+        Assert.Equal(0L, stage.Read(c => Scalar(c, "SELECT count(*) FROM snapshots")));
+    }
+
     [Fact]
     public void GoldenRoundTripPreservesAllBusinessTablesAndRestoresThroughBackupApi()
     {
@@ -55,6 +72,10 @@ public sealed class WindowsBackupTests
     [InlineData("missing")]
     [InlineData("header_missing")]
     [InlineData("uuid_uppercase")]
+    [InlineData("snapshot_id_collision")]
+    [InlineData("snapshot_without_checkpoint")]
+    [InlineData("snapshot_equal_active")]
+    [InlineData("snapshot_after_active")]
     public void InvalidInputNeverChangesLiveDatabase(string invalid)
     {
         using var directory = new TestDirectory();
@@ -66,6 +87,10 @@ public sealed class WindowsBackupTests
         var item = root["items"]![0]!;
         switch (invalid)
         {
+            case "snapshot_id_collision": root["snapshot_items"]![0]!["item_id"] = root["snapshot_notes"]![0]!["note_id"]!.GetValue<string>(); break;
+            case "snapshot_without_checkpoint": root["checkpoint"] = new JsonArray(); break;
+            case "snapshot_equal_active": root["checkpoint"]![0]!["active_day"] = "2026-11-14"; break;
+            case "snapshot_after_active": root["checkpoint"]![0]!["active_day"] = "2026-11-13"; break;
             case "format": root["format"] = "mac.backup"; break;
             case "version": root["version"] = 2; break;
             case "schema": root["schema"] = 2; break;

@@ -103,6 +103,48 @@ public sealed class BackupParsingTests
         Assert.True(stream.CanRead);
     }
 
+    [Theory]
+    [InlineData(11, false)]
+    [InlineData(10, true)]
+    [InlineData(11, true)]
+    public void LargeChineseBackupUsesExternalByteLimitOnlyAtInput(int count, bool escaped)
+    {
+        using var directory = new TestDirectory();
+        var root = JsonNode.Parse(Golden)!;
+        var template = root["items"]![0]!.DeepClone();
+        var items = root["items"]!.AsArray();
+        items.Clear();
+        string text = new('中', WindowsBackupCodec.MaxStringLength);
+        for (int i = 0; i < count; i++)
+        {
+            var item = template.DeepClone();
+            if (i != 0)
+                item["id"] = Guid.NewGuid().ToString();
+            item["text"] = text;
+            item["sort_order"] = i;
+            items.Add(item);
+        }
+        string json = root.ToJsonString(new JsonSerializerOptions
+        {
+            Encoder = escaped ? System.Text.Encodings.Web.JavaScriptEncoder.Default :
+                System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        if (escaped && count == 11)
+        {
+            Assert.Equal(BackupLimit.FileBytes,
+                Assert.Throws<BackupLimitException>(() => WindowsBackupCodec.Parse(stream)).Limit);
+            return;
+        }
+        if (!escaped)
+            Assert.InRange(stream.Length, 34_000_000, 35_000_000);
+        using var stage = WindowsBackupCodec.Stage(WindowsBackupCodec.Parse(stream),
+            Path.Combine(directory.DirectoryPath, "large.sqlite3"));
+        var exported = WindowsBackupCodec.Export(stage, new RolloverTests.FakeClock());
+        Assert.Equal(count, exported.Items.Count);
+        Assert.All(exported.Items, item => Assert.Equal(text, item.Text));
+    }
+
     private sealed class InputStream(string json, int? totalBytes = null, int maxRead = int.MaxValue) : Stream
     {
         private readonly byte[] payload = Encoding.UTF8.GetBytes(json);

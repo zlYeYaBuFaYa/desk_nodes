@@ -88,11 +88,12 @@ internal sealed partial class AppCoordinator
     }
     public void RestoreDeleted(DeletedEntry entry) => Run(() =>
     {
+        if (entry.Member.NoteId is not null && Preferences.DeskCollapsed &&
+            !SavePreferences(Preferences with { DeskCollapsed = false }))
+            return;
         var result = entry.Member.NoteId is { } note ? Deleted.Restore(note) : Deleted.Restore(entry.Member.ItemId!.Value);
         if (result == RestoreResult.Restored)
         {
-            if (entry.Member.NoteId is not null && Preferences.DeskCollapsed)
-                SavePreferences(Preferences with { DeskCollapsed = false });
             Refresh();
             if (entry.Member.NoteId is { } restored)
                 Presentation.RevealRestored(restored);
@@ -132,7 +133,7 @@ internal sealed partial class AppCoordinator
         preferencesStore = new(Log, DataDirectoryPath);
         Preferences = preferencesStore.Load();
         preferenceState = new(Preferences, preferencesStore.Save);
-        Editors = new(Log);
+        Editors = new(Log, database);
         Editors.TextInput += (_, _) => NewInputSinceDeletion = true;
         var clock = Clock;
         Repository = new(database);
@@ -286,6 +287,11 @@ internal sealed partial class AppCoordinator
         RefreshVisibility();
         return true;
     }
+    private void PersistPreferences(LocalPreferences value)
+    {
+        if (!SavePreferences(value))
+            throw new IOException("无法保存本机偏好。");
+    }
     public void Exit() => Application.Current.Shutdown();
     public void ToggleCollapsed() => Presentation.Collapse(!Preferences.DeskCollapsed);
     public void EndRaised()
@@ -319,7 +325,8 @@ internal sealed partial class AppCoordinator
         var arrangement = Arranger.Arrange(screens, notes, (note, width) => windows[note.Id].MeasureForArrangement(width),
             ToolbarGeometry.ResolveAnchor(screens, Preferences, Preferences.Orientation, Preferences.Pages.Values.Any(p => p > 0)),
             ToolbarGeometry.AnchorScreen(screens, Preferences).Id);
-        database!.Transaction(_ =>
+        var previous = Preferences;
+        new CombinedCommitCoordinator(database!).Commit(() =>
         {
             foreach (var entry in arrangement.Notes)
             {
@@ -327,9 +334,9 @@ internal sealed partial class AppCoordinator
                 Repository.Update(new Note(note.Id, note.Title, note.Color, note.SortOrder, entry.ToPlacement(screens.Resolve(entry.ScreenId)),
                     note.SavedLevel, null, note.AutomaticHeight, note.Collapsed, note.CreatedAt, Clock.UtcNow));
             }
-        });
-        SavePreferences(Preferences with { DeskCollapsed = false, Page = 0,
-            Pages = arrangement.Notes.ToImmutableDictionary(n => n.Id.ToString(), n => n.Page) });
+        }, () => PersistPreferences(previous with { DeskCollapsed = false, Page = 0,
+            Pages = arrangement.Notes.ToImmutableDictionary(n => n.Id.ToString(), n => n.Page) }),
+            () => PersistPreferences(previous));
         Refresh();
         foreach (var pair in windows.Where(p => p.Value.IsVisible)) pair.Value.ArrangeFrom(previousBounds[pair.Key]);
     }
@@ -422,11 +429,9 @@ internal sealed partial class AppCoordinator
         var size = NoteLayout.NewSize(Preferences, screen.WorkArea, _ => 160);
         var bounds = NoteLayout.New(screens, screen.Id, toolbarTarget, windows.Values.Where(w => w.IsVisible &&
             ScreenProvider.DeviceForWindow(new WindowInteropHelper(w).Handle) == screen.DeviceHint).Select(w => w.Bounds), size);
+        if (Preferences.DeskCollapsed && !SavePreferences(Preferences with { DeskCollapsed = false }))
+            return;
         var created = Actions.CreateNote(new(new(bounds.X - screen.Bounds.X, bounds.Y - screen.Bounds.Y, bounds.Width, bounds.Height), screen.DeviceHint), Preferences.NewHeight == 0);
-        if (Preferences.DeskCollapsed)
-        {
-            SavePreferences(Preferences with { DeskCollapsed = false });
-        }
         Refresh();
         var window = windows[created.Note.Id];
         if (NativeMethods.SetForegroundWindow(new WindowInteropHelper(window).Handle))

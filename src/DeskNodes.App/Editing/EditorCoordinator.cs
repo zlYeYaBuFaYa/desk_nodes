@@ -3,12 +3,13 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using DeskNodes.Core.Services;
+using DeskNodes.Core.Storage;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace DeskNodes.App.Editing;
 
 /// <summary>Each registration owns its buffer and timer until the corresponding editor is removed.</summary>
-internal sealed class EditorCoordinator(IDeskNodesLog log) : ICommitBarrier, IDisposable
+internal sealed class EditorCoordinator(IDeskNodesLog log, DeskNodesDatabase database) : ICommitBarrier, IDisposable
 {
     internal sealed class Owner
     {
@@ -110,15 +111,28 @@ internal sealed class EditorCoordinator(IDeskNodesLog log) : ICommitBarrier, IDi
         string text = owner.Editor.Text;
         try
         {
-            owner.Save(text);
-            if (revision == owner.Revision)
-                owner.Committed = text;
+            new PendingCommitTracker(database).Save(() => owner.Save(text), () =>
+            {
+                if (owner.Valid && revision == owner.Revision)
+                    owner.Committed = text;
+            }, () =>
+            {
+                if (!owner.Valid)
+                    return;
+                Status = CommitResult.Failed;
+                owner.Timer.Stop();
+                if (!owner.Composing)
+                    owner.Timer.Start();
+            });
             Status = CommitResult.Committed;
             return true;
         }
         catch (Exception ex)
         {
             Status = CommitResult.Failed;
+            owner.Timer.Stop();
+            if (!owner.Composing)
+                owner.Timer.Start();
             SaveFailed?.Invoke(this, EventArgs.Empty);
             log.Error($"保存编辑失败：{owner.Id}，保留缓冲。", ex);
             return false;

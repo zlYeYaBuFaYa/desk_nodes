@@ -13,6 +13,7 @@ public sealed class DeskNodesDatabase : IDisposable
     private int transactionDepth;
     private long nextSavepoint;
     private bool disposed;
+    private readonly List<(Action Callback, bool? Commit)> completions = [];
 
     private DeskNodesDatabase(SqliteConnection connection) => this.connection = connection;
 
@@ -99,37 +100,101 @@ public sealed class DeskNodesDatabase : IDisposable
     public T Transaction<T>(Func<SqliteConnection, T> action)
     {
         ArgumentNullException.ThrowIfNull(action);
+        List<Action> callbacks = [];
+        Exception? transactionFailure = null;
+        try
+        {
+            lock (gate)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                bool outer = transactionDepth == 0;
+                int start = completions.Count;
+                bool committed = false;
+                string savepoint = $"desknodes_{++nextSavepoint}";
+                Execute(connection, outer ? "BEGIN IMMEDIATE;" : $"SAVEPOINT {savepoint};");
+                transactionDepth++;
+                try
+                {
+                    T result = action(connection);
+                    Execute(connection, outer ? "COMMIT;" : $"RELEASE SAVEPOINT {savepoint};");
+                    committed = true;
+                    return result;
+                }
+                catch (Exception original)
+                {
+                    try
+                    {
+                        Execute(connection, outer ? "ROLLBACK;" :
+                            $"ROLLBACK TO SAVEPOINT {savepoint}; RELEASE SAVEPOINT {savepoint};");
+                    }
+                    catch (SqliteException rollback)
+                    {
+                        throw new AggregateException("事务执行及回滚均失败，请关闭数据库后重试。", original, rollback);
+                    }
+                    throw;
+                }
+                finally
+                {
+                    transactionDepth--;
+                    if (outer)
+                    {
+                        callbacks = completions.Where(c => c.Commit is null || c.Commit == committed).Select(c => c.Callback).ToList();
+                        completions.Clear();
+                    }
+                    else if (!committed)
+                    {
+                        // A caught savepoint failure must never acknowledge its writes at outer commit.
+                        for (int i = completions.Count - 1; i >= start; i--)
+                        {
+                            var entry = completions[i];
+                            if (entry.Commit == true)
+                                completions.RemoveAt(i);
+                            else
+                                completions[i] = (entry.Callback, null);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            transactionFailure = exception;
+            throw;
+        }
+        finally
+        {
+            List<Exception> failures = [];
+            foreach (var callback in callbacks)
+            {
+                try { callback(); }
+                catch (Exception exception) { failures.Add(exception); }
+            }
+            if (failures.Count != 0)
+            {
+                if (transactionFailure is not null)
+                    failures.Insert(0, transactionFailure);
+                throw new AggregateException("事务完成回调失败。", failures);
+            }
+        }
+    }
+
+    public void OnOuterCommitted(Action callback) => OnCompletion(callback, commit: true);
+    public void OnOuterRolledBack(Action callback) => OnCompletion(callback, commit: false);
+
+    private void OnCompletion(Action callback, bool commit)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            bool outer = transactionDepth == 0;
-            string savepoint = $"desknodes_{++nextSavepoint}";
-            Execute(connection, outer ? "BEGIN IMMEDIATE;" : $"SAVEPOINT {savepoint};");
-            transactionDepth++;
-            try
+            if (transactionDepth != 0)
             {
-                T result = action(connection);
-                Execute(connection, outer ? "COMMIT;" : $"RELEASE SAVEPOINT {savepoint};");
-                return result;
-            }
-            catch (Exception original)
-            {
-                try
-                {
-                    Execute(connection, outer ? "ROLLBACK;" :
-                        $"ROLLBACK TO SAVEPOINT {savepoint}; RELEASE SAVEPOINT {savepoint};");
-                }
-                catch (SqliteException rollback)
-                {
-                    throw new AggregateException("事务执行及回滚均失败，请关闭数据库后重试。", original, rollback);
-                }
-                throw;
-            }
-            finally
-            {
-                transactionDepth--;
+                completions.Add((callback, commit));
+                return;
             }
         }
+        if (commit)
+            callback();
     }
 
     /// <summary>Replaces the live database using SQLite's atomic online backup transaction.</summary>
