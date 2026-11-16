@@ -1,4 +1,4 @@
-using System.IO;
+using DeskNodes.Core.Storage;
 using Microsoft.Win32;
 
 namespace DeskNodes.App.Platform;
@@ -7,14 +7,16 @@ internal sealed class LoginItemService
 {
     private const string RunPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "DeskNodes";
-    public bool Available => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DESKNODES_DATA_DIR"));
+    private string? UnavailableReason => LoginItemAvailability.UnavailableReason(
+        Environment.GetEnvironmentVariable(DataDirectory.OverrideVariable), Environment.ProcessPath);
+    public bool Available => UnavailableReason is null;
     public bool Enabled { get; private set; }
     public string Status { get; private set; } = "";
     public void Refresh()
     {
-        if (!Available)
+        if (UnavailableReason is { } reason)
         {
-            Status = "隔离数据实例不能修改登录启动项。";
+            Status = reason;
             Enabled = false;
             return;
         }
@@ -24,15 +26,12 @@ internal sealed class LoginItemService
     }
     public void SetEnabled(bool enabled)
     {
-        if (!Available)
-            throw new InvalidOperationException("隔离数据实例不能修改登录启动项。");
+        if (UnavailableReason is { } reason)
+            throw new InvalidOperationException(reason);
         using var key = Registry.CurrentUser.CreateSubKey(RunPath, writable: true);
         if (enabled)
         {
-            string path = Environment.ProcessPath ?? throw new InvalidOperationException("无法确定应用程序路径。");
-            if (!Path.IsPathFullyQualified(path) || path.Contains('"') ||
-                string.Equals(Path.GetFileNameWithoutExtension(path), "dotnet", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("请从稳定安装目录的 DeskNodes 可执行文件启用登录启动。");
+            string path = Environment.ProcessPath!;
             key.SetValue(ValueName, $"\"{path}\"", RegistryValueKind.String);
         }
         else

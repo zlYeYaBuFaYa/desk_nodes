@@ -260,6 +260,7 @@ internal partial class ToolbarWindow : Window
     }
     public void RestoreExpanded()
     {
+        EndGesture(resumeAnimation: false);
         frames.Stop();
         animating = false;
         generation++;

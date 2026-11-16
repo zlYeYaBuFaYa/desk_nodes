@@ -15,11 +15,15 @@ internal sealed class SingleInstance : IDisposable
     private readonly bool owner;
     public SingleInstance(string directory)
     {
-        string identity = "DeskNodes-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())));
+        string identity = Identity(directory);
         using var process = System.Diagnostics.Process.GetCurrentProcess();
         name = identity + "-" + process.SessionId;
         mutex = new Mutex(true, "Local\\" + identity, out owner);
     }
+    // The caller supplies the canonical result of DataDirectory.Resolve.
+    internal static string Identity(string directory) =>
+        "DeskNodes-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(directory.ToUpperInvariant())));
+
     public bool IsFirst => owner;
     public async Task SignalAsync()
     {

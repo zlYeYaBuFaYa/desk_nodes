@@ -47,13 +47,13 @@ internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChan
         var Failure = this.Failure;
         var DeletedEmpty = this.DeletedEmpty;
         var Error = this.Error;
-        Navigator.ReloadToday(app.BusinessDays.Current);
         Failure = Visibility.Collapsed;
         Empty = Visibility.Collapsed;
         DeletedEmpty = Visibility.Collapsed;
         Error = "";
         try
         {
+            Navigator.ReloadToday(app.BusinessDays.Current);
             if (deleted)
             {
                 var existingNotes = app.Repository.GetNotes().Select(n => n.Id).ToHashSet();

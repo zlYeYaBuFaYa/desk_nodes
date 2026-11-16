@@ -141,6 +141,36 @@ public sealed class DomainTests
     }
 
     [Fact]
+    public void DataDirectoryTrailingSeparatorPreservesCanonicalPathAndInstanceIdentity()
+    {
+        using var directory = new TestDirectory();
+        string plain = DataDirectory.Resolve(directory.DirectoryPath, "");
+        string trailing = DataDirectory.Resolve(directory.DirectoryPath + Path.DirectorySeparatorChar, "");
+        Assert.Equal(plain, trailing);
+        Assert.Equal(DeskNodes.App.Platform.SingleInstance.Identity(plain),
+            DeskNodes.App.Platform.SingleInstance.Identity(trailing));
+        string other = DataDirectory.Resolve(Path.Combine(directory.DirectoryPath, "other"), "");
+        Assert.NotEqual(plain, other);
+        Assert.NotEqual(DeskNodes.App.Platform.SingleInstance.Identity(plain),
+            DeskNodes.App.Platform.SingleInstance.Identity(other));
+    }
+
+    [Fact]
+    public void DataDirectoryPreservesRoot()
+    {
+        string root = Path.GetPathRoot(Path.GetFullPath("."))!;
+        Assert.Equal(root, DataDirectory.Resolve(root, ""));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(@"C:\", DataDirectory.Resolve(@"C:\", ""));
+            const string uncRoot = @"\\server\share\";
+            Assert.Equal(Path.TrimEndingDirectorySeparator(Path.GetFullPath(uncRoot)),
+                DataDirectory.Resolve(uncRoot, ""));
+            Assert.Equal(Path.GetPathRoot(uncRoot), Path.GetPathRoot(DataDirectory.Resolve(uncRoot, "")));
+        }
+    }
+
+    [Fact]
     public void SystemClockReturnsUtcAndLocalTimeZone()
     {
         var provider = new FixedTimeProvider();

@@ -70,11 +70,12 @@ internal partial class ToolbarWindow
     {
         if (!pressed) return;
         bool moved = dragging;
+        var home = projected;
         EndGesture();
         bool saved = true;
         if (moved)
         {
-            if (round && projected is not null) saved = app.SavePreferences(app.Preferences with { Home = projected });
+            if (round && home is not null) saved = app.SavePreferences(app.Preferences with { Home = home });
             else
             {
                 var placement = ToolbarGeometry.Release(app.Screens.GetScreens(), Pointer(), screen.Id, Bounds, app.Preferences.Anchor?.Edge);
@@ -100,14 +101,15 @@ internal partial class ToolbarWindow
         UpdateEntranceHit();
         Tick();
     }
-    private void EndGesture()
+    private void EndGesture(bool resumeAnimation = true)
     {
         var resume = idle.EndGesture(dragging);
         pressed = false;
         dragging = false;
+        projected = null;
         dragWatch.Stop();
         ReleaseMouseCapture();
-        if (resume.Action != ToolbarIdleAction.None)
+        if (resumeAnimation && resume.Action != ToolbarIdleAction.None)
         {
             animating = true;
             Transition(resume.Action, resume.Generation);

@@ -46,8 +46,9 @@ internal sealed class PresentationCoordinator : IDisposable
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private PresentationBar? selectionBar, deletionBar, errorBar;
     private (int Count, RectD Bounds)? deletionState;
-    private DateTimeOffset errorUntil;
-    private DateTimeOffset desktopCheck;
+    private readonly MonotonicTimeline timeline;
+    private TimeSpan errorUntil;
+    private TimeSpan desktopCheck;
     private PointD? boxStart;
     private NoteId? clicked;
     private bool append, dragged, priorRaised;
@@ -57,6 +58,7 @@ internal sealed class PresentationCoordinator : IDisposable
     public PresentationCoordinator(AppCoordinator app)
     {
         this.app = app;
+        timeline = new(app.TimeProvider);
         timer.Tick += (_, _) => Tick();
         timer.Start();
     }
@@ -337,13 +339,13 @@ internal sealed class PresentationCoordinator : IDisposable
         errorBar.Model.Message = message;
         errorBar.Model.Refresh();
         errorBar.PlaceError(app.Screens.GetScreens().Primary.WorkArea);
-        errorUntil = app.Clock.UtcNow.AddSeconds(5);
+        errorUntil = timeline.Elapsed + TimeSpan.FromSeconds(5);
     }
     private void Tick()
     {
-        if (app.Clock.UtcNow >= desktopCheck)
+        if (timeline.Elapsed >= desktopCheck)
         {
-            desktopCheck = app.Clock.UtcNow.AddSeconds(1);
+            desktopCheck = timeline.Elapsed + TimeSpan.FromSeconds(1);
             bool changed = app.Windows.Any(pair =>
                 desktop.IsCurrent(new WindowInteropHelper(pair.Value).Handle) == Suppressed.GetValueOrDefault(pair.Key).HasFlag(SuppressionReason.OtherDesktop));
             if (changed) Refresh();
@@ -371,7 +373,7 @@ internal sealed class PresentationCoordinator : IDisposable
             deletionBar?.Hide();
             deletionState = null;
         }
-        if (app.Clock.UtcNow >= errorUntil) errorBar?.Hide();
+        if (timeline.Elapsed >= errorUntil) errorBar?.Hide();
     }
     public void Dispose()
     {

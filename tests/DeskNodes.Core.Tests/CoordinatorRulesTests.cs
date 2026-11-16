@@ -117,6 +117,30 @@ public sealed class CoordinatorRulesTests
         Assert.Equal(ToolbarIdleAction.StartShrinkToHome, idle.Update(timeline.Elapsed, new()).Action);
     }
 
+    [Theory]
+    [InlineData(-3600)]
+    [InlineData(3600)]
+    public void WallClockChangesPreserveDesktopPollingAndErrorDuration(int clockJump)
+    {
+        var time = new ManualTime();
+        var timeline = new MonotonicTimeline(time);
+        TimeSpan desktopCheck = timeline.Elapsed + TimeSpan.FromSeconds(1);
+        TimeSpan errorUntil = timeline.Elapsed + TimeSpan.FromSeconds(5);
+        int polls = 0;
+        for (int tick = 1; tick <= 50; tick++)
+        {
+            time.Timestamp += 100;
+            time.Utc = time.Utc.AddSeconds(clockJump);
+            if (timeline.Elapsed >= desktopCheck)
+            {
+                polls++;
+                desktopCheck = timeline.Elapsed + TimeSpan.FromSeconds(1);
+            }
+            Assert.Equal(tick / 10, polls);
+            Assert.Equal(tick == 50, timeline.Elapsed >= errorUntil);
+        }
+    }
+
     private sealed class ManualTime : TimeProvider
     {
         public long Timestamp { get; set; }

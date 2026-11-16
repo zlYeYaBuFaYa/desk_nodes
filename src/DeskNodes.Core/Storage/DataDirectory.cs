@@ -12,9 +12,9 @@ public static class DataDirectory
     public static string Resolve(string? directoryOverride, string localApplicationData)
     {
         if (!string.IsNullOrWhiteSpace(directoryOverride))
-            return Path.GetFullPath(directoryOverride);
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryOverride));
         if (string.IsNullOrWhiteSpace(localApplicationData))
             throw new InvalidOperationException("无法解析本地应用数据目录，请设置 DESKNODES_DATA_DIR。");
-        return Path.GetFullPath(Path.Combine(localApplicationData, "DeskNodes"));
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(localApplicationData, "DeskNodes")));
     }
 }
