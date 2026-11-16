@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using DeskNodes.App.Themes;
 using DeskNodes.Core.Presentation;
 
@@ -32,6 +33,8 @@ internal sealed class FontCardViewModel : INotifyPropertyChanged
 internal sealed partial class SettingsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly AppCoordinator app;
+    private readonly Dispatcher dispatcher;
+    private bool disposed;
     private readonly NoteFonts fonts = new();
     private string rolloverText;
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -105,9 +108,10 @@ internal sealed partial class SettingsViewModel : INotifyPropertyChanged, IDispo
         get => app.Preferences.ReduceMotion;
         set => Apply(p => p with { ReduceMotion = value });
     }
-    public SettingsViewModel(AppCoordinator app, Action openLicense)
+    public SettingsViewModel(AppCoordinator app, Action openLicense, Dispatcher dispatcher)
     {
         this.app = app;
+        this.dispatcher = dispatcher;
         InitializeSystemCommands();
         FontCards = SettingsOptions.Fonts.Select(o => new FontCardViewModel(this, o, fonts)).ToArray();
         rolloverText = SavedTime();
@@ -135,8 +139,22 @@ internal sealed partial class SettingsViewModel : INotifyPropertyChanged, IDispo
     }
     private void Apply(Func<LocalPreferences, LocalPreferences> change)
     {
-        Execute(() => app.SavePreferences(change(app.Preferences)));
+        var before = app.Preferences;
+        var requested = change(before);
+        Execute(() => app.SavePreferences(requested));
+        if (requested != before && app.Preferences == before)
+            QueueRejectedChange();
         Changed(this, EventArgs.Empty);
+    }
+    private void QueueRejectedChange()
+    {
+        if (disposed || dispatcher.HasShutdownStarted)
+            return;
+        dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (!disposed)
+                Changed(this, EventArgs.Empty);
+        });
     }
     private void Execute(Action action)
     {
@@ -158,6 +176,8 @@ internal sealed partial class SettingsViewModel : INotifyPropertyChanged, IDispo
     }
     public void Dispose()
     {
+        disposed = true;
+        app.PropertyChanged -= DataOperationChanged;
         app.Hotkeys.Recorded -= CaptureRegisteredGesture;
         app.PreferencesChanged -= Changed;
         app.ErrorChanged -= Changed;

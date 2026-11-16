@@ -95,6 +95,9 @@ public static partial class WindowsBackupCodec
     });
 
     public static DeskNodesDatabase Stage(WindowsBackup backup, string path, CancellationToken cancellationToken = default)
+        => Stage(backup, path, cancellationToken, null);
+
+    internal static DeskNodesDatabase Stage(WindowsBackup backup, string path, CancellationToken cancellationToken, Action? databaseCreated)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateHeader(backup);
@@ -103,6 +106,7 @@ public static partial class WindowsBackupCodec
         var database = DeskNodesDatabase.Open(path);
         try
         {
+            databaseCreated?.Invoke();
             cancellationToken.ThrowIfCancellationRequested();
             var payload = JsonSerializer.SerializeToElement(backup, JsonOptions);
             database.Transaction(connection =>

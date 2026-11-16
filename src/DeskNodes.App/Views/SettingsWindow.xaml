@@ -337,6 +337,19 @@
                         Command="{Binding Import}"
                         Content="导入…"
                         Margin="12,0,0,0"/>
+                    <TextBlock Text="正在校验…" FontSize="{DynamicResource TextSize12}"
+                        VerticalAlignment="Center" Margin="12,0,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDataOperationBusy}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
             </Border>
             <Button

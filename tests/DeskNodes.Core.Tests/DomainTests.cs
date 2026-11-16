@@ -143,11 +143,19 @@ public sealed class DomainTests
     [Fact]
     public void SystemClockReturnsUtcAndLocalTimeZone()
     {
-        DateTimeOffset before = DateTimeOffset.UtcNow;
-        var clock = new SystemClock();
-        Assert.InRange(clock.UtcNow, before, DateTimeOffset.UtcNow);
+        var provider = new FixedTimeProvider();
+        var clock = new SystemClock(provider);
+        Assert.Equal(provider.GetUtcNow(), clock.UtcNow);
         Assert.Equal(TimeSpan.Zero, clock.UtcNow.Offset);
-        Assert.Equal(TimeZoneInfo.Local, clock.TimeZone);
+        Assert.Equal(provider.LocalTimeZone, clock.TimeZone);
+        Assert.Equal(TimeSpan.Zero, new SystemClock().UtcNow.Offset);
+        Assert.Equal(TimeZoneInfo.Local, new SystemClock().TimeZone);
+    }
+
+    private sealed class FixedTimeProvider : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 11, 15, 12, 0, 0, TimeSpan.Zero);
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
     }
 
     private sealed class CultureScope : IDisposable

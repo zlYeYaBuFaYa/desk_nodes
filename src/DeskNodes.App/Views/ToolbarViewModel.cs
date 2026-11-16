@@ -5,10 +5,11 @@ using DeskNodes.Core.Presentation;
 
 namespace DeskNodes.App.Views;
 
-internal sealed class RelayCommand(Action execute) : ICommand
+internal sealed class RelayCommand(Action execute, Func<bool>? canExecute = null) : ICommand
 {
-    public event EventHandler? CanExecuteChanged { add { } remove { } }
-    public bool CanExecute(object? parameter) => true;
+    public event EventHandler? CanExecuteChanged;
+    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public bool CanExecute(object? parameter) => canExecute?.Invoke() ?? true;
     public void Execute(object? parameter) => execute();
 }
 

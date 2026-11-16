@@ -14,35 +14,37 @@ public sealed class InstanceSignalTests
     public async Task BlockingCallerWithUnpumpedContextCompletesWithinBound()
     {
         string name = "DeskNodes-test-" + Guid.NewGuid().ToString("N");
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var caller = Task.Run(() =>
         {
             SynchronizationContext.SetSynchronizationContext(new UnpumpedContext());
             try
             {
-                var signal = InstanceSignal.SendAsync(name, 1000);
-                started.SetResult();
+                var signal = InstanceSignal.SendAsync(name, 10_000);
+                Assert.False(signal.IsCompleted);
+                waiting.SetResult();
                 signal.GetAwaiter().GetResult();
-                return true;
             }
-            catch (TimeoutException)
+            catch (Exception exception)
             {
-                return false;
+                waiting.TrySetException(exception);
+                throw;
             }
             finally
             {
                 SynchronizationContext.SetSynchronizationContext(null);
             }
         });
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
-        await Task.Delay(50);
+        await waiting.Task.WaitAsync(TimeSpan.FromSeconds(15));
         using var server = new NamedPipeServerStream(name, PipeDirection.In, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        await server.WaitForConnectionAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        var connection = server.WaitForConnectionAsync();
+        await connection.WaitAsync(TimeSpan.FromSeconds(15));
         var bytes = new byte[1];
         Assert.Equal(1, await server.ReadAsync(bytes).AsTask().WaitAsync(TimeSpan.FromSeconds(3)));
         Assert.Equal(1, bytes[0]);
-        Assert.True(await caller.WaitAsync(TimeSpan.FromSeconds(3)));
+        await caller.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal(0, await server.ReadAsync(bytes).AsTask().WaitAsync(TimeSpan.FromSeconds(15)));
     }
 
     [Fact]

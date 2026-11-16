@@ -41,7 +41,7 @@ public sealed class WindowsBackupTests
     }
 
     [Fact]
-    public async Task CancellationAfterDatabaseCreationRemovesAllStagingFilesAndPreservesLiveData()
+    public void CancellationAfterDatabaseCreationRemovesAllStagingFilesAndPreservesLiveData()
     {
         using var directory = new TestDirectory();
         using var live = DeskNodesDatabase.Open(Path.Combine(directory.DirectoryPath, "live.sqlite3"));
@@ -49,20 +49,18 @@ public sealed class WindowsBackupTests
         var note = Note();
         repository.Insert(note);
         var backup = WindowsBackupCodec.Parse(Golden);
-        var template = backup.Notes[0];
-        backup.Notes.AddRange(Enumerable.Range(1, 10_000).Select(i => template with
-        {
-            Id = Guid.NewGuid().ToString("D"), SortOrder = i, Title = new string('中', 1024)
-        }));
+        string before = WindowsBackupCodec.Serialize(WindowsBackupCodec.Export(live, new Clock()));
         string path = Path.Combine(directory.DirectoryPath, ".import-test.sqlite3");
         using var cancellation = new CancellationTokenSource();
-        var cancel = Task.Factory.StartNew(() =>
+        bool observed = false;
+        Assert.Throws<OperationCanceledException>(() => WindowsBackupCodec.Stage(backup, path, cancellation.Token, () =>
         {
-            Assert.True(SpinWait.SpinUntil(() => File.Exists(path), TimeSpan.FromSeconds(5)));
+            observed = true;
+            Assert.True(File.Exists(path));
             cancellation.Cancel();
-        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-        Assert.Throws<OperationCanceledException>(() => WindowsBackupCodec.Stage(backup, path, cancellation.Token));
-        await cancel;
+        }));
+        Assert.True(observed);
+        Assert.Equal(before, WindowsBackupCodec.Serialize(WindowsBackupCodec.Export(live, new Clock())));
         Assert.Empty(Directory.GetFiles(directory.DirectoryPath, ".import-*"));
         Assert.Equal(note, Assert.Single(repository.GetNotes()));
     }
@@ -82,6 +80,13 @@ public sealed class WindowsBackupTests
         using var stage = WindowsBackupCodec.Stage(WindowsBackupCodec.Parse(root.ToJsonString()),
             Path.Combine(directory.DirectoryPath, "stage.sqlite3"));
         Assert.Equal(0L, stage.Read(c => Scalar(c, "SELECT count(*) FROM snapshots")));
+        var checkpoint = WindowsBackupCodec.Export(stage, new Clock()).Checkpoint;
+        Assert.Equal(hasCheckpoint ? 1 : 0, checkpoint.Count);
+        if (hasCheckpoint)
+        {
+            Assert.Equal(1L, stage.Read(c => Scalar(c, "SELECT singleton FROM checkpoint")));
+            Assert.Equal(WindowsBackupCodec.Parse(Golden).Checkpoint[0], Assert.Single(checkpoint));
+        }
     }
 
     [Fact]
@@ -166,12 +171,49 @@ public sealed class WindowsBackupTests
             case "header_missing": root.AsObject().Remove("format"); break;
             case "uuid_uppercase": note["id"] = "AAAAAAAA-1111-4111-8111-111111111111"; break;
         }
-        Assert.ThrowsAny<Exception>(() =>
+        string path = Path.Combine(directory.DirectoryPath, "bad.sqlite3");
+        if (invalid is "unknown" or "missing" or "header_missing")
+            Assert.Throws<System.Text.Json.JsonException>(() => WindowsBackupCodec.Parse(root.ToJsonString()));
+        else if (invalid is "format" or "version" or "schema" or "time")
+        {
+            var error = Assert.Throws<InvalidDataException>(() => WindowsBackupCodec.Parse(root.ToJsonString()));
+            Assert.Contains(invalid == "time" ? "ISO-8601 UTC" : "格式或版本", error.Message);
+        }
+        else
         {
             var parsed = WindowsBackupCodec.Parse(root.ToJsonString());
-            using var staging = WindowsBackupCodec.Stage(parsed, Path.Combine(directory.DirectoryPath, "bad.sqlite3"));
-            live.ReplaceFrom(staging);
-        });
+            Type expected = invalid switch
+            {
+                "date" => typeof(FormatException),
+                "hotkeys" => typeof(ArgumentException),
+                "duplicate" or "reference" or "exclusive" or "geometry" or "checkpoint" => typeof(Microsoft.Data.Sqlite.SqliteException),
+                _ => typeof(InvalidDataException)
+            };
+            var error = Assert.Throws(expected, () => WindowsBackupCodec.Stage(parsed, path));
+            if (error is Microsoft.Data.Sqlite.SqliteException sqlite)
+            {
+                Assert.Equal(19, sqlite.SqliteErrorCode); // SQLITE_CONSTRAINT
+                Assert.Equal(invalid switch
+                {
+                    "duplicate" => 1555, // SQLITE_CONSTRAINT_PRIMARYKEY
+                    "reference" => 787, // SQLITE_CONSTRAINT_FOREIGNKEY
+                    _ => 275 // SQLITE_CONSTRAINT_CHECK
+                }, sqlite.SqliteExtendedErrorCode);
+            }
+            else
+            {
+                string message = invalid switch
+                {
+                    "uuid" or "uuid_uppercase" => "小写 GUID",
+                    "date" => "YYYY-MM-DD",
+                    "hotkeys" => "快捷键不能相同",
+                    "settings" => "业务设置不完整",
+                    _ => "业务状态不一致"
+                };
+                Assert.Contains(message, error.Message);
+            }
+        }
+        Assert.Empty(Directory.GetFiles(directory.DirectoryPath, "bad.sqlite3*"));
         Assert.Equal(before, WindowsBackupCodec.Serialize(WindowsBackupCodec.Export(live, new Clock())));
     }
     [Fact]

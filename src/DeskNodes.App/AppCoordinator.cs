@@ -15,7 +15,7 @@ using Forms = System.Windows.Forms;
 
 namespace DeskNodes.App;
 
-internal sealed partial class AppCoordinator
+internal sealed partial class AppCoordinator : System.ComponentModel.INotifyPropertyChanged
 {
     public PresentationCoordinator Presentation { get; private set; } = null!;
     public IReadOnlyDictionary<NoteId, NoteWindow> Windows => windows;

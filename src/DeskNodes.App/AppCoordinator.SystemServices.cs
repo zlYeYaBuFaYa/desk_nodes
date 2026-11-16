@@ -15,6 +15,18 @@ internal sealed partial class AppCoordinator
     private SystemServiceWindow? systemWindow;
     private BusinessPreferencesStore businessStore = null!;
     private bool dataOperation;
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    public bool IsDataOperationBusy
+    {
+        get => dataOperation;
+        private set
+        {
+            if (dataOperation == value)
+                return;
+            dataOperation = value;
+            PropertyChanged?.Invoke(this, new(nameof(IsDataOperationBusy)));
+        }
+    }
     private readonly CancellationTokenSource importCancellation = new();
     private Task? importTask;
     private volatile bool stopping;
@@ -123,7 +135,7 @@ internal sealed partial class AppCoordinator
     {
         if (stopping || dataOperation || !CommitForDataOperation())
             return;
-        dataOperation = true;
+        IsDataOperationBusy = true;
         try
         {
             var backup = WindowsBackupCodec.Export(database!, Clock);
@@ -145,14 +157,14 @@ internal sealed partial class AppCoordinator
         }
         finally
         {
-            dataOperation = false;
+            IsDataOperationBusy = false;
         }
     }
     public async Task ImportDataAsync()
     {
         if (stopping || dataOperation || !CommitForDataOperation())
             return;
-        dataOperation = true;
+        IsDataOperationBusy = true;
         bool replaced = false;
         string stagingPath = Path.Combine(DataDirectoryPath!, $".import-{Guid.NewGuid():N}.sqlite3");
         try
@@ -230,7 +242,7 @@ internal sealed partial class AppCoordinator
         }
         finally
         {
-            dataOperation = false;
+            IsDataOperationBusy = false;
             CleanupImport(stagingPath);
         }
     }

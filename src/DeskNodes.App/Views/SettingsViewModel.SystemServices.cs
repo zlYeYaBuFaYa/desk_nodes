@@ -22,6 +22,8 @@ internal sealed partial class SettingsViewModel
         {
             Execute(() => app.SetLogin(value));
             Changed(this, EventArgs.Empty);
+            if (LoginEnabled != value)
+                QueueRejectedChange();
         }
     }
     public ICommand RecordNew { get; private set; } = null!;
@@ -29,10 +31,12 @@ internal sealed partial class SettingsViewModel
     public ICommand ClearFloat { get; private set; } = null!;
     public ICommand ResetNew { get; private set; } = null!;
     public ICommand ResetFloat { get; private set; } = null!;
-    public ICommand Export { get; private set; } = null!;
-    public ICommand Import { get; private set; } = null!;
+    public bool IsDataOperationBusy => app.IsDataOperationBusy;
+    public RelayCommand Export { get; private set; } = null!;
+    public RelayCommand Import { get; private set; } = null!;
     private void InitializeSystemCommands()
     {
+        app.PropertyChanged += DataOperationChanged;
         app.RefreshLoginStatus();
         app.Hotkeys.Recorded += CaptureRegisteredGesture;
         RecordNew = new RelayCommand(() => BeginRecording(HotkeyAction.NewNote));
@@ -44,7 +48,7 @@ internal sealed partial class SettingsViewModel
         {
             CancelRecording();
             app.ExportData();
-        });
+        }, () => !IsDataOperationBusy);
         Import = new RelayCommand(async () =>
         {
             CancelRecording();
@@ -57,7 +61,15 @@ internal sealed partial class SettingsViewModel
                 app.Log.Error("导入命令失败。", exception);
                 app.RecordError("导入失败，请重试。");
             }
-        });
+        }, () => !IsDataOperationBusy);
+    }
+    private void DataOperationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AppCoordinator.IsDataOperationBusy))
+            return;
+        Export.RaiseCanExecuteChanged();
+        Import.RaiseCanExecuteChanged();
+        PropertyChanged?.Invoke(this, new(nameof(IsDataOperationBusy)));
     }
     private void BeginRecording(HotkeyAction action)
     {

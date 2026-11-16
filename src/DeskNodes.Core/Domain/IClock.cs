@@ -6,8 +6,9 @@ public interface IClock
     TimeZoneInfo TimeZone { get; }
 }
 
-public sealed class SystemClock : IClock
+public sealed class SystemClock(TimeProvider? timeProvider = null) : IClock
 {
-    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
-    public TimeZoneInfo TimeZone => TimeZoneInfo.Local;
+    private readonly TimeProvider provider = timeProvider ?? TimeProvider.System;
+    public DateTimeOffset UtcNow => provider.GetUtcNow();
+    public TimeZoneInfo TimeZone => provider.LocalTimeZone;
 }
