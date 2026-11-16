@@ -1,6 +1,6 @@
 # DeskNodes Windows 文档入口
 
-核对日期：2026-11-15（America/Los_Angeles）。已有实现（WPF/.NET 10），未在 Windows 真机验收；Linux Release 构建、371 项单元测试与 x64 交叉发布已通过，不代表 Windows 运行结果。
+核对日期：2026-11-15（America/Los_Angeles）。已有实现（WPF/.NET 10），未在 Windows 真机验收；构建、测试及架构发布状态统一见[当前验证证据](WINDOWS_BUILD.md#当前验证证据)，不代表 Windows 运行结果。
 
 分支 `feat-win` 基于全新 `origin/main` 提交 `4cedf910173cf40d927f1d7db9fc12dfd5f469ab`，该 main 只有初始 README；未继承 feat-mac 代码或分支历史。产品行为来源为远程分支 `feat-mac` 的 `docs/`，提交 `e0b23e660d361fb7963db9c3c1858729ae2ca356`（`docs: align documentation with current implementation`）。该文档声明核对代码提交 `d32a827`。已阅读最新 docs 下现有六份文件：README、REQUIREMENTS、TECHNICAL_DESIGN、UI_SPEC、ACCEPTANCE、native-build，并对照旧基线全文及 Markdown 差异。feat-mac 已移除 HTML 演示和视觉效果图，本轮不以已删除材料为现行依据。macOS 验收与本机构建指南不适用于 Windows，不复制进本目录。
 
@@ -13,7 +13,7 @@
 - [可行性与验证](FEASIBILITY.md)：逐 FR 与系统行为裁决、多个替代方案、技术栈比较、公开 API 依据和未来验证门槛。
 
 - [Windows 构建与手工验证](WINDOWS_BUILD.md)：字体、发布、数据目录与可执行检查清单。
-- [决策记录](DECISIONS.md)：D1–D29 的实现取舍与待验证影响。
+- [决策记录](DECISIONS.md)：D1–D37 的实现取舍与待验证影响。
 - [备份格式](BACKUP_FORMAT.md)：Windows 独立备份协议。
 
 ## 维护约定

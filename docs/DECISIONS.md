@@ -318,7 +318,7 @@
 - 方案列表（利弊）：仅应用内比例：不跟随系统；仅系统消息字体：不能覆盖自定义字号；(a) 原始 WinRT ABI（RoGetActivationFactory + 手写 IUISettings2 vtable）：无体积成本，但手写 IInspectable 布局、订阅事件需自实现委托 COM 对象，维护与正确性风险高；(b) 注册表 HKCU\Software\Microsoft\Accessibility\TextScaleFactor + 设置变更消息：最简单，但读取的是未文档化的存储位置；公开 UISettings 官方投影：可读比例并订阅变化，需要 Windows SDK 目标与 WinRT 投影。
 - 推荐／采用：Platform/TextScaleService 使用 UISettings.TextScaleFactor／TextScaleFactorChanged，失败回退 1.0，事件切回 Dispatcher；便签使用独立排版参数，设置／历史使用应用级动态字号资源。
 - 理由：直接跟随系统辅助设置，保留编辑器与输入缓冲，通过排版更新重新量高。初拟 net10.0-windows10.0.19041.0 与 SupportedOSPlatformVersion=10.0.22621.0 被 SDK 以 NETSDK1135 拒绝；采用 net10.0-windows10.0.22621.0 和同版本支持下限。另一方案是把支持下限降至 19041，但违反文档平台裁决，故不采用。
-- 采用理由与代价：选择官方投影以换取正确性与可维护性，体积代价可接受；若后续体积成为问题再评估 (a)。win-x64 单文件增加约 25.4 MiB，App TFM 改为 net10.0-windows10.0.22621.0；Core 仍 net10.0。
+- 采用理由与代价：选择官方投影以换取正确性与可维护性，体积代价可接受；若后续体积成为问题再评估 (a)。发布证据统一见[当前验证证据](WINDOWS_BUILD.md#当前验证证据)；App TFM 改为 net10.0-windows10.0.22621.0；Core 仍 net10.0。
 - 需真机验证项：系统文本 100/150/200% 与多屏 DPI 交叉、编辑／组词缓冲、固定／自动高与辅助窗口无裁字、实时切换与退出解绑。
 - 相关代码／文档：[文本缩放服务](../src/DeskNodes.App/Platform/TextScaleService.cs)、[排版](../src/DeskNodes.Core/Presentation/NoteTypography.cs)、[App 项目](../src/DeskNodes.App/DeskNodes.App.csproj)、[构建验证](WINDOWS_BUILD.md)、[公开文本缩放 API](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.uisettings.textscalefactorchanged)。
 
@@ -341,3 +341,33 @@
 - 影响：本轮不改屏幕 DPI 获取；跨屏判断继续使用 PixelBounds，屏 DIP 仍为像素除以该屏缩放。
 - 需真机验证项：各屏 GetDpiForMonitor 与 GetDpiForWindow 对照，含跨屏、远程会话与显示设置变化。
 - 相关代码／文档：[屏幕服务](../src/DeskNodes.App/Platform/ScreenProvider.cs)、[构建验证](WINDOWS_BUILD.md)、[平台可行性](FEASIBILITY.md)。
+
+## D35 偏好与布局的提交边界
+
+- 背景：整理同时改数据库布局和本机分页偏好；先提交布局再保存偏好，会在偏好写入失败后留下错配状态。
+- 方案列表（利弊）：将分页搬入 SQLite：可共用事务，但违反 D10 与备份协议的本机偏好边界；数据库提交后逐项恢复布局：补偿范围大且容易遗漏；事务委托内先保存偏好、数据库失败时补偿偏好：维持现有边界，但两种存储不具备跨进程崩溃原子性。
+- 推荐／采用：CombinedCommitCoordinator 在外层数据库事务内写布局，COMMIT 前保存偏好；偏好保存失败抛出使数据库回滚，保存成功后注册外层回滚回调恢复旧偏好。PreferencesState 仅在文件持久化成功后发布新值。新建／整张恢复需要展开桌面时，展开偏好保存失败即中止，不继续写业务库。
+- 理由：分页属于本机展示状态，不应进入业务库与导出备份；保留文件边界并在统一事务入口补偿，避免布局已提交而分页仍旧。
+- 影响：整理失败保留旧布局与页码；回滚补偿失败通过异常及日志暴露，不承诺文件与 SQLite 在断电／强杀时跨介质原子提交。没有采用把本机偏好移入 SQLite 的方案。
+- 需真机验证项：偏好权限拒绝／磁盘满、COMMIT 失败及补偿失败，检查提示、菜单勾选、布局与位置；解除故障后可重试。
+- 相关代码／文档：[组合提交](../src/DeskNodes.Core/Presentation/CombinedCommitCoordinator.cs)、[偏好发布](../src/DeskNodes.Core/Presentation/PreferencesState.cs)、[应用协调器](../src/DeskNodes.App/AppCoordinator.cs)、[D10](#d10-本机偏好)、[备份格式](BACKUP_FORMAT.md)、[手工清单](WINDOWS_BUILD.md#三组修复回归步骤全部待执行)。
+
+## D36 编辑缓冲的外层事务确认协议
+
+- 背景：跨天事务内提交编辑会嵌套保存；savepoint 成功不能代表外层封存已提交，提前确认缓冲会在外层失败后丢失重试依据。
+- 方案列表（利弊）：各个业务调用处补偿编辑状态：容易遗漏新路径与嵌套失败；先独立保存编辑再封存：违反单事务封存要求；统一外层提交／回滚确认回调：集中处理事务结果，需要维护回调生命周期。
+- 推荐／采用：DeskNodesDatabase 提供 OnOuterCommitted／OnOuterRolledBack。PendingCommitTracker 在嵌套保存后注册结果回调，EditorCoordinator 仅在外层提交成功且 owner 有效、修订仍匹配时更新 Committed 文本；回滚保留旧确认文本和当前编辑缓冲，标记失败并在非组词时重新安排 debounce 保存。
+- 理由：只有最外层 COMMIT 才能确认持久化，统一协议覆盖跨天和其他组合事务；逐处补偿易漏，独立落库会拆散封存的一致性边界。
+- 影响：回调在事务完成、离开数据库锁后执行；嵌套 savepoint 失败时移除其成功回调，将其回滚回调保留至外层完成，即使上层捕获异常也不误确认写入。owner／修订检查避免旧回调覆盖新编辑；回调失败汇总抛出。
+- 需真机验证项：编辑中跨天封存写锁／磁盘故障后文字、选区与组词缓冲保留；解除故障后重试，重启读取和历史内容一致。
+- 相关代码／文档：[数据库事务](../src/DeskNodes.Core/Storage/DeskNodesDatabase.cs)、[确认协议](../src/DeskNodes.Core/Services/PendingCommitTracker.cs)、[编辑协调器](../src/DeskNodes.App/Editing/EditorCoordinator.cs)、[跨天服务](../src/DeskNodes.Core/Services/DayRolloverService.cs)、[手工清单](WINDOWS_BUILD.md#三组修复回归步骤全部待执行)。
+
+## D37 外部输入限制与内部往返分离
+
+- 背景：外部 JSON 有界解析曾被内部导出／staging 复核复用，中文序列化转义放大字节数后会误拒合法业务数据。
+- 方案列表（利弊）：仅换 encoder：可减少部分转义，仍无法保证内部数据不触及外部大小限制；另定规范化限制：新增一套规则且仍可能拒绝合法内部往返；分离外部入口和内部 DTO／业务校验：保留输入防护，不将用户文件资源预算施加到内部数据。
+- 推荐／采用：Parse(string／Stream) 仅处理外部输入，按实际 UTF-8 字节、解码后的字符串长度、数组条数和嵌套深度限流，支持取消；Export 使用 DTO 转换及头部／业务状态校验，Stage 写入临时库后执行 SQL 完整性、领域完整读取及 Export 复核，不再调用有界 Parse。
+- 理由：外部资源限制防止不受信任文件耗尽资源，内部往返保证合法业务状态可复核，两者职责不同；encoder 和另定规范化限制都不能建立这个边界。
+- 影响：内部转换仍保留协议、引用和领域一致性验证；不保证任意大的内部导出文件都能作为外部文件重新导入，外部上限仍以备份协议为准，不扩大用户文件限额。
+- 需真机验证项：大量中文导出／staging 复核与合法导入，四类外部上限的恰好值／超限分类提示，取消和失败后活库不变、临时库清理。
+- 相关代码／文档：[外部有界解析](../src/DeskNodes.Core/Backup/WindowsBackupCodec.Parsing.cs)、[内部导出与 staging](../src/DeskNodes.Core/Backup/WindowsBackupCodec.cs)、[备份测试](../tests/DeskNodes.Core.Tests/BackupParsingTests.cs)、[备份格式](BACKUP_FORMAT.md)、[手工清单](WINDOWS_BUILD.md#三组修复回归步骤全部待执行)。

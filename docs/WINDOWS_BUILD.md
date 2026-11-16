@@ -57,33 +57,37 @@ dotnet publish src/DeskNodes.App -c Release -p:PublishProfile=win-x64 -o ./publi
 dotnet publish src/DeskNodes.App -c Release -p:PublishProfile=win-arm64 -o ./publish/win-arm64
 ```
 
-Linux 本轮实际执行的命令：
-
-```bash
-export PATH=$HOME/.dotnet:$PATH DOTNET_ROOT=$HOME/.dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1
-dotnet publish src/DeskNodes.App -c Release -p:PublishProfile=win-x64 -o /tmp/desknodes-publish-x64
-dotnet publish src/DeskNodes.App -c Release -p:PublishProfile=win-arm64 -o /tmp/desknodes-publish-arm64
-```
-
-x64 产物 `DeskNodes.App.exe` 为 **227,679,315 字节（约 217.13 MiB）**，未获取文楷；字体打包会增加数十 MB，SDK/依赖变化也会影响大小。ARM64 产物 `DeskNodes.App.exe` 为 **241,368,029 字节（约 230.19 MiB）**，同样未获取文楷；两个架构均为**仅交叉发布，未真机运行**，临时发布目录已删除。旁边的 PDB 用于诊断，不是运行依赖。产物未入库。用户运行 exe 无需安装 .NET 运行时；自包含运行时安全更新需要重新发布。
+发布实测统一见[当前验证证据](#当前验证证据)。旁边的 PDB 用于诊断，不是运行依赖；产物不入库。用户运行 exe 无需安装 .NET 运行时，自包含运行时安全更新需要重新发布。
 
 项目及两个配置启用 `IncludeNativeLibrariesForSelfExtract=true`，将 SQLite 的 `e_sqlite3.dll` 等原生库纳入单文件，在 Windows 启动时由运行时解压加载；目标机器需允许运行时临时目录写入。本轮确认 bundle 包含 e_sqlite3，**尚未验证 Windows 实际解压和数据库读写**。应将 exe 单独复制到干净 Windows 机器，执行新建、重启读取、导出与导入，检查 Logs 无 DllNotFoundException。
 
 `PublishReadyToRun=false`：减小产物并保持 Linux 跨架构发布流程一致，代价是首次启动仍有 JIT 成本。若以后改为 true，需要适配跨平台编译工具、比较启动收益与体积，并重新验证两个架构；本轮不宣称启动性能结果。未启用 trimming，保留 WPF 所需反射路径。
 
-### 审查修复批次 4：文本缩放交叉验证
+## 当前验证证据
 
-同一 Linux 容器、SDK 10.0.404、未打包文楷，以 `dotnet publish src/DeskNodes.App -c Release -p:PublishProfile=win-x64` 比较本批修改前后单文件 exe：
+这是构建、测试、发布实测的唯一证据入口；其他文档只链接本节。日期：2026-11-15，环境：Linux，Windows 清单全部待执行。**交叉构建／发布不能证明 Windows 运行或验收通过。**
 
-| 配置 | DeskNodes.App.exe 字节数 |
-|---|---:|
-| 修改前，net10.0-windows | 227,694,675 |
-| 修改后，net10.0-windows10.0.22621.0，UISettings 文本缩放 | 254,323,473 |
-| 增量 | 26,628,798（25.40 MiB，11.69%） |
+- SHA：**以提交时 HEAD 为准**。本次执行基线为 `bbce1bc`，仅有本批文档改动；生成完整 SHA 用 `git rev-parse HEAD`，同时用 `git status --short` 和 `git diff -- docs/` 保留未提交差异。提交文档后应重新记录 HEAD，本节不预写未来 SHA。
+- 实际 SDK：`10.0.404`（`dotnet --version`）。
+- Release 构建成功：0 警告、0 错误。
+- `dotnet test DeskNodes.sln -c Release`：总计 **465**，通过 **465**，失败 **0**，跳过 **0**。运行器另提示缺失 `VSTEST_ARTIFACTS_DIRECTORY` 并回退临时目录，不影响通过结果。
+- 当前 win-x64 自包含单文件交叉发布成功：`DeskNodes.App.exe` **254,333,201 字节**；字体状态：已包含文楷 v1.530 Regular、Medium 和 OFL（现有资源目录参与重新构建）。不与字体打包状态未记录的历史体积直接比较。
+- **历史 win-arm64**：`DeskNodes.App.exe` **241,368,029 字节**，字体打包状态未记录（当时本机已存在字体文件，可能已打包），仅 Linux 交叉发布。来源：提交 `17ff08d` 的 `docs/WINDOWS_BUILD.md`，可用 `git show 17ff08d:docs/WINDOWS_BUILD.md` 查看；本次未重跑，不能代表当前 ARM64 产物。
 
-发布目录分别为 `/tmp/desknodes-b4-before`、`/tmp/desknodes-b4-after`，产物未入库。新增 Windows SDK／WinRT 投影依赖会增加发布体积；以上为本批全部修改的实测差值，不将其全部归因于单个程序集。原拟 TFM 19041 搭配最低支持版本 22621 会触发 NETSDK1135，故采用与平台最低版本一致的 22621 TFM，详见 D32。
+本次执行命令（重新构建避免增量资源缓存影响字体打包）：
 
-本批最终 `dotnet build DeskNodes.sln -c Release` 通过（0 警告、0 错误）；`dotnet test DeskNodes.sln -c Release` 432 通过、0 失败、0 跳过；win-x64 自包含单文件交叉发布通过（0 警告、0 错误）；21 份手写 XAML 的 XML 解析通过。尚未运行 Windows WPF／UIA，以上不替代真机清单。
+```bash
+export PATH=$HOME/.dotnet:$PATH DOTNET_ROOT=$HOME/.dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1
+git rev-parse HEAD
+git status --short
+dotnet --version
+dotnet build DeskNodes.sln -c Release
+dotnet test DeskNodes.sln -c Release
+dotnet publish src/DeskNodes.App -c Release -p:PublishProfile=win-x64 -p:NoIncremental=true -t:Rebuild,Publish -o /tmp/desknodes-doc-review-x64
+stat -c '%n %s bytes' /tmp/desknodes-doc-review-x64/DeskNodes.App.exe
+```
+
+PowerShell 取精确字节可用 `(Get-Item <发布目录>/DeskNodes.App.exe).Length`。历史文本缩放修改的体积比较不作为当前发布证据；Windows SDK／WinRT 投影增加依赖，目标版本选择见 [D32](DECISIONS.md#d32-系统文本缩放与-windows-sdk-目标)。
 
 ## 数据、日志与卸载
 
@@ -127,6 +131,31 @@ Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA 'DeskNodes')
 - [ ] 对隔离目录模拟只读／磁盘满、强制终止再启动，检查错误提示与旧库完整；自动备份检查 7 份、同日不覆盖、partial 清理，离线恢复导出文件；外来／未来库启动失败不建空库。
 - [ ] 打开高对比、Narrator、系统大文本及减少动画，逐个读出按钮名称、通过键盘访问菜单与辅助窗；保持工具条展开，确认无透明残留及不可达控件。
 
+### 三组修复回归步骤（全部待执行）
+
+#### 1. 偏好写入故障与恢复
+
+- [ ] 在独立数据目录正常保存一组基线：方向、闲置时间、字号、分页、桌面收起状态、工具条完整位置和固定收缩位置；截图设置、菜单勾选和窗口坐标，退出后复制库与 `LocalPreferences.json` 作比对基线。
+- [ ] 重新启动，以普通用户运行。用文件属性将 `LocalPreferences.json` 设为只读；若原子替换仍能成功，在该隔离目录的“安全→高级”中临时拒绝测试用户写入／创建文件／删除权限（保留读取，记录原 ACL）。必须先确认实际保存被拒，不能仅凭只读属性判定故障已注入。
+- [ ] 分别从设置修改方向／字号，从工具条右键菜单修改方向／闲置时间／恢复默认收缩位置。每次只改一项，预期出现“无法保存设置……已恢复上次设置”提示；重新打开设置及菜单，旧值和勾选保持，工具条完整位置与固定位置恢复基线。便签菜单当前仅修改业务状态，没有本机偏好选项：在便签菜单切换颜色／层级，预期可正常写库且勾选同步；再从该便签按 Ctrl+, 打开设置改字号，验证同样的偏好失败提示与旧值恢复，勿把业务菜单误记为偏好写入入口。
+- [ ] 故障保持期间执行整理（事先制造多页布局），比较所有便签位置、页码和可见性均保持旧状态；全局收起后尝试新建及最近删除恢复整张，展开偏好不能保存时应中止，不能产生新便签或恢复记录。
+- [ ] 恢复原 ACL／清除只读，逐个从相同入口重试；预期保存成功、提示消失，设置和各菜单同步；退出重启后新值及布局保持。保留失败及成功日志，不把解除故障前的失败记成通过。
+
+#### 2. 托盘工具条子菜单同步与持久化
+
+- [ ] 从托盘右键“工具条”子菜单依次切横向、竖向；每次打开设置及工具条右键菜单，核对方向、勾选和实际排列一致，编辑中点击工具条不丢文本。
+- [ ] 依次选自动收缩 10／15／30 秒及关闭，每次核对三个入口一致；将指针移开且关闭菜单，计时观察收缩，关闭时等待超过 30 秒仍展开。各档退出重启复测：保留选项，启动先展开并重新计时。
+- [ ] 拖动圆形入口保存自定义固定位置，重启确认保持；从托盘子菜单恢复默认位置，设置示意、工具条菜单禁用／勾选状态及实际收缩终点同步；再重启验证默认位置保持。完整工具条摆放与固定收缩位置分别记录。
+
+#### 3. 收缩边界、导入退出与编辑安全
+
+- [ ] 分别录制入口已在固定位置时的原地收缩、自由位置的先缩后滑；在收缩／滑动／展开中拖动并按 Esc，预期从当前可见位置继续原目标动画，停靠预留及命中区域无抖动。
+- [ ] 在顶部与左右停靠各放多张便签，通过显示分辨率／缩放及工作区调整，制造避让后沿边可用长度 120、介于 120–239、低于 120 DIP 三类边界；记录工作区像素、缩放及 DIP。空间足够时单张沿边长度不低于 120 DIP；不足时溢出标签覆盖在便签末端，入口可点、正文可滚动访问。打开溢出列表并切换便签；极小工作区同时检查顶部／左右停靠、工具条避让、内容与菜单可达，无负尺寸或崩溃。
+- [ ] 在隔离库导入上限内的大备份，分别在读取／解析／staging 阶段从托盘或工具条菜单退出；预期进程有限等待后退出，不发生替库或旧 UI 回调。重新启动核对活库未变、无 `.import-*.sqlite3` 及对应 `-wal`／`-shm` 遗留。正常退出及时完成的导入应立即清理；超出等待或强杀场景应在下次启动清扫。
+- [ ] 分别取消选文件、在替库确认对话框选取消，核对活库与编辑缓冲保持，临时文件清理；再造一个可识别的遗留 `.import-*.sqlite3`（只在应用关闭后的隔离目录）验证启动清扫。分别准备文件字节、解码后字符串长度、集合条数、嵌套深度的恰好上限／超过一单位样本（值见 [BACKUP_FORMAT](BACKUP_FORMAT.md)），核对恰好值通过输入限制、超限分类提示且活库不变。
+- [ ] 第一实例正常运行时，从同一隔离目录启动第二实例，计时确认第二进程退出且第一实例工具条展开；再暂停第一进程，使管道无法及时响应，第二进程应在连接超时后提示已在运行并退出，不能无限挂起。恢复第一进程，确认无第二套写库与热键。
+- [ ] 隔离库设置临近跨天时间，持续编辑未触发 debounce 的中文文本（另测组词中延迟跨天）；用另一 SQLite 连接的 `BEGIN IMMEDIATE` 暂时占用写锁，使封存保存失败，保留截图及日志。预期编辑器文字、选区不丢且不被旧库刷新覆盖，无部分封存；释放锁后等待重试，核对文字成功保存、封存与 checkpoint 一致且不重复。最后退出重启再比对正文与历史。
+
 ## 单次验证记录模板
 
 ```text
@@ -144,5 +173,3 @@ IME 名称与版本／键盘布局：
 截图路径／日志路径：
 已知限制或后续问题：
 ```
-
-本轮 Linux 证据：Release build 0 警告／0 错误，测试 371 通过、0 失败、0 跳过；x64 与 ARM64 交叉发布均成功（0 警告／0 错误）。ICO 七层结构、AND 掩码与重复生成字节一致性检查通过。所有 Windows 清单项均未执行。

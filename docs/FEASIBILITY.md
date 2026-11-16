@@ -6,7 +6,7 @@
 
 推荐最低 **Windows 11 22H2，build 22621**：统一 Windows 11 外观基线，并能用公开 DWM_SYSTEMBACKDROP_TYPE 请求 Mica／Desktop Acrylic，避免为视觉效果调用未公开属性。该枚举最低客户端为 build 22621。[Microsoft DWM 说明](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type)
 
-这只是技术最低版本，不承诺该旧发行版仍处于安全维护期。实际部署应使用仍获系统与所选 .NET 支持的 Windows 11 版本，实施时核对支持矩阵。目标硬件先以 x64 验证，ARM64 是后续独立构建／验收范围。
+这只是技术最低版本，不承诺该旧发行版仍处于安全维护期。实际部署应使用仍获系统与所选 .NET 支持的 Windows 11 版本，实施时核对支持矩阵。目标硬件先以 x64 验证，ARM64 需独立真机验收，交叉发布状态见[当前验证证据](WINDOWS_BUILD.md#当前验证证据)。
 
 Windows 10 21H2 上托盘、WPF、热键、Per-Monitor V2 等核心路径并非技术上不可用，但无上述公开 DWM backdrop 基线，需纯色材质回退、圆角／阴影适配及第二套系统验证。两个选择：①只做 Windows 11，视觉一致、验证成本小，覆盖面小；②增加 Win10 纯色兼容档，覆盖旧机，视觉与维护分叉。**推荐①**，不在本轮虚构 Win10 支持结果；即使选②也不以未公开 Acrylic 技巧补齐。
 
@@ -196,4 +196,4 @@ Windows 本地 SQLite 与独立 JSON 备份 **可行**；直接宣称现有 Mac 
 
 ## 本轮证据范围
 
-已有 Core、WPF App 和 xUnit 测试工程。本轮 Linux 执行 `dotnet build DeskNodes.sln -c Release`（0 警告、0 错误）、`dotnet test DeskNodes.sln -c Release`（371 通过、0 失败、0 跳过）及 win-x64 自包含单文件交叉发布成功。exe 为 227,572,819 字节（未打包文楷），未入库。没有 Windows 运行截图或真机验收证据，ARM64 未发布验证。命令、发布配置和未来手工清单见 [WINDOWS_BUILD](WINDOWS_BUILD.md)，实现取舍见 [DECISIONS](DECISIONS.md)。**Linux 交叉编译和单元测试通过 ≠ Windows 验收。**
+已有 Core、WPF App 和 xUnit 测试工程，构建、测试、字体状态及架构发布结果统一见[当前验证证据](WINDOWS_BUILD.md#当前验证证据)。没有 Windows 运行截图或真机验收证据。命令、发布配置和未来手工清单见 [WINDOWS_BUILD](WINDOWS_BUILD.md)，实现取舍见 [DECISIONS](DECISIONS.md)。**Linux 交叉编译和单元测试通过 ≠ Windows 验收。**

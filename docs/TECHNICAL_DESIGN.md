@@ -142,4 +142,4 @@ Mac 源文档的协议为 `local.desknodes.native.backup`、version 1、schema 7
 
 ## 实施门槛
 
-工程与业务实现已存在，Linux Release 构建（0 警告／0 错误）、371 项测试和 x64 单文件交叉发布通过；这些结果不能替代中文输入、多便签焦点、DPI、圆角壳层和系统交互的 Windows 证据。发布前仍须逐项通过 [验证门槛](FEASIBILITY.md#verification) 与 [手工清单](WINDOWS_BUILD.md)。ARM64 尚未发布验证。
+工程与业务实现已存在，构建、测试及架构发布状态统一见[当前验证证据](WINDOWS_BUILD.md#当前验证证据)。这些结果不能替代中文输入、多便签焦点、DPI、圆角壳层和系统交互的 Windows 证据。发布前仍须逐项通过[验证门槛](FEASIBILITY.md#verification)与[手工清单](WINDOWS_BUILD.md)。
