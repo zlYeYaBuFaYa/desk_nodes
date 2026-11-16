@@ -37,12 +37,13 @@ public static class DockLayout
         }
         double available = end - start;
         bool overflow = ordered.Sum(i => Length(i) + 12) - 12 > available;
-        double overflowLength = Math.Min(96, Math.Max(0, available - Math.Min(120, available / 2)));
+        // At exactly 120 DIP there is no remainder: overlay the entry rather than make it unhittable.
+        double overflowLength = available <= 120 ? Math.Min(96, available / 2) : Math.Min(96, available - 120);
         RectD? overflowBounds = overflow
             ? top ? new(end - overflowLength, w.Y, overflowLength, cross)
                 : new(edge == DockEdge.Left ? w.X : w.Right - cross, end - overflowLength, cross, overflowLength)
             : null;
-        if (overflow) available = Math.Max(0, available - overflowLength);
+        if (overflow && available > 120) available = Math.Max(0, available - overflowLength);
         var groups = new List<List<DockItem>> { new() };
         double used = 0;
         foreach (var item in ordered)

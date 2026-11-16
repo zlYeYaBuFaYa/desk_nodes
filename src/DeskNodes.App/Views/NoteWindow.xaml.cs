@@ -176,6 +176,7 @@ internal sealed partial class NoteWindow : Window
             lastFontMapping = font;
             app.Log.Info($"便签字体 {app.Preferences.Font}：{font.Family}；标题 {font.TitleWeight}；可用 {font.Available}。");
         }
+        state.SystemTextScale = app.TextScale;
         state.Typography = type;
         state.Font = new(font.Family);
         state.TitleWeight = (FontWeight)new FontWeightConverter().ConvertFromString(font.TitleWeight)!;

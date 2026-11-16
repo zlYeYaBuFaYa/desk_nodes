@@ -33,6 +33,13 @@ public sealed class ToolbarIdleMachine
         grace = false;
     }
 
+    public IdleOutput ResumeAnimation() => new(State switch
+    {
+        ToolbarIdleState.Collapsing => returning ? ToolbarIdleAction.StartShrinkToHome : ToolbarIdleAction.StartShrinkInPlace,
+        ToolbarIdleState.Expanding => ToolbarIdleAction.StartExpand,
+        _ => ToolbarIdleAction.None
+    }, null, Generation);
+
     public IdleOutput Update(TimeSpan now, IdleInput input)
     {
         if (now < lastTime) throw new ArgumentOutOfRangeException(nameof(now), "时间必须单调递增。");

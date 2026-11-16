@@ -164,7 +164,7 @@ internal partial class ToolbarWindow : Window
         ScrollBack.Content = vertical ? "↑" : "‹";
         ScrollForward.Content = vertical ? "↓" : "›";
         Parts.UpdateLayout();
-        if (!round && IsLoaded) Place(ToolbarGeometry.ResolveAnchor(app.Screens.GetScreens(), app.Preferences, app.Preferences.Orientation, Paging));
+        if (!round && IsLoaded) Place(ToolbarGeometry.ResolveAnchor(app.Screens.GetScreens(), app.Preferences, app.Preferences.Orientation, Paging, app.TextScale));
         UpdateStackHint();
         UpdateEntranceHit();
         if (IsLoaded) Dispatcher.BeginInvoke(() => Tick());
@@ -276,9 +276,9 @@ internal partial class ToolbarWindow : Window
             child.RenderTransform = Transform.Identity;
         }
         RoundLabel.Visibility = Visibility.Collapsed;
-        Place(ToolbarGeometry.ResolveAnchor(screens, app.Preferences, app.Preferences.Orientation, Paging));
+        Place(ToolbarGeometry.ResolveAnchor(screens, app.Preferences, app.Preferences.Orientation, Paging, app.TextScale));
         Show();
-        Place(ToolbarGeometry.ResolveAnchor(screens, app.Preferences, app.Preferences.Orientation, Paging));
+        Place(ToolbarGeometry.ResolveAnchor(screens, app.Preferences, app.Preferences.Orientation, Paging, app.TextScale));
         Tick();
     }
     private void UpdateEntranceHit()

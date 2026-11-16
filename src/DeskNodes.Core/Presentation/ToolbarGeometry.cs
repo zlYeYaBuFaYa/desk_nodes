@@ -22,8 +22,13 @@ public static class ToolbarGeometry
     public const double ShortSide = 64, Radius = 32, Inset = 6, EndCapExtra = 10, HandleLength = 24;
     public const double VerticalButtonLength = 52, VerticalCountLength = 32, HorizontalButtonLength = 60, HorizontalCountLength = 68;
     public const double RoundDiameter = 56, SnapMargin = 8, SnapThreshold = 81;
-    public static SizeD FullSize(ToolbarOrientation orientation, bool hasPaging) => orientation == ToolbarOrientation.Vertical
-        ? new(64, hasPaging ? 324 : 296) : new(hasPaging ? 428 : 364, 64);
+    public static SizeD FullSize(ToolbarOrientation orientation, bool hasPaging, double textScale = 1)
+    {
+        double scale = double.IsFinite(textScale) ? Math.Max(1, textScale) : 1;
+        return orientation == ToolbarOrientation.Vertical
+            ? new(64 * scale, (hasPaging ? 324 : 296) * scale)
+            : new((hasPaging ? 428 : 364) * scale, 64 * scale);
+    }
     private static ScreenEdge Opposite(ScreenEdge e) => e switch { ScreenEdge.Left => ScreenEdge.Right, ScreenEdge.Right => ScreenEdge.Left, ScreenEdge.Top => ScreenEdge.Bottom, _ => ScreenEdge.Top };
     private static bool Vertical(ScreenEdge e) => e is ScreenEdge.Left or ScreenEdge.Right;
     private static (double Min, double Max) Span(RectD w, ScreenEdge e)
@@ -111,10 +116,10 @@ public static class ToolbarGeometry
             return screen;
         return screens.Resolve(anchor?.DeviceHint);
     }
-    public static RectD ResolveAnchor(ScreenSet screens, LocalPreferences preferences, ToolbarOrientation orientation, bool hasPaging)
+    public static RectD ResolveAnchor(ScreenSet screens, LocalPreferences preferences, ToolbarOrientation orientation, bool hasPaging, double textScale = 1)
     {
         var p = preferences.Normalize();
-        var size = FullSize(orientation, hasPaging);
+        var size = FullSize(orientation, hasPaging, textScale);
         var screen = AnchorScreen(screens, p);
         if (p.Anchor?.Center is { } center)
         {
@@ -123,7 +128,7 @@ public static class ToolbarGeometry
                 .Fit(screen.WorkArea.Inset(SnapMargin));
         }
         if (p.Anchor?.Edge is not { } edge)
-            return Expand(Home(screens, screen, p.Home), screen.WorkArea, orientation, hasPaging);
+            return Expand(Home(screens, screen, p.Home), screen.WorkArea, orientation, hasPaging, textScale);
 
         // Full-frame centers use the whole safe span, unlike the inset home entrance span.
         edge = Home(screens, screen, new(edge, p.Anchor.Ratio)).Position.Edge;
@@ -139,9 +144,9 @@ public static class ToolbarGeometry
             _ => new(x, area.Bottom - height, width, height)
         };
     }
-    public static RectD Expand(HomeGeometry home, RectD workArea, ToolbarOrientation orientation, bool hasPaging)
+    public static RectD Expand(HomeGeometry home, RectD workArea, ToolbarOrientation orientation, bool hasPaging, double textScale = 1)
     {
-        var size = FullSize(orientation, hasPaging);
+        var size = FullSize(orientation, hasPaging, textScale);
         var c = home.Entrance.Center;
         double x = c.X - 32, y = c.Y - 32;
         if (orientation == ToolbarOrientation.Vertical)

@@ -24,64 +24,64 @@
         </Setter>
     </Style>
     <Style x:Key="ToolbarActionSize" TargetType="Button" BasedOn="{StaticResource ToolbarAction}">
-        <Setter Property="Width" Value="52"/>
-        <Setter Property="Height" Value="52"/>
+        <Setter Property="Width" Value="{DynamicResource ToolbarLength52}"/>
+        <Setter Property="Height" Value="{DynamicResource ToolbarLength52}"/>
         <Style.Triggers>
             <DataTrigger
                 Binding="{Binding DataContext.Orientation, RelativeSource={RelativeSource AncestorType=Window}}"
                 Value="Horizontal">
-                <Setter Property="Width" Value="60"/>
+                <Setter Property="Width" Value="{DynamicResource ToolbarLength60}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>
     <Style x:Key="ToolbarCount" TargetType="Button" BasedOn="{StaticResource ToolbarAction}">
-        <Setter Property="Width" Value="52"/>
-        <Setter Property="Height" Value="32"/>
+        <Setter Property="Width" Value="{DynamicResource ToolbarLength52}"/>
+        <Setter Property="Height" Value="{DynamicResource ToolbarLength32}"/>
         <Style.Triggers>
             <DataTrigger
                 Binding="{Binding DataContext.Orientation, RelativeSource={RelativeSource AncestorType=Window}}"
                 Value="Horizontal">
-                <Setter Property="Width" Value="68"/>
-                <Setter Property="Height" Value="52"/>
+                <Setter Property="Width" Value="{DynamicResource ToolbarLength68}"/>
+                <Setter Property="Height" Value="{DynamicResource ToolbarLength52}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>
     <Style x:Key="ToolbarHandle" TargetType="Grid">
-        <Setter Property="Width" Value="52"/>
-        <Setter Property="Height" Value="24"/>
+        <Setter Property="Width" Value="{DynamicResource ToolbarLength52}"/>
+        <Setter Property="Height" Value="{DynamicResource ToolbarLength24}"/>
         <Setter Property="Background" Value="Transparent"/>
         <Style.Triggers>
             <DataTrigger
                 Binding="{Binding DataContext.Orientation, RelativeSource={RelativeSource AncestorType=Window}}"
                 Value="Horizontal">
-                <Setter Property="Width" Value="24"/>
-                <Setter Property="Height" Value="52"/>
+                <Setter Property="Width" Value="{DynamicResource ToolbarLength24}"/>
+                <Setter Property="Height" Value="{DynamicResource ToolbarLength52}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>
     <Style x:Key="ToolbarPaging" TargetType="StackPanel">
         <Setter Property="Orientation" Value="Horizontal"/>
-        <Setter Property="Width" Value="52"/>
-        <Setter Property="Height" Value="28"/>
+        <Setter Property="Width" Value="{DynamicResource ToolbarLength52}"/>
+        <Setter Property="Height" Value="{DynamicResource ToolbarLength28}"/>
         <Style.Triggers>
             <DataTrigger
                 Binding="{Binding DataContext.Orientation, RelativeSource={RelativeSource AncestorType=Window}}"
                 Value="Horizontal">
-                <Setter Property="Width" Value="64"/>
-                <Setter Property="Height" Value="52"/>
+                <Setter Property="Width" Value="{DynamicResource ToolbarLength64}"/>
+                <Setter Property="Height" Value="{DynamicResource ToolbarLength52}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>
     <Style x:Key="ToolbarPageText" TargetType="TextBlock">
-        <Setter Property="Width" Value="24"/>
-        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Width" Value="{DynamicResource ToolbarLength24}"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize11}"/>
         <Setter Property="TextAlignment" Value="Center"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
         <Style.Triggers>
             <DataTrigger
                 Binding="{Binding DataContext.Orientation, RelativeSource={RelativeSource AncestorType=Window}}"
                 Value="Horizontal">
-                <Setter Property="Width" Value="36"/>
+                <Setter Property="Width" Value="{DynamicResource ToolbarLength36}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>
@@ -99,7 +99,7 @@
         <Setter Property="Visibility" Value="Collapsed"/>
         <Style.Triggers>
             <DataTrigger Binding="{Binding Orientation}" Value="Horizontal">
-                <Setter Property="Height" Value="52"/>
+                <Setter Property="Height" Value="{DynamicResource ToolbarLength52}"/>
                 <Setter Property="Width" Value="14"/>
             </DataTrigger>
         </Style.Triggers>

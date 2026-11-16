@@ -40,7 +40,7 @@ internal partial class ToolbarWindow
         var start = Bounds;
         bool expand = action == ToolbarIdleAction.StartExpand;
         var entrance = start.Width <= 56 && start.Height <= 56 ? start : ToolbarRules.HandleRound(start, app.Preferences.Orientation, HandleEdge);
-        var end = expand ? ToolbarGeometry.Expand(new(new(HandleEdge), entrance, entrance), screen.WorkArea, app.Preferences.Orientation, Paging) : home.Entrance;
+        var end = expand ? ToolbarGeometry.Expand(new(new(HandleEdge), entrance, entrance), screen.WorkArea, app.Preferences.Orientation, Paging, app.TextScale) : home.Entrance;
         bool fromRound = expand && !animating;
         Parts.Visibility = Visibility.Visible;
         Parts.UpdateLayout();
@@ -61,7 +61,7 @@ internal partial class ToolbarWindow
         RoundLabel.Visibility = expand ? Visibility.Collapsed : Visibility.Visible;
         animationBounds = ToolbarRules.AnimationFrame(start, end);
         animating = !reduce;
-        var fullSize = ToolbarGeometry.FullSize(app.Preferences.Orientation, Paging);
+        var fullSize = ToolbarGeometry.FullSize(app.Preferences.Orientation, Paging, app.TextScale);
         double fullLength = Math.Max(fullSize.Width, fullSize.Height);
         double visibleLength = Math.Max(start.Width, start.Height);
         double remaining = Math.Clamp(expand ? (fullLength - visibleLength) / Math.Max(1, fullLength - 56)
@@ -111,7 +111,7 @@ internal partial class ToolbarWindow
                 saved = app.SavePreferences(app.Preferences with { Anchor = new(new(end.Center.X * screen.DpiScale, end.Center.Y * screen.DpiScale)) });
             else
             {
-                var fullAtHome = ToolbarGeometry.Expand(home, screen.WorkArea, app.Preferences.Orientation, Paging);
+                var fullAtHome = ToolbarGeometry.Expand(home, screen.WorkArea, app.Preferences.Orientation, Paging, app.TextScale);
                 saved = app.SavePreferences(app.Preferences with { Anchor = ToolbarRules.Anchor(new(screen, fullAtHome, home.Position.Edge)) });
             }
             if (!saved)

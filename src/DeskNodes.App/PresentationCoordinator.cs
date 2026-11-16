@@ -39,7 +39,7 @@ internal sealed class PresentationCoordinator : IDisposable
         var notes = app.Repository.GetNotes().Where(n => n.Placement.DockEdge == edge && screens.Resolve(n.Placement.DisplayDeviceHint).Id == screen.Id);
         RectD? home = screen.Id == ToolbarGeometry.AnchorScreen(screens, app.Preferences).Id
             ? ToolbarGeometry.Home(screens, screen, app.Preferences.Home).HomeZone : null;
-        return DockLayout.Arrange(screen, edge, notes.Select(n => new DockItem(n.Id, n.Placement.DockOrder ?? 0, n.Collapsed ? 32 : n.Placement.Bounds.Height)), home, dockPages.GetValueOrDefault((screen.Id, edge)));
+        return DockLayout.Arrange(screen, edge, notes.Select(n => new DockItem(n.Id, n.Placement.DockOrder ?? 0, n.Collapsed ? 32 * app.TextScale : n.Placement.Bounds.Height)), home, dockPages.GetValueOrDefault((screen.Id, edge)));
     }
     private readonly NoteSelection selection = new();
     private readonly List<SelectionOverlay> overlays = [];
@@ -51,6 +51,7 @@ internal sealed class PresentationCoordinator : IDisposable
     private PointD? boxStart;
     private NoteId? clicked;
     private bool append, dragged, priorRaised;
+    private bool disposed;
     public bool Selecting => selectionBar is not null;
     public Dictionary<NoteId, SuppressionReason> Suppressed { get; } = [];
     public PresentationCoordinator(AppCoordinator app)
@@ -61,6 +62,8 @@ internal sealed class PresentationCoordinator : IDisposable
     }
     public void Refresh()
     {
+        if (disposed)
+            return;
         var notes = app.Repository.GetNotes();
         var screens = app.Screens.GetScreens();
         var byId = notes.ToDictionary(n => n.Id);
@@ -76,7 +79,7 @@ internal sealed class PresentationCoordinator : IDisposable
             RectD? home = screen.Id == anchorScreen ? ToolbarGeometry.Home(screens, screen, app.Preferences.Home).HomeZone : null;
             var key = (screen.Id, group.Key.Edge);
             var result = DockLayout.Arrange(screen, group.Key.Edge,
-                group.Select(n => new DockItem(n.Id, n.Placement.DockOrder ?? 0, n.Collapsed ? 32 : n.Placement.Bounds.Height)),
+                group.Select(n => new DockItem(n.Id, n.Placement.DockOrder ?? 0, n.Collapsed ? 32 * app.TextScale : n.Placement.Bounds.Height)),
                 home, dockPages.GetValueOrDefault(key));
             docks[key] = result;
             overflow.UnionWith(result.Overflow);
@@ -95,8 +98,7 @@ internal sealed class PresentationCoordinator : IDisposable
                     label.Width = bounds.Width;
                     label.Height = bounds.Height;
                 }
-                if (!app.Preferences.DeskCollapsed && !Selecting) label.Show();
-                else label.Hide();
+
             }
         }
         foreach (var key in dockLabels.Keys.ToArray())
@@ -127,6 +129,7 @@ internal sealed class PresentationCoordinator : IDisposable
             }
             else if (state.Transition != DeskTransition.Collapsing || reasons != SuppressionReason.Collapsed) window.Hide();
         }
+        UpdateDockLabelVisibility();
         selection.Retain(Visible());
         UpdateSelection();
         if (selectionBar is not null)
@@ -210,6 +213,16 @@ internal sealed class PresentationCoordinator : IDisposable
         if (initial is { } id) selection.Apply([id]);
         Refresh();
     }
+    private void UpdateDockLabelVisibility()
+    {
+        foreach (var label in dockLabels.Values)
+        {
+            if (!disposed && !app.Preferences.DeskCollapsed && !Selecting)
+                label.Show();
+            else
+                label.Hide();
+        }
+    }
     public void ExitSelection()
     {
         if (!Selecting) return;
@@ -220,6 +233,7 @@ internal sealed class PresentationCoordinator : IDisposable
         selectionBar?.Close();
         selectionBar = null;
         selection.Apply([]);
+        UpdateDockLabelVisibility();
         foreach (var window in app.Windows.Values)
         {
             window.SetMultiSelection(false, false);
@@ -361,6 +375,7 @@ internal sealed class PresentationCoordinator : IDisposable
     }
     public void Dispose()
     {
+        disposed = true;
         timer.Stop();
         ExitSelection();
         deletionBar?.Close();

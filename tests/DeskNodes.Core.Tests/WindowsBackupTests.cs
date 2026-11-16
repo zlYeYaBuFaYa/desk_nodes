@@ -15,6 +15,58 @@ public sealed class WindowsBackupTests
         public DateTimeOffset UtcNow => Now;
         public TimeZoneInfo TimeZone => TimeZoneInfo.Utc;
     }
+    private sealed class CancellingStream(byte[] bytes, CancellationTokenSource cancellation) : MemoryStream(bytes)
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var read = base.ReadAsync(buffer[..Math.Min(buffer.Length, 64)], cancellationToken);
+            cancellation.Cancel();
+            return read;
+        }
+    }
+
+    [Fact]
+    public void CancellationDuringReadStopsParsingAndLeavesLiveDatabaseUnchanged()
+    {
+        using var directory = new TestDirectory();
+        using var live = DeskNodesDatabase.Open(Path.Combine(directory.DirectoryPath, "live.sqlite3"));
+        var repository = new NoteRepository(live);
+        var note = Note();
+        repository.Insert(note);
+        using var cancellation = new CancellationTokenSource();
+        using var stream = new CancellingStream(System.Text.Encoding.UTF8.GetBytes(Golden), cancellation);
+        Assert.Throws<OperationCanceledException>(() => WindowsBackupCodec.Parse(stream, cancellation.Token));
+        Assert.Equal(note, Assert.Single(repository.GetNotes()));
+        Assert.True(stream.Position < stream.Length);
+    }
+
+    [Fact]
+    public async Task CancellationAfterDatabaseCreationRemovesAllStagingFilesAndPreservesLiveData()
+    {
+        using var directory = new TestDirectory();
+        using var live = DeskNodesDatabase.Open(Path.Combine(directory.DirectoryPath, "live.sqlite3"));
+        var repository = new NoteRepository(live);
+        var note = Note();
+        repository.Insert(note);
+        var backup = WindowsBackupCodec.Parse(Golden);
+        var template = backup.Notes[0];
+        backup.Notes.AddRange(Enumerable.Range(1, 10_000).Select(i => template with
+        {
+            Id = Guid.NewGuid().ToString("D"), SortOrder = i, Title = new string('中', 1024)
+        }));
+        string path = Path.Combine(directory.DirectoryPath, ".import-test.sqlite3");
+        using var cancellation = new CancellationTokenSource();
+        var cancel = Task.Factory.StartNew(() =>
+        {
+            Assert.True(SpinWait.SpinUntil(() => File.Exists(path), TimeSpan.FromSeconds(5)));
+            cancellation.Cancel();
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Assert.Throws<OperationCanceledException>(() => WindowsBackupCodec.Stage(backup, path, cancellation.Token));
+        await cancel;
+        Assert.Empty(Directory.GetFiles(directory.DirectoryPath, ".import-*"));
+        Assert.Equal(note, Assert.Single(repository.GetNotes()));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

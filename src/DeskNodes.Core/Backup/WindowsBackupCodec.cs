@@ -52,8 +52,9 @@ public static partial class WindowsBackupCodec
     }
     private static string FormatTime(long value) => DateTimeOffset.FromUnixTimeMilliseconds(value)
         .ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
-    public static WindowsBackup Export(DeskNodesDatabase database, IClock clock) => database.Read(connection =>
+    public static WindowsBackup Export(DeskNodesDatabase database, IClock clock, CancellationToken cancellationToken = default) => database.Read(connection =>
     {
+        cancellationToken.ThrowIfCancellationRequested();
         // A deferred read transaction observes a single WAL snapshot without acquiring a write lock.
         using var transaction = connection.BeginTransaction(deferred: true);
         var payload = new Dictionary<string, object?>
@@ -63,6 +64,7 @@ public static partial class WindowsBackupCodec
         };
         foreach (var table in Tables)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
             string order = string.Join(',', table.Columns.Where(c => c is "id" or "note_id" or "item_id" or "day"));
@@ -72,6 +74,7 @@ public static partial class WindowsBackupCodec
             var rows = new List<Dictionary<string, object?>>();
             while (reader.Read())
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var row = new Dictionary<string, object?>();
                 for (int i = 0; i < table.Columns.Length; i++)
                 {
@@ -91,26 +94,30 @@ public static partial class WindowsBackupCodec
         return backup;
     });
 
-    public static DeskNodesDatabase Stage(WindowsBackup backup, string path)
+    public static DeskNodesDatabase Stage(WindowsBackup backup, string path, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ValidateHeader(backup);
         if (File.Exists(path))
             throw new IOException("临时数据库已存在。");
         var database = DeskNodesDatabase.Open(path);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var payload = JsonSerializer.SerializeToElement(backup, JsonOptions);
             database.Transaction(connection =>
             {
                 DeskNodesDatabase.Execute(connection, "DELETE FROM business_settings; DELETE FROM business_preferences;");
                 foreach (var table in Tables)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var rows = payload.GetProperty(table.Name);
                     if (rows.ValueKind != JsonValueKind.Array || (table.Singleton &&
                         (rows.GetArrayLength() > 1 || table.Name != "checkpoint" && rows.GetArrayLength() != 1)))
                         throw new InvalidDataException("备份业务设置不完整。");
                     foreach (var row in rows.EnumerateArray())
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         using var command = connection.CreateCommand();
                         command.CommandText = $"INSERT INTO {table.Name} ({(table.Singleton ? "singleton," : "")}{string.Join(',', table.Columns)}) " +
                             $"VALUES ({(table.Singleton ? "1," : "")}{string.Join(',', table.Columns.Select((_, i) => "$p" + i))})";
@@ -141,20 +148,34 @@ public static partial class WindowsBackupCodec
             });
             var repository = new NoteRepository(database);
             foreach (var note in repository.GetNotes(includeDeleted: true))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 _ = repository.GetItems(note.Id, includeDeleted: true, includeArchived: true);
+            }
             var history = new HistoryQueries(database);
             foreach (var snapshot in backup.Snapshots)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 _ = history.DaySnapshot(HistoryDay.Parse(snapshot.Day));
+            }
             // Re-read through the public protocol path before the caller can replace the live database.
-            Export(database, new FixedExportClock(backup.ExportedAt));
+            Export(database, new FixedExportClock(backup.ExportedAt), cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             return database;
         }
         catch
         {
             database.Dispose();
+            DeleteStagingFiles(path);
             throw;
         }
     }
+    public static void DeleteStagingFiles(string path)
+    {
+        foreach (string suffix in new[] { "", "-wal", "-shm" })
+            File.Delete(path + suffix);
+    }
+
     private sealed class FixedExportClock(string time) : IClock
     {
         public DateTimeOffset UtcNow => DateTimeOffset.FromUnixTimeMilliseconds(ParseTime(time));

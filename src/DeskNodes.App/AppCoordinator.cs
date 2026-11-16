@@ -19,7 +19,7 @@ internal sealed partial class AppCoordinator
 {
     public PresentationCoordinator Presentation { get; private set; } = null!;
     public IReadOnlyDictionary<NoteId, NoteWindow> Windows => windows;
-    public RectD CollapseEntrance => toolbar?.EntranceBounds ?? ToolbarGeometry.ResolveAnchor(Screens.GetScreens(), Preferences, Preferences.Orientation, false);
+    public RectD CollapseEntrance => toolbar?.EntranceBounds ?? ToolbarGeometry.ResolveAnchor(Screens.GetScreens(), Preferences, Preferences.Orientation, false, TextScale);
     private DeskNodesDatabase? database;
     private Forms.NotifyIcon? tray;
     private Forms.ContextMenuStrip? trayMenu;
@@ -129,6 +129,7 @@ internal sealed partial class AppCoordinator
     {
         DataDirectoryPath = DataDirectory.Resolve();
         Log = new FileLog(DataDirectoryPath, Clock);
+        CleanupAbandonedImports();
         database = DeskNodesDatabase.Open(Path.Combine(DataDirectoryPath, DataDirectory.DatabaseFileName));
         preferencesStore = new(Log, DataDirectoryPath);
         Preferences = preferencesStore.Load();
@@ -323,7 +324,7 @@ internal sealed partial class AppCoordinator
         var notes = Repository.GetNotes();
         var previousBounds = windows.ToDictionary(p => p.Key, p => p.Value.Bounds);
         var arrangement = Arranger.Arrange(screens, notes, (note, width) => windows[note.Id].MeasureForArrangement(width),
-            ToolbarGeometry.ResolveAnchor(screens, Preferences, Preferences.Orientation, Preferences.Pages.Values.Any(p => p > 0)),
+            ToolbarGeometry.ResolveAnchor(screens, Preferences, Preferences.Orientation, Preferences.Pages.Values.Any(p => p > 0), TextScale),
             ToolbarGeometry.AnchorScreen(screens, Preferences).Id);
         var previous = Preferences;
         new CombinedCommitCoordinator(database!).Commit(() =>
@@ -376,6 +377,7 @@ internal sealed partial class AppCoordinator
             window.RefreshTypography();
         if (settingsWindow?.DataContext is SettingsViewModel model)
             model.RefreshTextScale();
+        toolbar?.Rebuild();
         Presentation.Refresh();
     }
 
@@ -424,7 +426,7 @@ internal sealed partial class AppCoordinator
         Presentation.ExitSelection();
         var screens = Screens.GetScreens();
         bool hasPaging = Preferences.Pages.Values.Any(page => page > 0);
-        var toolbarTarget = ToolbarGeometry.ResolveAnchor(screens, Preferences, Preferences.Orientation, hasPaging);
+        var toolbarTarget = ToolbarGeometry.ResolveAnchor(screens, Preferences, Preferences.Orientation, hasPaging, TextScale);
         var screen = ToolbarGeometry.AnchorScreen(screens, Preferences);
         var size = NoteLayout.NewSize(Preferences, screen.WorkArea, _ => 160);
         var bounds = NoteLayout.New(screens, screen.Id, toolbarTarget, windows.Values.Where(w => w.IsVisible &&
@@ -500,6 +502,7 @@ internal sealed partial class AppCoordinator
 
     public void Stop()
     {
+        StopImport();
         timer?.Stop();
         Hotkeys?.Dispose();
         systemWindow?.Dispose();

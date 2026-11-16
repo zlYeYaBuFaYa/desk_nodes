@@ -47,8 +47,11 @@ internal sealed class TextScaleService : IDisposable
             scale = 1;
         }
         Scale = double.IsFinite(scale) && scale > 0 ? scale : 1;
-        foreach (var size in new[] { 10, 12, 14, 18, 20, 24, 32 })
+        foreach (var size in new[] { 10, 11, 12, 14, 18, 20, 24, 32 })
             resources[$"TextSize{size}"] = size * Scale;
+        foreach (int length in new[] { 24, 28, 32, 36, 52, 60, 64, 68 })
+            resources[$"ToolbarLength{length}"] = length * Math.Max(1, Scale);
+        resources["StackHintHeight"] = Math.Max(44, 14 + 16 * Scale);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

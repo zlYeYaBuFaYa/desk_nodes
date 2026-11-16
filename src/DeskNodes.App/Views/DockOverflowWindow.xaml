@@ -8,6 +8,7 @@
     ShowInTaskbar="False"
     ShowActivated="False"
     SizeToContent="Manual"
+    FontSize="{DynamicResource TextSize12}"
     Background="{DynamicResource Paper}"
     Foreground="{DynamicResource Body}"
     AutomationProperties.Name="停靠溢出便签与分页">

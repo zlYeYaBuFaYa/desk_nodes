@@ -77,7 +77,7 @@ internal sealed partial class NoteWindow
             var entry = dock.Visible.FirstOrDefault(n => n.Id == note.Id);
             if (entry is not null) target = entry.Bounds;
         }
-        return (screen, new(target.X, target.Y, target.Width, note.Collapsed ? Math.Min(32, screen.WorkArea.Inset(8).Height) : target.Height));
+        return (screen, new(target.X, target.Y, target.Width, note.Collapsed ? Math.Min(32 * app.TextScale, screen.WorkArea.Inset(8).Height) : target.Height));
     }
 
     public void Place()
@@ -88,7 +88,7 @@ internal sealed partial class NoteWindow
             var (screen, target) = RestoreTarget();
             MinWidth = Math.Min(200, target.Width);
             MaxWidth = Math.Min(400, screen.WorkArea.Width);
-            MinHeight = note.Collapsed ? Math.Min(32, target.Height) : Math.Min(120, target.Height);
+            MinHeight = note.Collapsed ? Math.Min(32 * app.TextScale, target.Height) : Math.Min(120, target.Height);
             MaxHeight = Math.Max(MinHeight, Math.Min(600, screen.WorkArea.Height));
             Left = target.X;
             Top = target.Y;

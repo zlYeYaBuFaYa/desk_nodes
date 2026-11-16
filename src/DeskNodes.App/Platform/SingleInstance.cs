@@ -23,9 +23,7 @@ internal sealed class SingleInstance : IDisposable
     public bool IsFirst => owner;
     public async Task SignalAsync()
     {
-        using var pipe = new NamedPipeClientStream(".", name, PipeDirection.Out, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
-        await pipe.ConnectAsync(5000);
-        await pipe.WriteAsync(new byte[] { 1 });
+        await DeskNodes.Core.Services.InstanceSignal.SendAsync(name).ConfigureAwait(false);
     }
     public async Task ListenAsync(Action show, Action<Exception> failed)
     {
@@ -34,13 +32,13 @@ internal sealed class SingleInstance : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
-                await using var pipe = new NamedPipeServerStream(name, PipeDirection.In, 1, PipeTransmissionMode.Byte,
+                using var pipe = new NamedPipeServerStream(name, PipeDirection.In, 1, PipeTransmissionMode.Byte,
                     PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
-                await pipe.WaitForConnectionAsync(token);
+                await pipe.WaitForConnectionAsync(token).ConfigureAwait(false);
                 try
                 {
                     byte[] message = new byte[1];
-                    if (await pipe.ReadAsync(message, token) == 1 && message[0] == 1) show();
+                    if (await pipe.ReadAsync(message, token).ConfigureAwait(false) == 1 && message[0] == 1) show();
                 }
                 catch (IOException ex) { failed(ex); }
             }

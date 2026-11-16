@@ -17,17 +17,18 @@ public static partial class WindowsBackupCodec
     public const int MaxCollectionEntries = 100_000;
     public const int MaxDepth = 16;
 
-    public static WindowsBackup Parse(string json)
+    public static WindowsBackup Parse(string json, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(json);
         if (Encoding.UTF8.GetByteCount(json) > MaxFileBytes)
             throw FileLimit();
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json), writable: false);
-        return Parse(stream);
+        return Parse(stream, cancellationToken);
     }
 
     /// <summary>Leaves the input open. Checks tokens as bytes arrive, before allocating DTO collections.</summary>
-    public static WindowsBackup Parse(Stream stream)
+    public static WindowsBackup Parse(Stream stream, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(stream);
         using var buffer = new MemoryStream();
@@ -39,10 +40,12 @@ public static partial class WindowsBackupCodec
         int start = 0;
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // Read one byte beyond the boundary to distinguish an exact-size input from an oversized stream.
-            int read = stream.Read(chunk, 0, Math.Min(chunk.Length, MaxFileBytes - (int)buffer.Length + 1));
+            int read = stream.ReadAsync(chunk.AsMemory(0, Math.Min(chunk.Length, MaxFileBytes - (int)buffer.Length + 1)), cancellationToken).AsTask().GetAwaiter().GetResult();
             if (buffer.Length + read > MaxFileBytes)
                 throw FileLimit();
+            cancellationToken.ThrowIfCancellationRequested();
             buffer.Write(chunk, 0, read);
             if (buffer.Length < 3 && read != 0)
                 continue;
@@ -51,6 +54,7 @@ public static partial class WindowsBackupCodec
             var reader = new Utf8JsonReader(buffer.GetBuffer().AsSpan(consumed, (int)buffer.Length - consumed), read == 0, state);
             while (reader.Read())
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 int depth = reader.CurrentDepth;
                 bool container = reader.TokenType is JsonTokenType.StartArray or JsonTokenType.StartObject;
                 bool value = container || reader.TokenType is JsonTokenType.String or JsonTokenType.Number or
@@ -75,6 +79,7 @@ public static partial class WindowsBackupCodec
         }
         var backup = JsonSerializer.Deserialize<WindowsBackup>(buffer.GetBuffer().AsSpan(start, (int)buffer.Length - start), JsonOptions)
             ?? throw new InvalidDataException("备份内容为空。");
+        cancellationToken.ThrowIfCancellationRequested();
         ValidateHeader(backup);
         return backup;
     }

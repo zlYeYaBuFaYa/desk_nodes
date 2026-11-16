@@ -6,6 +6,32 @@ namespace DeskNodes.Core.Tests;
 public sealed class ToolbarRulesTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InterruptedTransitionResumesAndSupportsHoverAndIdleAgain(bool atHome)
+    {
+        var machine = new ToolbarIdleMachine();
+        machine.Update(TimeSpan.Zero, new(AtHome: atHome));
+        var shrink = machine.Update(TimeSpan.FromSeconds(15), new(AtHome: atHome));
+        machine.Update(TimeSpan.FromSeconds(16), new(Pressed: true));
+        var resume = machine.ResumeAnimation();
+        Assert.Equal(shrink.Action, resume.Action);
+        Assert.Equal(shrink.Generation, resume.Generation);
+        machine.Update(TimeSpan.FromSeconds(17), new(AnimationCompleted: true, AnimationGeneration: resume.Generation));
+        Assert.Equal(ToolbarIdleState.Round, machine.State);
+        machine.Update(TimeSpan.FromSeconds(18), new(PointerInside: true));
+        var expand = machine.Update(TimeSpan.FromSeconds(19), new(PointerInside: true));
+        Assert.Equal(ToolbarIdleAction.StartExpand, expand.Action);
+        machine.Update(TimeSpan.FromSeconds(20), new(Pressed: true));
+        resume = machine.ResumeAnimation();
+        Assert.Equal(expand.Action, resume.Action);
+        machine.Update(TimeSpan.FromSeconds(21), new(AnimationCompleted: true, AnimationGeneration: resume.Generation));
+        Assert.Equal(ToolbarIdleState.Expanded, machine.State);
+        var next = machine.Update(TimeSpan.FromSeconds(40), new());
+        Assert.Equal(ToolbarIdleAction.StartShrinkToHome, next.Action);
+    }
+
+    [Theory]
     [InlineData(3.99, 3.99, false)]
     [InlineData(4, 0, true)]
     [InlineData(0, -4, true)]

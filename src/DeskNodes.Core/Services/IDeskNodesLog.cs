@@ -1,5 +1,6 @@
 namespace DeskNodes.Core.Services;
 
+/// <summary>Thread-safe logging; implementations must support concurrent calls from UI and background threads.</summary>
 public interface IDeskNodesLog
 {
     void Info(string message);

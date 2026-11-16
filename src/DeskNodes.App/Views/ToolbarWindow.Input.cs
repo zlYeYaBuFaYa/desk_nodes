@@ -26,9 +26,11 @@ internal partial class ToolbarWindow
         }
         return false;
     }
+    private bool resumeInterrupted;
     private void Down(object sender, MouseButtonEventArgs e)
     {
         if (!round && grip?.IsMouseOver != true) return;
+        resumeInterrupted = animating;
         frames.Stop();
         entranceHit.IsOpen = false;
         animating = false;
@@ -102,6 +104,19 @@ internal partial class ToolbarWindow
         Place(safe);
         ReleaseMouseCapture();
         UpdateEntranceHit();
-        Tick();
+        if (resumeInterrupted)
+        {
+            resumeInterrupted = false;
+            var resume = idle.ResumeAnimation();
+            if (resume.Action != ToolbarIdleAction.None)
+            {
+                animating = true;
+                Transition(resume.Action, resume.Generation);
+            }
+            else
+                Tick();
+        }
+        else
+            Tick();
     }
 }

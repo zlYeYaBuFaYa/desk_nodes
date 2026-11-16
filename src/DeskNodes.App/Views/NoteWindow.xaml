@@ -82,7 +82,7 @@
                             TextTrimming="CharacterEllipsis"
                             FontFamily="{Binding Font}"
                             FontWeight="{Binding TitleWeight}"
-                            FontSize="14"
+                            FontSize="{DynamicResource TextSize14}"
                             VerticalAlignment="Center"
                             Foreground="{DynamicResource Body}">
                             <TextBlock.Style>

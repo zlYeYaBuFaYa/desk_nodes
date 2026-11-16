@@ -16,10 +16,11 @@ internal sealed class NoteViewModel : INotifyPropertyChanged
     public FontFamily Font { get; set; } = new(NoteFontRules.DefaultFamily);
     public FontWeight TitleWeight { get; set; } = FontWeights.SemiBold;
     public NoteTypography Typography { get; set; } = NoteTypography.For(NoteTextSize.Standard);
+    public double SystemTextScale { get; set; } = 1;
     public double TitleSize => Typography.Title;
     public double SecondarySize => Typography.Secondary;
     public double AddSize => Typography.Secondary + 1;
-    public GridLength HeaderHeight => new(Collapsed ? 32 : Typography.Scale(50));
+    public GridLength HeaderHeight => new(Collapsed ? 32 * SystemTextScale : Typography.Scale(50));
     public GridLength FooterHeight => new(Collapsed ? 0 : Typography.Scale(44));
     public Thickness HeadingMargin => new(0, Collapsed ? 0 : 13, 10, 0);
     public Thickness CountMargin => new(0, Collapsed ? 0 : 10, 0, 0);

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Windows;
 using DeskNodes.App.Platform;
 using DeskNodes.Core.Backup;
@@ -14,6 +15,9 @@ internal sealed partial class AppCoordinator
     private SystemServiceWindow? systemWindow;
     private BusinessPreferencesStore businessStore = null!;
     private bool dataOperation;
+    private readonly CancellationTokenSource importCancellation = new();
+    private Task? importTask;
+    private volatile bool stopping;
     public AnimationPolicy Animations { get; private set; } = null!;
     public HotkeyService Hotkeys { get; private set; } = null!;
     public LoginItemService Login { get; } = new();
@@ -117,7 +121,7 @@ internal sealed partial class AppCoordinator
     }
     public void ExportData()
     {
-        if (dataOperation || !CommitForDataOperation())
+        if (stopping || dataOperation || !CommitForDataOperation())
             return;
         dataOperation = true;
         try
@@ -146,7 +150,7 @@ internal sealed partial class AppCoordinator
     }
     public async Task ImportDataAsync()
     {
-        if (dataOperation || !CommitForDataOperation())
+        if (stopping || dataOperation || !CommitForDataOperation())
             return;
         dataOperation = true;
         bool replaced = false;
@@ -157,20 +161,35 @@ internal sealed partial class AppCoordinator
             if (dialog.ShowDialog(settingsWindow!) != true)
                 return;
             string sourcePath = dialog.FileName;
-            using var staging = await Task.Run(() =>
+            var token = importCancellation.Token;
+            var work = Task.Run(() =>
             {
                 using var stream = File.OpenRead(sourcePath);
-                var backup = WindowsBackupCodec.Parse(stream);
-                return WindowsBackupCodec.Stage(backup, stagingPath);
-            });
-            if (database is null)
+                var backup = WindowsBackupCodec.Parse(stream, token);
+                using var staged = WindowsBackupCodec.Stage(backup, stagingPath, token);
+            }, token);
+            importTask = work;
+            // Cleanup belongs to the worker lifetime even when the UI dispatcher has shut down.
+            _ = work.ContinueWith(completed =>
+            {
+                if (stopping || !completed.IsCompletedSuccessfully)
+                    CleanupImport(stagingPath);
+            }, CancellationToken.None,
+                TaskContinuationOptions.None, TaskScheduler.Default);
+            await work;
+            token.ThrowIfCancellationRequested();
+            if (stopping || database is null)
                 return;
-            var incoming = new BusinessPreferencesStore(staging).Load();
+            BusinessPreferences incoming;
+            using (var preview = DeskNodesDatabase.Open(stagingPath))
+                incoming = new BusinessPreferencesStore(preview).Load();
             if (MessageBox.Show(settingsWindow!, "替换全部本机数据？此操作无法撤销。系统登录启动项保持当前状态。",
                 "导入 DeskNodes 数据", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) != MessageBoxResult.OK)
                 return;
-            if (!CommitForDataOperation())
+            token.ThrowIfCancellationRequested();
+            if (stopping || database is null || !CommitForDataOperation())
                 return;
+            using var staging = DeskNodesDatabase.Open(stagingPath);
             using var candidate = Hotkeys.Prepare(HotkeyAction.NewNote, incoming.HotkeyNew);
             database!.ReplaceFrom(staging);
             replaced = true;
@@ -200,6 +219,9 @@ internal sealed partial class AppCoordinator
             historyWindow?.Reload();
             PreferencesChanged?.Invoke(this, EventArgs.Empty);
         }
+        catch (OperationCanceledException) when (importCancellation.IsCancellationRequested)
+        {
+        }
         catch (Exception exception)
         {
             Log.Error("导入数据失败。", exception);
@@ -209,17 +231,48 @@ internal sealed partial class AppCoordinator
         finally
         {
             dataOperation = false;
-            foreach (string suffix in new[] { "", "-wal", "-shm" })
+            CleanupImport(stagingPath);
+        }
+    }
+    private void CleanupImport(string path)
+    {
+        foreach (string suffix in new[] { "", "-wal", "-shm" })
+        {
+            try
             {
-                try
-                {
-                    File.Delete(stagingPath + suffix);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    Log.Error("清理导入临时文件失败。", exception);
-                }
+                File.Delete(path + suffix);
             }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Log.Error("清理导入临时文件失败。", exception);
+            }
+        }
+    }
+    private void StopImport()
+    {
+        stopping = true;
+        importCancellation.Cancel();
+        try
+        {
+            importTask?.Wait(TimeSpan.FromSeconds(3));
+        }
+        catch (AggregateException exception)
+        {
+            if (exception.InnerExceptions.Any(error => error is not OperationCanceledException))
+                Log.Error("退出时导入未成功完成。", exception);
+        }
+        if (DataDirectoryPath is not null && (importTask is null || importTask.IsCompleted))
+            CleanupAbandonedImports();
+    }
+    private void CleanupAbandonedImports()
+    {
+        foreach (string path in Directory.EnumerateFiles(DataDirectoryPath!, ".import-*.sqlite3*"))
+        {
+            string name = Path.GetFileName(path);
+            if (name.EndsWith(".sqlite3", StringComparison.Ordinal) ||
+                name.EndsWith(".sqlite3-wal", StringComparison.Ordinal) ||
+                name.EndsWith(".sqlite3-shm", StringComparison.Ordinal))
+                CleanupImport(path.EndsWith("-wal", StringComparison.Ordinal) || path.EndsWith("-shm", StringComparison.Ordinal) ? path[..^4] : path);
         }
     }
 }

@@ -25,6 +25,38 @@ public sealed class DockPageTests
         Assert.Null(DockLayout.PageForNote(layout, NoteId.New()));
     }
 
+    [Theory]
+    [InlineData(119)]
+    [InlineData(120)]
+    [InlineData(148)]
+    [InlineData(239)]
+    [InlineData(240)]
+    public void NarrowStripReservesNoteMinimumBeforeLabel(double available)
+    {
+        foreach (var edge in Enum.GetValues<DockEdge>())
+        foreach (int count in new[] { 1, 3 })
+        {
+            double width = edge == DockEdge.Top ? available + 16 : 800;
+            double height = edge == DockEdge.Top ? 800 : available + 16;
+            var screen = new ScreenInfo("s", "s", new(0, 0, width, height), new(0, 0, width, height));
+            var items = Enumerable.Range(0, count).Select(i => new DockItem(NoteId.New(), i)).ToArray();
+            var layout = DockLayout.Arrange(screen, edge, items);
+            foreach (var item in items)
+            {
+                int page = Assert.IsType<int>(DockLayout.PageForNote(layout, item.Id));
+                var shown = DockLayout.Arrange(screen, edge, items, page: page);
+                var bounds = Assert.Single(shown.Visible, note => note.Id == item.Id).Bounds;
+                double length = edge == DockEdge.Top ? bounds.Width : bounds.Height;
+                Assert.True(length >= Math.Min(120, available));
+                if (shown.OverflowBounds is { } label)
+                {
+                    Assert.True(label.Width > 0 && label.Height > 0);
+                    Assert.Equal(available <= 120, bounds.Intersects(label));
+                }
+            }
+        }
+    }
+
     [Fact]
     public void EmptyHasNoPageButTinyReservedAreaStillMapsNotes()
     {
@@ -58,7 +90,11 @@ public sealed class DockPageTests
                 var entry = Assert.Single(shown.Visible, n => n.Id == item.Id);
                 Assert.True(entry.Bounds.Width > 0 && entry.Bounds.Height > 0);
                 Assert.Equal(entry.Bounds, entry.Bounds.Fit(screen.WorkArea));
-                if (shown.OverflowBounds is { } label) Assert.False(entry.Bounds.Intersects(label));
+                if (shown.OverflowBounds is { } label)
+                {
+                    double length = edge == DockEdge.Top ? screen.WorkArea.Width - 16 : screen.WorkArea.Height - 16;
+                    Assert.Equal(length <= 120, entry.Bounds.Intersects(label));
+                }
             }
         }
     }

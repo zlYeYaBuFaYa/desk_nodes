@@ -11,7 +11,7 @@
     Background="{DynamicResource ToolbarBackground}"
     Foreground="{DynamicResource ToolbarForeground}"
     FontFamily="Segoe UI, Microsoft YaHei UI"
-    FontSize="12"
+    FontSize="{DynamicResource TextSize12}"
     SizeToContent="Manual">
     <Window.Resources>
         <DataTemplate DataType="{x:Type views:ToolbarActionViewModel}">
@@ -162,7 +162,7 @@
                 <TextBlock
                     Text="{Binding BadgeText}"
                     Foreground="{DynamicResource ToolbarBackground}"
-                    FontSize="11"
+                    FontSize="{DynamicResource TextSize11}"
                     Margin="4,1"/>
             </Border>
             <Popup
