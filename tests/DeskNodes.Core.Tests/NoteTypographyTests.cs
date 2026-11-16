@@ -5,6 +5,29 @@ namespace DeskNodes.Core.Tests;
 public sealed class NoteTypographyTests
 {
     [Theory]
+    [InlineData(NoteTextSize.Small, 1.5, 22.5, 19.5, 16.5, 45)]
+    [InlineData(NoteTextSize.Standard, 2, 32, 28, 24, 64)]
+    [InlineData(NoteTextSize.Large, 1.5, 27, 24, 21, 55)]
+    [InlineData(NoteTextSize.ExtraLarge, 2, 40, 36, 30, 82)]
+    public void SystemTextScaleCombinesWithEachPreferenceAndRemeasuresRhythm(
+        NoteTextSize size, double scale, double title, double body, double secondary, double row)
+    {
+        var typography = NoteTypography.For(size, scale);
+        Assert.Equal((title, body, secondary), (typography.Title, typography.Body, typography.Secondary));
+        Assert.Equal(row, typography.Scale(32));
+        Assert.Equal(Math.Min(480, typography.Scale(94) + row + 18), typography.AutomaticHeight(row, 1000));
+        Assert.Equal(184, typography.AutomaticHeight(1000, 200));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void InvalidSystemTextScaleFallsBackToOne(double scale)
+        => Assert.Equal(NoteTypography.For(NoteTextSize.Standard), NoteTypography.For(NoteTextSize.Standard, scale));
+
+    [Theory]
     [InlineData(NoteTextSize.Small, 15, 13, 11, 30)]
     [InlineData(NoteTextSize.Standard, 16, 14, 12, 32)]
     [InlineData(NoteTextSize.Large, 18, 16, 14, 37)]

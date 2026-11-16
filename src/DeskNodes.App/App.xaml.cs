@@ -7,6 +7,7 @@ public partial class App : System.Windows.Application
     private readonly AppCoordinator coordinator = new();
     private Platform.SingleInstance? instance;
 
+    internal Platform.TextScaleService TextScale { get; private set; } = null!;
     internal Themes.ThemeService Theme { get; private set; } = null!;
     internal void RefreshAppearance() => Theme.Refresh();
 
@@ -36,6 +37,8 @@ public partial class App : System.Windows.Application
                 Shutdown();
                 return;
             }
+            TextScale = new(Dispatcher, Resources);
+            TextScale.Changed += (_, _) => coordinator.RefreshTextScale();
             coordinator.Start();
             coordinator.PreferencesChanged += (_, _) => Theme.Refresh();
             Theme.Refresh();
@@ -54,6 +57,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        TextScale?.Dispose();
         Theme?.Dispose();
         coordinator.Stop();
         instance?.Dispose();

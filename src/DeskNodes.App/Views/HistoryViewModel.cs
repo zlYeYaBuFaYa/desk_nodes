@@ -7,7 +7,10 @@ using DeskNodes.Core.Presentation;
 
 namespace DeskNodes.App.Views;
 
-internal sealed record CalendarCell(HistoryDay? Day, string Label, string ShadeKey, double Opacity, bool Selected, bool Today, bool InMonth);
+internal sealed record CalendarCell(HistoryDay? Day, string Label, string ShadeKey, double Opacity, bool Selected, bool Today, bool InMonth, string Status)
+{
+    public string AccessibleName => Day?.Value.ToString("yyyy年M月d日", CultureInfo.InvariantCulture) ?? "";
+}
 internal sealed record HistoryItemView(string Text, HistoryItemState State, bool Struck, string? Carry);
 internal sealed record HistoryNoteView(string Title, string ColorKey, bool Deleted, IReadOnlyList<HistoryItemView> Items);
 internal sealed record DeletedEntryView(DeletedEntry Entry, string ColorKey, string Time, string Preview, bool CanRestore, string Explanation);
@@ -79,7 +82,8 @@ internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChan
                     var stat = day is { } cellDay ? gridStats.GetValueOrDefault(cellDay) : null;
                     var shade = HistoryQueries.Shade(stat is not null, stat?.Progress.Rate);
                     return new CalendarCell(day, day?.Value.Day.ToString(CultureInfo.InvariantCulture) ?? "", shade == CalendarShade.Weak ? "HistoryWeak" : "HistoryProgress",
-                        shade == CalendarShade.Weak ? 1 : HistoryQueries.ShadeOpacity(shade), day == Navigator.SelectedDay, day == Navigator.CurrentBusinessDay, day?.Value.Month == date.Month);
+                        shade == CalendarShade.Weak ? 1 : HistoryQueries.ShadeOpacity(shade), day == Navigator.SelectedDay, day == Navigator.CurrentBusinessDay, day?.Value.Month == date.Month,
+                        (day == Navigator.CurrentBusinessDay ? "今天；" : "") + (stat is null ? "无记录" : $"完成率 {100 * (stat.Progress.Rate ?? 0):0}%"));
                 }).ToArray();
                 var snapshot = app.History.DaySnapshot(Navigator.SelectedDay);
                 Notes = snapshot.Notes.Select(n => new HistoryNoteView(n.Note.Title, HistoryRules.ColorKey(n.Note.Color), n.Deleted,

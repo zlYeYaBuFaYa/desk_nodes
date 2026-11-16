@@ -4,13 +4,13 @@
     xmlns:local="clr-namespace:DeskNodes.App.Views"
     x:Class="DeskNodes.App.Views.HistoryWindow"
     x:ClassModifier="internal"
+    FontSize="{DynamicResource TextSize12}"
     Title="历史记录 · DeskNodes"
     Background="{DynamicResource HistoryBackground}"
     Foreground="{DynamicResource HistoryForeground}"
     PreviewKeyDown="Navigate">
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static local:HistoryCommands.Restore}" Executed="Restore"/>
-        <CommandBinding Command="{x:Static local:HistoryCommands.SelectDay}" Executed="SelectDay"/>
         <CommandBinding Command="{x:Static local:HistoryCommands.Previous}" Executed="Previous"/>
         <CommandBinding Command="{x:Static local:HistoryCommands.Next}" Executed="Next"/>
         <CommandBinding Command="{x:Static local:HistoryCommands.Today}" Executed="Today"/>

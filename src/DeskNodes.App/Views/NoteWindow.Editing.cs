@@ -34,11 +34,25 @@ internal sealed partial class NoteWindow
             row.State.Completed = app.Repository.GetItem(item.Id)?.Completed ?? false;
             row.State.Refresh();
         };
-        strike.Click += (_, _) => app.Run(() =>
+        strike.Click += (_, _) =>
         {
-            app.Actions.ToggleStruck(item.Id);
-            app.Refresh();
-        });
+            try
+            {
+                app.Run(() =>
+                {
+                    app.Actions.ToggleStruck(item.Id);
+                    app.Refresh();
+                });
+                var current = app.Repository.GetItem(item.Id);
+                row.State.Completed = current?.Completed ?? false;
+                row.State.Struck = current?.Struck ?? false;
+            }
+            finally
+            {
+                // OneWay 绑定也会被点击临时切换；包括组词拒绝在内都须回显真实状态。
+                row.State.Refresh();
+            }
+        };
         delete.Click += (_, _) => app.Run(() => DeleteRow(item.Id));
         Point? dragStart = null;
         sort.PreviewMouseLeftButtonDown += (_, e) => dragStart = e.GetPosition(sort);

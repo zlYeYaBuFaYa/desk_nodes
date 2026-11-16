@@ -291,3 +291,53 @@
 - 影响：导入后不立即跨天。
 - 需真机验证项：组词导入拒绝、旧回调及跨天状态。
 - 相关代码／文档：[AppCoordinator.SystemServices.cs](../src/DeskNodes.App/AppCoordinator.SystemServices.cs)、[技术设计](TECHNICAL_DESIGN.md)、[验证门槛](FEASIBILITY.md#verification)。
+
+## D30 导入后台解析与有界输入
+
+- 背景：审查 A5+B1、B4/C13 指出无界导入与同步读取阻塞界面；数据库现为单连接加锁串行模型。
+- 方案列表（利弊）：仅检查 FileInfo.Length：无法限制读取时变化及内部集合；有界读取并后台解析／staging：限制资源且隔离活库；完整后台存储队列：增加线程亲和、退出时序及替库同步风险。
+- 推荐／采用：字节、集合、字符串长度与显式 MaxDepth 上限；读取、解析、staging 后台执行，替换活库仍在 UI 线程串行；历史采用月份统计缓存与 generation 丢弃过期结果。
+- 理由：在可验证边界内降低导入阻塞；拒绝本轮建立完整后台存储队列，其收益尚无 Windows 实测支撑，风险不匹配。
+- 影响：封存、自动备份保持同步；完整队列延后至真机测量卡顿后决定。
+- 需真机验证项：大文件导入期间 UI 响应、取消／失败保留活库、快速历史导航及退出时序。
+- 相关代码／文档：[导入协调](../src/DeskNodes.App/AppCoordinator.SystemServices.cs)、[备份校验](../src/DeskNodes.Core/Backup/WindowsBackupCodec.cs)、[历史模型](../src/DeskNodes.App/Views/HistoryViewModel.cs)、[构建验证](WINDOWS_BUILD.md)。
+
+## D31 停靠序号限定 int 范围
+
+- 背景：审查 A2 发现协议可接受的 long 序号可能在领域 GetInt32 读取时溢出。
+- 方案列表（利弊）：领域全部扩为 long：波及布局和视图而无实际收益；导入重编号：改变输入数据；收紧协议范围：兼容领域且拒绝不可读取数据。
+- 推荐／采用：dock_order 限定 0..int.MaxValue，staging 必须能被领域读取层完整读出。
+- 理由：序号仅表示单条停靠边内顺序，协议 v1 尚未发布，无需扩宽领域。
+- 影响：当前与快照都拒绝越界序号；同步备份协议约束。
+- 需真机验证项：合法边界导入往返与失败不替库。
+- 相关代码／文档：[备份校验](../src/DeskNodes.Core/Backup/WindowsBackupCodec.cs)、[领域读取](../src/DeskNodes.Core/Storage/NoteRepository.cs)、[备份协议](BACKUP_FORMAT.md)。
+
+## D32 系统文本缩放与 Windows SDK 目标
+
+- 背景：审查 C9 要求 Windows 辅助文本大小独立于显示 DPI；平台最低基线是 Windows 11 22H2（22621）。
+- 方案列表（利弊）：仅应用内比例：不跟随系统；仅系统消息字体：不能覆盖自定义字号；(a) 原始 WinRT ABI（RoGetActivationFactory + 手写 IUISettings2 vtable）：无体积成本，但手写 IInspectable 布局、订阅事件需自实现委托 COM 对象，维护与正确性风险高；(b) 注册表 HKCU\Software\Microsoft\Accessibility\TextScaleFactor + 设置变更消息：最简单，但读取的是未文档化的存储位置；公开 UISettings 官方投影：可读比例并订阅变化，需要 Windows SDK 目标与 WinRT 投影。
+- 推荐／采用：Platform/TextScaleService 使用 UISettings.TextScaleFactor／TextScaleFactorChanged，失败回退 1.0，事件切回 Dispatcher；便签使用独立排版参数，设置／历史使用应用级动态字号资源。
+- 理由：直接跟随系统辅助设置，保留编辑器与输入缓冲，通过排版更新重新量高。初拟 net10.0-windows10.0.19041.0 与 SupportedOSPlatformVersion=10.0.22621.0 被 SDK 以 NETSDK1135 拒绝；采用 net10.0-windows10.0.22621.0 和同版本支持下限。另一方案是把支持下限降至 19041，但违反文档平台裁决，故不采用。
+- 采用理由与代价：选择官方投影以换取正确性与可维护性，体积代价可接受；若后续体积成为问题再评估 (a)。win-x64 单文件增加约 25.4 MiB，App TFM 改为 net10.0-windows10.0.22621.0；Core 仍 net10.0。
+- 需真机验证项：系统文本 100/150/200% 与多屏 DPI 交叉、编辑／组词缓冲、固定／自动高与辅助窗口无裁字、实时切换与退出解绑。
+- 相关代码／文档：[文本缩放服务](../src/DeskNodes.App/Platform/TextScaleService.cs)、[排版](../src/DeskNodes.Core/Presentation/NoteTypography.cs)、[App 项目](../src/DeskNodes.App/DeskNodes.App.csproj)、[构建验证](WINDOWS_BUILD.md)、[公开文本缩放 API](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.uisettings.textscalefactorchanged)。
+
+## D33 展示计时使用单调 TimeProvider
+
+- 背景：审查 C14 指出 UTC 回拨会使动画及闲置等待停滞，单纯限制时间不递减仍需等待 UTC 追平。
+- 方案列表（利弊）：时间变化时重建基准：依赖消息完备；累计非负 UTC 差值：无法完整表达调整与挂起；可注入单调计时：独立于业务日期且可测试。
+- 推荐／采用：展示持续时间使用 TimeProvider.GetTimestamp 的单调来源，业务日期继续使用 IClock。
+- 理由：系统时间前进／回拨不改变动画和闲置持续时间语义。
+- 影响：展示与业务时间分离，保留可注入测试来源。
+- 需真机验证项：动画／闲置中回拨一小时、前跳及挂起恢复，检查最终状态和计时器停止。
+- 相关代码／文档：[工具条](../src/DeskNodes.App/Views/ToolbarWindow.xaml.cs)、[工具条动画](../src/DeskNodes.App/Views/ToolbarWindow.Motion.cs)、[构建验证](WINDOWS_BUILD.md)。
+
+## D34 暂保留 GetDpiForMonitor
+
+- 背景：审查 B7 指出 PerMonitorV2 线程不建议调用 GetDpiForMonitor，但尚无可复现错误，同文档说明 per-monitor aware 进程返回实际有效 DPI。
+- 方案列表（利弊）：探测窗口配合 GetDpiForWindow：增加窗口与生命周期复杂度；直接推断 DPI：可能偏离实际；保留并真机对照：改动最小但需实测。
+- 推荐／采用：暂保留现有 GetDpiForMonitor，加入 GetDpiForWindow 真机对照；发现偏差后再采用探测窗口方案。
+- 理由：Linux 无法验证新增探测窗口行为，不以文档建议替代已复现错误证据。
+- 影响：本轮不改屏幕 DPI 获取；跨屏判断继续使用 PixelBounds，屏 DIP 仍为像素除以该屏缩放。
+- 需真机验证项：各屏 GetDpiForMonitor 与 GetDpiForWindow 对照，含跨屏、远程会话与显示设置变化。
+- 相关代码／文档：[屏幕服务](../src/DeskNodes.App/Platform/ScreenProvider.cs)、[构建验证](WINDOWS_BUILD.md)、[平台可行性](FEASIBILITY.md)。

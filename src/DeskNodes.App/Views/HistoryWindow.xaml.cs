@@ -26,7 +26,6 @@ public static class HistoryResources
 public static class HistoryCommands
 {
     public static RoutedUICommand Restore { get; } = new();
-    public static RoutedUICommand SelectDay { get; } = new();
     public static RoutedUICommand Previous { get; } = new();
     public static RoutedUICommand Next { get; } = new();
     public static RoutedUICommand Today { get; } = new();
@@ -43,6 +42,7 @@ internal partial class HistoryWindow : Window
         model = new(app);
         InitializeComponent();
         DataContext = model;
+        AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(SelectDay));
         Activated += (_, _) => Reload();
         Closed += (_, _) => model.Invalidate();
     }
@@ -92,9 +92,9 @@ internal partial class HistoryWindow : Window
         Reload();
     }
     private void Retry(object sender, ExecutedRoutedEventArgs e) => Reload();
-    private void SelectDay(object sender, ExecutedRoutedEventArgs e)
+    private void SelectDay(object sender, RoutedEventArgs e)
     {
-        if (e.Parameter is not HistoryDay day)
+        if (e.OriginalSource is not RadioButton { DataContext: CalendarCell { Selected: false, Day: { } day } })
             return;
         model.Navigator.Select(day);
         Focus();

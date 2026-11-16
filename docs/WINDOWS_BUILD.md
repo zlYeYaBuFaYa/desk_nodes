@@ -71,6 +71,20 @@ x64 产物 `DeskNodes.App.exe` 为 **227,679,315 字节（约 217.13 MiB）**，
 
 `PublishReadyToRun=false`：减小产物并保持 Linux 跨架构发布流程一致，代价是首次启动仍有 JIT 成本。若以后改为 true，需要适配跨平台编译工具、比较启动收益与体积，并重新验证两个架构；本轮不宣称启动性能结果。未启用 trimming，保留 WPF 所需反射路径。
 
+### 审查修复批次 4：文本缩放交叉验证
+
+同一 Linux 容器、SDK 10.0.404、未打包文楷，以 `dotnet publish src/DeskNodes.App -c Release -p:PublishProfile=win-x64` 比较本批修改前后单文件 exe：
+
+| 配置 | DeskNodes.App.exe 字节数 |
+|---|---:|
+| 修改前，net10.0-windows | 227,694,675 |
+| 修改后，net10.0-windows10.0.22621.0，UISettings 文本缩放 | 254,323,473 |
+| 增量 | 26,628,798（25.40 MiB，11.69%） |
+
+发布目录分别为 `/tmp/desknodes-b4-before`、`/tmp/desknodes-b4-after`，产物未入库。新增 Windows SDK／WinRT 投影依赖会增加发布体积；以上为本批全部修改的实测差值，不将其全部归因于单个程序集。原拟 TFM 19041 搭配最低支持版本 22621 会触发 NETSDK1135，故采用与平台最低版本一致的 22621 TFM，详见 D32。
+
+本批最终 `dotnet build DeskNodes.sln -c Release` 通过（0 警告、0 错误）；`dotnet test DeskNodes.sln -c Release` 432 通过、0 失败、0 跳过；win-x64 自包含单文件交叉发布通过（0 警告、0 错误）；21 份手写 XAML 的 XML 解析通过。尚未运行 Windows WPF／UIA，以上不替代真机清单。
+
 ## 数据、日志与卸载
 
 默认数据目录 `%LOCALAPPDATA%\DeskNodes`：`DeskNodes.sqlite3`（及运行期间 SQLite 辅助文件）、`Logs\DeskNodes.log`（轮转 `.1`）、`Backups` 自动备份、`LocalPreferences.json` 本机偏好。设置业务数据在数据库中，备份格式与安全导入见 [BACKUP_FORMAT](BACKUP_FORMAT.md)。隔离实例这些文件均位于覆盖目录。
@@ -89,6 +103,10 @@ Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA 'DeskNodes')
 
 每个条目保存实际结果和截图，失败与未执行单独记录。先对照 [验证门槛 1–9](FEASIBILITY.md#verification)；以下为可执行步骤，不构成已通过声明。
 
+- [ ] 对照各屏 GetDpiForMonitor 与窗口 GetDpiForWindow，有不同 DPI、跨屏及远程会话时记录差异，决定是否替换探测方案。
+- [ ] 系统文本缩放分别设 100/150/200%，与显示 DPI 交叉；打开设置、历史及四档字号便签，实时切换，检查固定／自动高、滚动、组词与编辑缓冲保留及无裁字。
+- [ ] 有历史／空历史两种状态反复打开托盘菜单数百次，记录 USER/GDI 句柄及 hosted Control 释放情况，确认句柄稳定。
+- [ ] 导入上限内的大文件期间继续操作界面，记录 UI 响应与耗时，检查取消、失败、替库串行及旧回调失效。
 - [ ] 在干净 x64 机器仅复制 exe 运行；新建中英文事项、重启读取、导出再导入，确认 SQLite 加载及托盘图标清晰；记录字体是否包含。
 - [ ] 分别使用微软拼音、微软五笔、一种第三方中文 IME：连续组词、选择候选窗、Return 确认、Esc 取消、首字符输入；拖选文本并撤销；点候选窗和其他应用，确认不误提交、不丢选区。组词中尝试新建、字号切换、导入、退出、跨天，检查屏障与旧编辑回调失效。
 - [ ] 在不同背景移动／缩放便签，检查 WindowChrome 圆角、系统阴影、边缘无漏底；锁屏／UAC 后恢复检查窗口。

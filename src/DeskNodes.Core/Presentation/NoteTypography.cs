@@ -4,7 +4,14 @@ public sealed record NoteTypography(double Title, double Body, double Secondary)
 {
     public double Scale(double value) => Math.Round(value * Body / 14, MidpointRounding.AwayFromZero);
     public double AutomaticHeight(double rowsHeight, double workHeight) => Math.Min(Math.Max(0, workHeight - 16), Math.Clamp(Scale(94) + rowsHeight + 18, 120, 480));
-    public static NoteTypography For(NoteTextSize size) => size switch
+    public static NoteTypography For(NoteTextSize size, double textScale = 1)
+    {
+        if (!double.IsFinite(textScale) || textScale <= 0)
+            textScale = 1;
+        var typography = Base(size);
+        return new(typography.Title * textScale, typography.Body * textScale, typography.Secondary * textScale);
+    }
+    private static NoteTypography Base(NoteTextSize size) => size switch
     {
         NoteTextSize.Small => new(15, 13, 11), NoteTextSize.Large => new(18, 16, 14),
         NoteTextSize.ExtraLarge => new(20, 18, 15), _ => new(16, 14, 12)

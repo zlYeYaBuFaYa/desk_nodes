@@ -14,14 +14,14 @@
             </Setter.Value>
         </Setter>
     </Style>
-    <Style TargetType="Button">
+    <Style x:Key="ActionButton" TargetType="ButtonBase">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Foreground" Value="{DynamicResource Secondary}"/>
         <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
         <Setter Property="Template">
             <Setter.Value>
-                <ControlTemplate TargetType="Button">
+                <ControlTemplate TargetType="ButtonBase">
                     <Border x:Name="Plate" CornerRadius="6" Background="{TemplateBinding Background}">
                         <ContentPresenter
                             HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
@@ -45,7 +45,7 @@
             </Setter.Value>
         </Setter>
     </Style>
-    <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Style x:Key="IconActionButton" TargetType="ButtonBase" BasedOn="{StaticResource ActionButton}">
         <Setter Property="Width" Value="22"/>
         <Setter Property="Height" Value="22"/>
         <Setter Property="Margin" Value="0,0,2,0"/>
@@ -53,6 +53,10 @@
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="HorizontalContentAlignment" Value="Center"/>
     </Style>
+    <Style TargetType="Button" BasedOn="{StaticResource ActionButton}"/>
+    <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource IconActionButton}"/>
+    <Style TargetType="ToggleButton" BasedOn="{StaticResource ActionButton}"/>
+    <Style x:Key="IconToggleButton" TargetType="ToggleButton" BasedOn="{StaticResource IconActionButton}"/>
     <Style x:Key="MoreButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
         <Setter Property="Opacity" Value="0"/>
     </Style>

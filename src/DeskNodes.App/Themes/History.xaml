@@ -23,7 +23,7 @@
         <Setter Property="CornerRadius" Value="9"/>
     </Style>
     <Style TargetType="Border" x:Key="HistoryNoteTitleBar">
-        <Setter Property="Height" Value="28"/>
+        <Setter Property="MinHeight" Value="28"/>
         <Setter Property="CornerRadius" Value="7"/>
         <Setter Property="Padding" Value="10,0"/>
     </Style>
@@ -70,12 +70,12 @@
         <Setter Property="Margin" Value="0,32"/>
     </Style>
     <Style TargetType="TextBlock" x:Key="HistoryDeletedItemsHeading">
-        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Margin" Value="0,16"/>
     </Style>
     <Style TargetType="TextBlock" x:Key="HistoryDeletedNotesHeading">
-        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Margin" Value="0,0,0,16"/>
     </Style>
@@ -86,12 +86,12 @@
         <Setter Property="Foreground" Value="{DynamicResource HistorySecondary}"/>
     </Style>
     <Style TargetType="TextBlock" x:Key="HistoryEmptyTitle">
-        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize18}"/>
         <Setter Property="Margin" Value="0,16,0,8"/>
     </Style>
     <Style TargetType="TextBlock" x:Key="HistoryEmptyIcon">
         <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
-        <Setter Property="FontSize" Value="32"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize32}"/>
         <Setter Property="HorizontalAlignment" Value="Center"/>
     </Style>
     <Style TargetType="StackPanel" x:Key="HistoryEmptyState">
@@ -99,7 +99,7 @@
         <Setter Property="HorizontalAlignment" Value="Center"/>
     </Style>
     <Style TargetType="TextBlock" x:Key="HistoryDayHeading">
-        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Margin" Value="0,0,0,24"/>
     </Style>
@@ -113,13 +113,13 @@
         <Setter Property="Margin" Value="0,0,0,8"/>
     </Style>
     <Style TargetType="TextBlock" x:Key="HistoryMonthRate">
-        <Setter Property="FontSize" Value="24"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize24}"/>
     </Style>
     <Style TargetType="DockPanel" x:Key="HistoryMonthSummary">
         <Setter Property="Margin" Value="0,20,0,16"/>
     </Style>
     <Style TargetType="TextBlock" x:Key="HistoryHeading">
-        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style TargetType="StackPanel" x:Key="HistoryCalendarPadding">
@@ -242,7 +242,7 @@
             </DataTrigger>
         </Style.Triggers>
     </Style>
-    <ControlTemplate TargetType="Button" x:Key="HistoryDayControlTemplate">
+    <ControlTemplate TargetType="RadioButton" x:Key="HistoryDayControlTemplate">
         <Grid>
             <Border
                 local:HistoryResources.BackgroundKey="{Binding ShadeKey}"
@@ -296,10 +296,10 @@
         </ControlTemplate.Triggers>
     </ControlTemplate>
     <Style
-        TargetType="Button"
-        x:Key="HistoryDayButton"
-        BasedOn="{StaticResource HistoryButton}">
-        <Setter Property="Height" Value="46"/>
+        TargetType="RadioButton"
+        x:Key="HistoryDayButton">
+        <Setter Property="MinHeight" Value="46"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize12}"/>
         <Setter Property="Padding" Value="0"/>
         <Setter Property="Margin" Value="1"/>
         <Setter Property="Focusable" Value="False"/>
@@ -362,9 +362,11 @@
         </StackPanel>
     </DataTemplate>
     <DataTemplate x:Key="HistoryDayTemplate">
-        <Button
-            Command="{x:Static local:HistoryCommands.SelectDay}"
-            CommandParameter="{Binding Day}"
+        <RadioButton
+            GroupName="HistoryDays"
+            IsChecked="{Binding Selected, Mode=OneWay}"
+            AutomationProperties.Name="{Binding AccessibleName}"
+            AutomationProperties.HelpText="{Binding Status}"
             Template="{StaticResource HistoryDayControlTemplate}"
             Style="{StaticResource HistoryDayButton}"/>
     </DataTemplate>

@@ -48,4 +48,6 @@
     <SolidColorBrush x:Key="ToolbarSecondary" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
     <SolidColorBrush x:Key="ToolbarDisabled" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
     <SolidColorBrush x:Key="ToolbarHover" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="SelectionShade" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" Opacity="0.5"/>
+    <SolidColorBrush x:Key="SelectionFill" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
 </ResourceDictionary>

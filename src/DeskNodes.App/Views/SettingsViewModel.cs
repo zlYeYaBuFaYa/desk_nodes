@@ -58,7 +58,8 @@ internal sealed partial class SettingsViewModel : INotifyPropertyChanged, IDispo
     public double HomeX => SettingsState.HomePreview(app.Preferences.Home, 180, 96).X - 6;
     public double HomeY => SettingsState.HomePreview(app.Preferences.Home, 180, 96).Y - 6;
     public FontFamily SampleFamily => new(fonts.Resolve(Font).Family);
-    public double SampleSize => NoteTypography.For(TextSize).Body;
+    public void RefreshTextScale() => PropertyChanged?.Invoke(this, new(nameof(SampleSize)));
+    public double SampleSize => NoteTypography.For(TextSize, app.TextScale).Body;
     public Appearance Appearance
     {
         get => app.Preferences.Appearance;

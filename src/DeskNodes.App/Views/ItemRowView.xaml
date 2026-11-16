@@ -29,7 +29,8 @@
             FontSize="{Binding BodySize}"
             TextBlock.LineHeight="{Binding LineHeight}"
             Padding="{Binding EditorPadding}"
-            AutomationProperties.Name="事项正文">
+            AutomationProperties.Name="事项正文"
+            AutomationProperties.ItemStatus="{Binding ItemStatus}">
             <TextBox.Style>
                 <Style TargetType="TextBox" BasedOn="{StaticResource NoteEditor}">
                     <Style.Triggers>
@@ -57,12 +58,13 @@
                     </Style.Triggers>
                 </Style>
             </StackPanel.Style>
-            <Button
+            <ToggleButton
                 x:Name="Strike"
-                Style="{StaticResource IconButton}"
+                Style="{StaticResource IconToggleButton}"
+                IsChecked="{Binding Struck, Mode=OneWay}"
                 Content="&#xEDE0;"
-                ToolTip="划掉或取消划掉"
-                AutomationProperties.Name="划掉或取消划掉"/>
+                ToolTip="{Binding StrikeName}"
+                AutomationProperties.Name="{Binding StrikeName}"/>
             <Button
                 x:Name="Delete"
                 Style="{StaticResource IconButton}"

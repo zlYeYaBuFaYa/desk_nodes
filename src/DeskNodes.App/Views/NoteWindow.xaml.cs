@@ -169,7 +169,7 @@ internal sealed partial class NoteWindow : Window
     private NoteFontMapping? lastFontMapping;
     public void RefreshTypography()
     {
-        type = NoteTypography.For(app.Preferences.TextSize);
+        type = NoteTypography.For(app.Preferences.TextSize, app.TextScale);
         var font = fonts.Resolve(app.Preferences.Font);
         if (lastFontMapping != font)
         {

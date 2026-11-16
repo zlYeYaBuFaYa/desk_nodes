@@ -362,6 +362,16 @@ internal sealed partial class AppCoordinator
             window.SetSelected(window == target);
     }
 
+    public double TextScale => ((App)Application.Current).TextScale?.Scale ?? 1;
+    public void RefreshTextScale()
+    {
+        foreach (var window in windows.Values)
+            window.RefreshTypography();
+        if (settingsWindow?.DataContext is SettingsViewModel model)
+            model.RefreshTextScale();
+        Presentation.Refresh();
+    }
+
     public void RefreshTheme()
     {
         historyWindow?.RefreshTheme();

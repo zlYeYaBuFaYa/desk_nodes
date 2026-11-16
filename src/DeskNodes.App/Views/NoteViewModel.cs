@@ -44,6 +44,8 @@ internal sealed class ItemViewModel : INotifyPropertyChanged
     public double CircleSize => Typography.Scale(16);
     public Thickness EditorPadding => new(0, Typography.Scale(5), 0, Typography.Scale(5));
     public Thickness CircleMargin => new(0, Typography.Scale(8), Typography.Scale(11), 0);
+    public string StrikeName => Struck ? "取消划掉" : "划掉事项";
+    public string ItemStatus => Struck ? "已划掉" : Completed ? "已完成" : "未完成";
     public string CompletionName => Completed ? "取消完成事项" : "完成事项";
     public void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
 }
