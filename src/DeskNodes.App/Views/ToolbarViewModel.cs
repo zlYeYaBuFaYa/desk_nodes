@@ -47,7 +47,7 @@ internal sealed class ToolbarViewModel : INotifyPropertyChanged
         int last = app.Preferences.Pages.Values.DefaultIfEmpty().Max();
         Paging = new($"{app.Preferences.Page + 1}/{last + 1}", app.Preferences.Page > 0, app.Preferences.Page < last,
             Command(() => app.ChangePage(-1)), Command(() => app.ChangePage(1)));
-        var parts = new List<object> { new ToolbarHandleViewModel() };
+        var parts = new List<object>();
         parts.AddRange(Actions);
         parts.Add(new ToolbarCountViewModel(CountText, manage, Command(app.ToggleCollapsed)));
         if (last > 0) parts.Add(Paging);

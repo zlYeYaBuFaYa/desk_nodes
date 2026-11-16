@@ -148,10 +148,10 @@ internal sealed partial class NoteWindow : Window
                 row = CreateRow(item);
                 itemRows.Add(item.Id, row);
             }
-            int current = rows.Children.IndexOf(row);
-            if (current != i)
+            if (i >= rows.Children.Count || !ReferenceEquals(rows.Children[i], row))
             {
-                if (current >= 0) rows.Children.Remove(row);
+                int current = rows.Children.IndexOf(row);
+                if (current >= 0) rows.Children.RemoveAt(current);
                 rows.Children.Insert(i, row);
             }
             app.Editors.Refresh(row.Editor, item.Text);

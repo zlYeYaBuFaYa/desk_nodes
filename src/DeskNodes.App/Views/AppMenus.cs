@@ -69,20 +69,64 @@ internal sealed class AppMenus(AppCoordinator app)
         });
         return item;
     }
+    private sealed record MenuOption(string Label, Action? Execute = null, bool Checked = false,
+        bool Enabled = true, IReadOnlyList<MenuOption>? Children = null);
+
+    private MenuOption ToolbarOptions() => new("工具条", Children:
+    [
+        new("排列方向", Children: Enum.GetValues<ToolbarOrientation>().Select(value =>
+            new MenuOption(value == ToolbarOrientation.Vertical ? "竖向" : "横向",
+                () => app.SavePreferences(app.Preferences with { Orientation = value }),
+                app.Preferences.Orientation == value)).ToArray()),
+        new("闲置自动收缩", Children: Enum.GetValues<AutoShrink>().Select(value =>
+            new MenuOption(value == AutoShrink.Off ? "关闭" : $"{(int)value} 秒",
+                () => app.SavePreferences(app.Preferences with { AutoShrink = value }),
+                app.Preferences.AutoShrink == value)).ToArray()),
+        new("恢复默认收缩位置", () => app.SavePreferences(app.Preferences with { Home = new() }),
+            Enabled: !app.Preferences.Home.IsDefault)
+    ]);
+
+    private void ExecuteOption(MenuOption option) => app.Run(() =>
+    {
+        app.Presentation.ExitSelection();
+        option.Execute?.Invoke();
+    });
+
+    private MenuItem WpfOption(MenuOption option)
+    {
+        var item = new MenuItem { Header = option.Label, IsChecked = option.Checked, IsEnabled = option.Enabled };
+        if (option.Children is { } children)
+            foreach (var child in children) item.Items.Add(WpfOption(child));
+        else item.Click += (_, _) => ExecuteOption(option);
+        return item;
+    }
+
+    private Forms.ToolStripMenuItem TrayOption(MenuOption option)
+    {
+        var item = new Forms.ToolStripMenuItem(option.Label) { Checked = option.Checked, Enabled = option.Enabled };
+        if (option.Children is { } children)
+            foreach (var child in children) item.DropDownItems.Add(TrayOption(child));
+        else item.Click += (_, _) => ExecuteOption(option);
+        return item;
+    }
+
+    private static void DisposeItems(Forms.ToolStripItemCollection items)
+    {
+        while (items.Count > 0)
+        {
+            var item = items[0];
+            items.RemoveAt(0);
+            if (item is Forms.ToolStripDropDownItem dropdown) DisposeItems(dropdown.DropDownItems);
+            // ToolStripControlHost.Dispose owns and disposes its hosted Control (and children).
+            item.Dispose();
+        }
+    }
+
     public ContextMenu ToolbarMenu()
     {
         var menu = new ContextMenu();
         menu.Items.Add(HistoryMenu());
-        var toolbar = new MenuItem { Header = "工具条" };
-        var orientation = new MenuItem { Header = "排列方向" };
-        foreach (var value in Enum.GetValues<ToolbarOrientation>())
-            orientation.Items.Add(Command(value == ToolbarOrientation.Vertical ? "竖向" : "横向", () => app.SavePreferences(app.Preferences with { Orientation = value }), app.Preferences.Orientation == value));
-        toolbar.Items.Add(orientation);
-        var shrink = new MenuItem { Header = "闲置自动收缩" };
-        foreach (var value in Enum.GetValues<AutoShrink>())
-            shrink.Items.Add(Command(value == AutoShrink.Off ? "关闭" : $"{(int)value} 秒", () => app.SavePreferences(app.Preferences with { AutoShrink = value }), app.Preferences.AutoShrink == value));
-        toolbar.Items.Add(shrink);
-        toolbar.Items.Add(Command("恢复默认收缩位置", () => app.SavePreferences(app.Preferences with { Home = new() }), enabled: !app.Preferences.Home.IsDefault));
+        var toolbar = WpfOption(ToolbarOptions());
         menu.Items.Add(Command("选择便签…", () => app.Presentation.EnterSelection(), enabled: app.NoteCount > 0));
         menu.Items.Add(toolbar);
         menu.Items.Add(new Separator());
@@ -92,7 +136,7 @@ internal sealed class AppMenus(AppCoordinator app)
     }
     public void PopulateTray(Forms.ContextMenuStrip menu)
     {
-        menu.Items.Clear();
+        DisposeItems(menu.Items);
         void Add(string text, Action action, bool enabled = true)
         {
             var item = menu.Items.Add(text, null, (_, _) => app.Run(() =>
@@ -141,6 +185,7 @@ internal sealed class AppMenus(AppCoordinator app)
         var deletedItem = history.DropDownItems.Add(deleted.Label, null, (_, _) => app.Run(() => app.OpenHistory(deleted: true)));
         deletedItem.Enabled = deleted.Enabled;
         menu.Items.Add(history);
+        menu.Items.Add(TrayOption(ToolbarOptions()));
         menu.Items.Add(new Forms.ToolStripSeparator());
         Add("设置…", app.OpenSettings);
         Add("退出 DeskNodes", app.Exit);

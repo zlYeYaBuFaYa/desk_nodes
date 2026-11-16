@@ -105,15 +105,38 @@
                     <TranslateTransform x:Name="HoverPosition"/>
                 </Border.RenderTransform>
             </Border>
-            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden">
-                <ItemsControl x:Name="Parts" ItemsSource="{Binding Parts}" Style="{StaticResource ToolbarParts}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="{Binding Orientation}"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-            </ScrollViewer>
+            <DockPanel x:Name="Parts" Style="{StaticResource ToolbarContent}">
+                <ContentControl x:Name="FixedHandle">
+                    <ContentControl.Content>
+                        <views:ToolbarHandleViewModel/>
+                    </ContentControl.Content>
+                </ContentControl>
+                <Button
+                    x:Name="ScrollBack"
+                    Style="{StaticResource ToolbarScroll}"
+                    Content="‹"
+                    AutomationProperties.Name="向前滚动工具条"
+                    Click="ScrollToolbarBack"/>
+                <Button
+                    x:Name="ScrollForward"
+                    Style="{StaticResource ToolbarScroll}"
+                    Content="›"
+                    AutomationProperties.Name="向后滚动工具条"
+                    Click="ScrollToolbarForward"/>
+                <ScrollViewer
+                    x:Name="ActionScroll"
+                    HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Hidden"
+                    ScrollChanged="ToolbarScrollChanged">
+                    <ItemsControl x:Name="ActionParts" ItemsSource="{Binding Parts}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="{Binding Orientation}"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
             <Viewbox
                 x:Name="RoundLabel"
                 Width="24"

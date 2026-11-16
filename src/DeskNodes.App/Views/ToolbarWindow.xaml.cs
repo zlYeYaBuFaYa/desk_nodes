@@ -148,8 +148,8 @@ internal partial class ToolbarWindow : Window
     private bool Paging => app.Preferences.Pages.Values.DefaultIfEmpty().Max() > 0;
     private readonly ToolbarViewModel model = new();
     private readonly DeskNodes.App.Themes.ThemeService theme;
-    private UIElement[] AnimatedParts => Enumerable.Range(0, Parts.Items.Count)
-        .Select(i => Parts.ItemContainerGenerator.ContainerFromIndex(i)).OfType<UIElement>().ToArray();
+    private UIElement[] AnimatedParts => Enumerable.Range(0, ActionParts.Items.Count)
+        .Select(i => ActionParts.ItemContainerGenerator.ContainerFromIndex(i)).OfType<UIElement>().ToArray();
     public void Rebuild()
     {
         if (animating) return;
@@ -157,11 +157,40 @@ internal partial class ToolbarWindow : Window
         Parts.Height = double.NaN;
         model.Round = round;
         model.Update(app, HandleAtEnd, Operate);
+        bool vertical = model.Orientation == Orientation.Vertical;
+        DockPanel.SetDock(FixedHandle, vertical ? (HandleAtEnd ? Dock.Bottom : Dock.Top) : (HandleAtEnd ? Dock.Right : Dock.Left));
+        DockPanel.SetDock(ScrollBack, vertical ? Dock.Top : Dock.Left);
+        DockPanel.SetDock(ScrollForward, vertical ? Dock.Bottom : Dock.Right);
+        ScrollBack.Content = vertical ? "↑" : "‹";
+        ScrollForward.Content = vertical ? "↓" : "›";
         Parts.UpdateLayout();
         if (!round && IsLoaded) Place(ToolbarGeometry.ResolveAnchor(app.Screens.GetScreens(), app.Preferences, app.Preferences.Orientation, Paging));
         UpdateStackHint();
         UpdateEntranceHit();
         if (IsLoaded) Dispatcher.BeginInvoke(() => Tick());
+    }
+    private void ScrollToolbarBack(object sender, RoutedEventArgs e) => ScrollToolbar(-1);
+    private void ScrollToolbarForward(object sender, RoutedEventArgs e) => ScrollToolbar(1);
+    private void ScrollToolbar(int direction)
+    {
+        if (model.Orientation == Orientation.Vertical)
+            ActionScroll.ScrollToVerticalOffset(ActionScroll.VerticalOffset + direction * ToolbarGeometry.VerticalButtonLength);
+        else
+            ActionScroll.ScrollToHorizontalOffset(ActionScroll.HorizontalOffset + direction * ToolbarGeometry.HorizontalButtonLength);
+        ResetIdle();
+    }
+    private void ToolbarScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        bool vertical = model.Orientation == Orientation.Vertical;
+        double extent = vertical ? ActionScroll.ExtentHeight : ActionScroll.ExtentWidth;
+        double viewport = vertical ? ActionScroll.ViewportHeight : ActionScroll.ViewportWidth;
+        double offset = vertical ? ActionScroll.VerticalOffset : ActionScroll.HorizontalOffset;
+        double available = vertical ? Parts.ActualHeight - FixedHandle.ActualHeight : Parts.ActualWidth - FixedHandle.ActualWidth;
+        var visibility = extent > available + .5 ? Visibility.Visible : Visibility.Collapsed;
+        ScrollBack.Visibility = visibility;
+        ScrollForward.Visibility = visibility;
+        ScrollBack.IsEnabled = offset > .5;
+        ScrollForward.IsEnabled = offset + viewport < extent - .5;
     }
     private void GripLoaded(object sender, RoutedEventArgs e) => grip = (FrameworkElement)sender;
     private void ActionMouseLeave(object sender, MouseEventArgs e) => Hover.Visibility = Visibility.Collapsed;

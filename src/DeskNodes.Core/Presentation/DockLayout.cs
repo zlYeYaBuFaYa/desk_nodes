@@ -13,7 +13,7 @@ public static class DockLayout
     public static DockResult Arrange(ScreenInfo screen, DockEdge edge, IEnumerable<DockItem> items,
         RectD? homeZone = null, int page = 0)
     {
-        var w = screen.WorkArea.Inset(8);
+        var w = screen.WorkArea.Inset(Math.Min(8, Math.Min(screen.WorkArea.Width, screen.WorkArea.Height) / 4));
         bool top = edge == DockEdge.Top;
         double start = top ? w.X : w.Y, end = top ? w.Right : w.Bottom;
         double cross = top ? Math.Min(screen.WorkArea.Height < 700 ? 200 : 260, w.Height) : Math.Min(288, w.Width);
@@ -29,21 +29,30 @@ public static class DockLayout
         }
         var ordered = items.OrderBy(i => i.Order).ToArray();
         double Length(DockItem i) => top ? Math.Min(220, w.Width) : Math.Min(Math.Clamp(i.Height, 120, 600), w.Height);
+        // If the reservation consumes the entire strip, keep notes reachable on the strip.
+        if (end <= start)
+        {
+            start = top ? w.X : w.Y;
+            end = top ? w.Right : w.Bottom;
+        }
         double available = end - start;
         bool overflow = ordered.Sum(i => Length(i) + 12) - 12 > available;
-        double overflowLength = Math.Min(96, available);
+        double overflowLength = Math.Min(96, Math.Max(0, available - Math.Min(120, available / 2)));
         RectD? overflowBounds = overflow
             ? top ? new(end - overflowLength, w.Y, overflowLength, cross)
                 : new(edge == DockEdge.Left ? w.X : w.Right - cross, end - overflowLength, cross, overflowLength)
             : null;
-        if (overflow) available = Math.Max(0, available - 96);
+        if (overflow) available = Math.Max(0, available - overflowLength);
         var groups = new List<List<DockItem>> { new() };
         double used = 0;
         foreach (var item in ordered)
         {
-            double length = Length(item);
-            if (length > available) continue;
-            if (used > 0 && used + length > available) { groups.Add(new()); used = 0; }
+            double length = Math.Min(Length(item), available);
+            if (groups[^1].Count > 0 && used + length > available)
+            {
+                groups.Add(new());
+                used = 0;
+            }
             groups[^1].Add(item);
             used += length + 12;
         }
@@ -52,7 +61,7 @@ public static class DockLayout
         double cursor = start;
         foreach (var item in groups[page])
         {
-            double length = Length(item);
+            double length = Math.Min(Length(item), available);
             visible.Add(new(item.Id, top ? new(cursor, w.Y, length, cross) : new(edge == DockEdge.Left ? w.X : w.Right - cross, cursor, cross, length)));
             cursor += length + 12;
         }

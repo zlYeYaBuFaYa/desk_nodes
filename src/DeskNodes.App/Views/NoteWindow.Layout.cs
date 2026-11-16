@@ -57,10 +57,10 @@ internal sealed partial class NoteWindow
 
     private void SaveBounds(bool fromSystem)
     {
-        if (note.Collapsed || note.Placement.DockEdge is not null) return;
+        if (note.Placement.DockEdge is not null) return;
         var screen = app.Screens.GetScreens().Resolve(ScreenProvider.DeviceForWindow(new WindowInteropHelper(this).Handle));
-        var rect = Bounds.Fit(screen.WorkArea.Inset(8));
-        app.Update(app.Repository.GetNote(note.Id)!, placement: new(new(rect.X - screen.Bounds.X, rect.Y - screen.Bounds.Y, rect.Width, rect.Height), screen.DeviceHint), automatic: fromSystem && manuallySized ? false : null);
+        var placement = NoteLayout.Capture(note.Placement, Bounds, screen, note.Collapsed);
+        app.Update(app.Repository.GetNote(note.Id)!, placement: placement, automatic: !note.Collapsed && fromSystem && manuallySized ? false : null);
         manuallySized = false;
     }
 
@@ -68,7 +68,7 @@ internal sealed partial class NoteWindow
     {
         var screens = app.Screens.GetScreens();
         var screen = screens.Resolve(note.Placement.DisplayDeviceHint);
-        var placement = NoteLayout.Restore(note.Placement, screens);
+        var placement = NoteLayout.Restore(note.Placement, screens, note.Collapsed);
         var r = placement.Bounds;
         RectD target = new(screen.Bounds.X + r.X, screen.Bounds.Y + r.Y, r.Width, r.Height);
         if (placement.DockEdge is { } edge)
@@ -77,7 +77,7 @@ internal sealed partial class NoteWindow
             var entry = dock.Visible.FirstOrDefault(n => n.Id == note.Id);
             if (entry is not null) target = entry.Bounds;
         }
-        return (screen, new(target.X, target.Y, target.Width, note.Collapsed ? 32 : target.Height));
+        return (screen, new(target.X, target.Y, target.Width, note.Collapsed ? Math.Min(32, screen.WorkArea.Inset(8).Height) : target.Height));
     }
 
     public void Place()
@@ -86,9 +86,9 @@ internal sealed partial class NoteWindow
         try
         {
             var (screen, target) = RestoreTarget();
-            MinWidth = Math.Min(200, screen.WorkArea.Width);
+            MinWidth = Math.Min(200, target.Width);
             MaxWidth = Math.Min(400, screen.WorkArea.Width);
-            MinHeight = note.Collapsed ? 32 : Math.Min(120, screen.WorkArea.Height);
+            MinHeight = note.Collapsed ? Math.Min(32, target.Height) : Math.Min(120, target.Height);
             MaxHeight = Math.Max(MinHeight, Math.Min(600, screen.WorkArea.Height));
             Left = target.X;
             Top = target.Y;

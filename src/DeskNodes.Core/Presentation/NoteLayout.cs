@@ -37,13 +37,20 @@ public static class NoteLayout
         double offset = visible.Length % steps * 24;
         return new RectD(w.X + offset, w.Y + offset, size.Width, size.Height).Fit(w);
     }
-    public static Placement Restore(Placement placement, ScreenSet screens)
+    public static Placement Capture(Placement previous, RectD visibleBounds, ScreenInfo screen, bool collapsed)
+    {
+        var visible = visibleBounds.Fit(screen.WorkArea.Inset(8));
+        var size = collapsed ? previous.Bounds : visible;
+        return new(new(visible.X - screen.Bounds.X, visible.Y - screen.Bounds.Y, size.Width, size.Height), screen.DeviceHint);
+    }
+
+    public static Placement Restore(Placement placement, ScreenSet screens, bool collapsed = false)
     {
         var screen = screens.Resolve(placement.DisplayDeviceHint);
         var r = placement.Bounds;
         // Persisted placement is monitor-relative, never a virtual-screen pixel coordinate.
-        var global = new RectD(screen.Bounds.X + r.X, screen.Bounds.Y + r.Y, r.Width, r.Height).Fit(screen.WorkArea.Inset(8));
-        return new(new(global.X - screen.Bounds.X, global.Y - screen.Bounds.Y, global.Width, global.Height),
+        var global = new RectD(screen.Bounds.X + r.X, screen.Bounds.Y + r.Y, r.Width, collapsed ? 32 : r.Height).Fit(screen.WorkArea.Inset(8));
+        return new(new(global.X - screen.Bounds.X, global.Y - screen.Bounds.Y, collapsed ? r.Width : global.Width, collapsed ? r.Height : global.Height),
             screen.DeviceHint, placement.DockEdge, placement.DockOrder);
     }
 }
@@ -78,39 +85,28 @@ public static class Arranger
                 double expanded = Math.Min(area.Height, Math.Clamp(note.AutomaticHeight ? measure(note, width) : note.Placement.Bounds.Height,
                     120, note.AutomaticHeight ? 480 : 600));
                 double height = note.Collapsed ? Math.Min(32, area.Height) : expanded;
-                int col = Array.IndexOf(bottoms, bottoms.Min());
-                double x = area.X + col * 306;
-                double NextY(double start)
+                double NextY(int column)
                 {
-                    if (toolbarScreen == screen.Id && fullToolbarTarget is { } obstacle && new RectD(x, start, width, height).Intersects(obstacle))
+                    double start = bottoms[column];
+                    double columnX = area.X + column * 306;
+                    if (toolbarScreen == screen.Id && fullToolbarTarget is { } obstacle && new RectD(columnX, start, width, height).Intersects(obstacle))
                         return obstacle.Bottom + 18;
                     return start;
                 }
-                double y = NextY(bottoms[col]);
-                if (y + height > area.Bottom)
+                int AvailableColumn() => Enumerable.Range(0, count)
+                    .Where(column => NextY(column) + height <= area.Bottom)
+                    .OrderBy(NextY).ThenBy(column => column).DefaultIfEmpty(-1).First();
+                int col = AvailableColumn();
+                if (col < 0)
                 {
                     if (pageUsed) page++;
-                    pageUsed = false;
                     Array.Fill(bottoms, area.Y);
-                    col = 0;
-                    x = area.X;
-                    y = NextY(area.Y);
-                    // At page start a forbidden column may have no usable slot: try the next column.
-                    while (y + height > area.Bottom && col + 1 < count)
-                    {
-                        bottoms[col] = area.Bottom + 18;
-                        x = area.X + ++col * 306;
-                        y = NextY(area.Y);
-                    }
-                    if (y + height > area.Bottom)
-                        {
-                        // Geometry can make avoidance impossible; the toolbar may cover notes.
-                        Array.Fill(bottoms, area.Y);
-                        col = 0;
-                        x = area.X;
-                        y = area.Y;
-                    }
+                    col = AvailableColumn();
                 }
+                // An obstacle covering every column cannot be avoided even on an empty page.
+                double y = col < 0 ? area.Y : NextY(col);
+                if (col < 0) col = 0;
+                double x = area.X + col * 306;
                 result.Add(new(note.Id, screen.Id, new(x, y, width, height), new(width, expanded), page));
                 bottoms[col] = y + height + 18;
                 pageUsed = true;

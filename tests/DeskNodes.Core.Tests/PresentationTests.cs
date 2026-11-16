@@ -49,9 +49,9 @@ public sealed class PresentationTests
     {
         var screen = Screen(width: 100, height: 70);
         var result = DockLayout.Arrange(screen, DockEdge.Left, [new(NoteId.New(), 0), new(NoteId.New(), 1)]);
-        Assert.Equal(new RectD(8, 8, 84, 54), result.OverflowBounds);
-        Assert.Empty(result.Visible);
-        Assert.Equal(2, result.Overflow.Count);
+        Assert.Equal(new RectD(8, 35, 84, 27), result.OverflowBounds);
+        Assert.Single(result.Visible);
+        Assert.Single(result.Overflow);
     }
     [Fact]
     public void ScreensResolveNegativeCoordinatesIntersectionAndFallback()
@@ -153,7 +153,9 @@ public sealed class PresentationTests
         var a = Screen(width: 638, height: 600); var b = Screen(x: -1000, id: "b", primary: false);
         var r = Arranger.Arrange(new([a, b]), [Note(0), Note(1), Note(2), Note(3), Note(4, screen: "b")], (_, _) => 240,
             new RectD(22, 22, 288, 64), "a");
-        Assert.Equal(104, r.Notes[0].Bounds.Y);
+        Assert.Equal(new RectD(328, 22, 288, 240), r.Notes[0].Bounds);
+        Assert.Equal(new RectD(22, 104, 288, 240), r.Notes[1].Bounds);
+        Assert.All(r.Notes.Where(n => n.ScreenId == "a"), n => Assert.False(n.Bounds.Intersects(new(22, 22, 288, 64))));
         Assert.Equal(0, r.PageFor("b", 99));
         Assert.True(r.Notes.Single(n => n.ScreenId == "b").Bounds.X < 0);
     }
