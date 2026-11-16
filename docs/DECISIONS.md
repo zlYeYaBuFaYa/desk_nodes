@@ -348,7 +348,7 @@
 - 方案列表（利弊）：将分页搬入 SQLite：可共用事务，但违反 D10 与备份协议的本机偏好边界；数据库提交后逐项恢复布局：补偿范围大且容易遗漏；事务委托内先保存偏好、数据库失败时补偿偏好：维持现有边界，但两种存储不具备跨进程崩溃原子性。
 - 推荐／采用：CombinedCommitCoordinator 在外层数据库事务内写布局，COMMIT 前保存偏好；偏好保存失败抛出使数据库回滚，保存成功后注册外层回滚回调恢复旧偏好。PreferencesState 仅在文件持久化成功后发布新值。新建／整张恢复需要展开桌面时，展开偏好保存失败即中止，不继续写业务库。
 - 理由：分页属于本机展示状态，不应进入业务库与导出备份；保留文件边界并在统一事务入口补偿，避免布局已提交而分页仍旧。
-- 影响：整理失败保留旧布局与页码；回滚补偿失败通过异常及日志暴露，不承诺文件与 SQLite 在断电／强杀时跨介质原子提交。没有采用把本机偏好移入 SQLite 的方案。
+- 影响：整理失败保留旧布局与页码；回滚补偿失败通过异常及日志暴露，不承诺文件与 SQLite 在断电／强杀时跨介质原子提交。没有采用把本机偏好移入 SQLite 的方案。持久化与发布的分离见 [D38](#d38-偏好持久化与发布分离)。
 - 需真机验证项：偏好权限拒绝／磁盘满、COMMIT 失败及补偿失败，检查提示、菜单勾选、布局与位置；解除故障后可重试。
 - 相关代码／文档：[组合提交](../src/DeskNodes.Core/Presentation/CombinedCommitCoordinator.cs)、[偏好发布](../src/DeskNodes.Core/Presentation/PreferencesState.cs)、[应用协调器](../src/DeskNodes.App/AppCoordinator.cs)、[D10](#d10-本机偏好)、[备份格式](BACKUP_FORMAT.md)、[手工清单](WINDOWS_BUILD.md#三组修复回归步骤全部待执行)。
 
@@ -371,3 +371,14 @@
 - 影响：内部转换仍保留协议、引用和领域一致性验证；不保证任意大的内部导出文件都能作为外部文件重新导入，外部上限仍以备份协议为准，不扩大用户文件限额。
 - 需真机验证项：大量中文导出／staging 复核与合法导入，四类外部上限的恰好值／超限分类提示，取消和失败后活库不变、临时库清理。
 - 相关代码／文档：[外部有界解析](../src/DeskNodes.Core/Backup/WindowsBackupCodec.Parsing.cs)、[内部导出与 staging](../src/DeskNodes.Core/Backup/WindowsBackupCodec.cs)、[备份测试](../tests/DeskNodes.Core.Tests/BackupParsingTests.cs)、[备份格式](BACKUP_FORMAT.md)、[手工清单](WINDOWS_BUILD.md#三组修复回归步骤全部待执行)。
+
+
+## D38 偏好持久化与发布分离
+
+- 背景：组合提交中，偏好已落盘但发布通知抛出时，原流程尚未登记回滚恢复，可能留下偏好与数据库布局错配。
+- 方案列表（利弊）：先登记补偿再保存：可覆盖通知异常，但保存前失败也会触发多余恢复写入，否决；回读文件判定：可检查落盘状态，但增加复杂度与 IO，否决；分离持久化与发布：持久化成功即登记恢复，发布延后到外层提交后，边界明确，但发布失败需要单独报告。
+- 推荐／采用：CombinedCommitCoordinator 在偏好持久化成功后立即登记外层回滚恢复，再登记外层提交后的发布回调；PreferencesChanged、主题刷新、工具条重建与可见性刷新均在外层提交后执行。发布异常不回滚已提交数据，经既有错误提示路径报告。
+- 理由：补偿应依据持久化结果登记，界面发布不能混入落盘成功的判定；无需提前补偿或回读文件即可覆盖通知异常。
+- 影响：保留 [D35](#d35-偏好与布局的提交边界) 的文件与 SQLite 非崩溃原子取舍；数据库回滚时恢复旧偏好，提交后发布失败则保留已提交数据，界面可能需要重新刷新。
+- 需真机验证项：分别注入偏好保存失败、外层 COMMIT 失败与提交后发布异常，核对偏好文件、布局、错误提示及日志；发布失败时已提交数据保持，重启后读取一致。
+- 相关代码／文档：[组合提交](../src/DeskNodes.Core/Presentation/CombinedCommitCoordinator.cs)、[应用协调器](../src/DeskNodes.App/AppCoordinator.cs)、[事务确认测试](../tests/DeskNodes.Core.Tests/TransactionConfirmationTests.cs)、[D35](#d35-偏好与布局的提交边界)、[第三轮回归清单](WINDOWS_BUILD.md#4-第三轮审查回归全部待执行)。

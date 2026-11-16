@@ -13,7 +13,7 @@
 - [可行性与验证](FEASIBILITY.md)：逐 FR 与系统行为裁决、多个替代方案、技术栈比较、公开 API 依据和未来验证门槛。
 
 - [Windows 构建与手工验证](WINDOWS_BUILD.md)：字体、发布、数据目录与可执行检查清单。
-- [决策记录](DECISIONS.md)：D1–D37 的实现取舍与待验证影响。
+- [决策记录](DECISIONS.md)：D1–D38 的实现取舍与待验证影响。
 - [备份格式](BACKUP_FORMAT.md)：Windows 独立备份协议。
 
 ## 维护约定
