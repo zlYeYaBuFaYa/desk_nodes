@@ -192,9 +192,6 @@ internal sealed partial class AppCoordinator
             token.ThrowIfCancellationRequested();
             if (stopping || database is null)
                 return;
-            BusinessPreferences incoming;
-            using (var preview = DeskNodesDatabase.Open(stagingPath))
-                incoming = new BusinessPreferencesStore(preview).Load();
             if (MessageBox.Show(settingsWindow!, "替换全部本机数据？此操作无法撤销。系统登录启动项保持当前状态。",
                 "导入 DeskNodes 数据", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) != MessageBoxResult.OK)
                 return;
@@ -202,31 +199,22 @@ internal sealed partial class AppCoordinator
             if (stopping || database is null || !CommitForDataOperation())
                 return;
             using var staging = DeskNodesDatabase.Open(stagingPath);
-            using var candidate = Hotkeys.Prepare(HotkeyAction.NewNote, incoming.HotkeyNew);
-            database!.ReplaceFrom(staging);
-            replaced = true;
-            candidate.Commit();
-            BusinessPreferences = incoming;
-            Undo.Clear();
-            Editors.InvalidateAll();
-            Presentation.ExitSelection();
-            EndRaised();
-            foreach (var window in windows.Values)
+            var importer = new ImportService(database!, Hotkeys, Undo.Clear, Editors.InvalidateAll);
+            importer.Apply(staging, () => replaced = true, value =>
             {
-                window.CloseForImport();
-            }
-            windows.Clear();
-            try
+                BusinessPreferences = value;
+                Presentation.ExitSelection();
+                EndRaised();
+                foreach (var window in windows.Values)
+                {
+                    window.CloseForImport();
+                }
+                windows.Clear();
+            }, exception =>
             {
-                using var raise = Hotkeys.Prepare(HotkeyAction.Raise, incoming.HotkeyFloat);
-                raise.Commit();
-            }
-            catch (Exception exception)
-            {
-                Hotkeys.MarkConflict(HotkeyAction.Raise, incoming.HotkeyFloat!);
                 Log.Error("导入已完成，浮起快捷键注册失败。", exception);
                 RecordError("数据已导入；浮起快捷键被占用，未生效，请在设置中更换。");
-            }
+            }, token);
             Refresh();
             historyWindow?.Reload();
             PreferencesChanged?.Invoke(this, EventArgs.Empty);

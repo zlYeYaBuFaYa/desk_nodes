@@ -11,163 +11,99 @@ namespace DeskNodes.App.Editing;
 /// <summary>Each registration owns its buffer and timer until the corresponding editor is removed.</summary>
 internal sealed class EditorCoordinator(IDeskNodesLog log, DeskNodesDatabase database) : ICommitBarrier, IDisposable
 {
-    internal sealed class Owner
-    {
-        public required string Id { get; init; }
-        public required TextBox Editor { get; init; }
-        public required Action<string> Save { get; init; }
-        public required DispatcherTimer Timer { get; init; }
-        public string Committed { get; set; } = "";
-        public long Revision { get; set; }
-        public bool Composing { get; set; }
-        public bool Updating { get; set; }
-        public bool Valid { get; set; } = true;
-        public bool Active => Editor.IsKeyboardFocusWithin || Composing;
-    }
-    private readonly Dictionary<TextBox, Owner> owners = [];
+    private sealed record Binding(EditorSession.Owner Owner, DispatcherTimer Timer, Action<string> Refresh);
+    private readonly EditorSession session = new(log, database);
+    private readonly Dictionary<TextBox, Binding> owners = [];
     public event EventHandler? TextInput;
-    public event EventHandler? SaveFailed;
-    public bool HasComposition => owners.Values.Any(o => o.Composing);
-    public CommitResult Status { get; private set; } = CommitResult.Committed;
-    public Owner Register(TextBox editor, string id, Action<string> save)
+    public event EventHandler? SaveFailed
     {
-        var owner = new Owner { Id = id, Editor = editor, Save = save, Committed = editor.Text,
-            Timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(.4) } };
-        owners.Add(editor, owner);
-        owner.Timer.Tick += (_, _) =>
+        add => session.SaveFailed += value;
+        remove => session.SaveFailed -= value;
+    }
+    public bool HasComposition => session.HasComposition;
+    public CommitResult Status => session.Status;
+    public void Register(TextBox editor, string id, Action<string> save)
+    {
+        var timer = new DispatcherTimer();
+        Action? pending = null;
+        timer.Tick += (_, _) =>
         {
-            owner.Timer.Stop();
-            Commit(owner);
+            timer.Stop();
+            pending?.Invoke();
         };
+        var owner = session.Register(id, editor.Text, save, (delay, callback) =>
+        {
+            timer.Stop();
+            timer.Interval = delay;
+            pending = callback;
+            timer.Start();
+        });
+        bool updating = false;
         editor.TextChanged += (_, _) =>
         {
-            if (!owner.Valid || owner.Updating)
+            if (!owner.Valid || updating)
                 return;
-            owner.Revision++;
+            session.Change(owner, editor.Text);
             TextInput?.Invoke(this, EventArgs.Empty);
-            owner.Timer.Stop();
-            if (!owner.Composing)
-                owner.Timer.Start();
         };
         void CompositionStarted(object sender, TextCompositionEventArgs e)
         {
-            if (!owner.Valid)
-                return;
-            owner.Composing = true;
-            owner.Timer.Stop();
+            session.SetComposition(owner, true);
+            timer.Stop();
         }
         TextCompositionManager.AddPreviewTextInputStartHandler(editor, CompositionStarted);
         TextCompositionManager.AddPreviewTextInputUpdateHandler(editor, CompositionStarted);
         editor.AddHandler(TextCompositionManager.TextInputEvent, new TextCompositionEventHandler((_, _) =>
         {
-            if (!owner.Valid)
-                return;
-            owner.Composing = false;
+            session.SetComposition(owner, false);
             editor.Dispatcher.BeginInvoke(() =>
             {
-                if (!owner.Valid)
-                    return;
-                owner.Timer.Stop();
-                owner.Timer.Start();
+                if (owner.Valid)
+                    session.Reschedule(owner);
             }, DispatcherPriority.Background);
         }), true);
         editor.LostKeyboardFocus += (_, _) =>
         {
             if (!owner.Composing)
-                Commit(owner);
+                session.Commit(owner);
         };
-        return owner;
-    }
-    public bool IsComposing(TextBox editor) => owners.TryGetValue(editor, out var owner) && owner.Composing;
-    public void Refresh(TextBox editor, string text)
-    {
-        var owner = owners[editor];
-        if (owner.Active || owner.Committed != editor.Text)
-            return;
-        owner.Updating = true;
-        try
+        // Refresh writes are suppressed in this adapter; policy is owned by the session.
+        owners.Add(editor, new(owner, timer, text =>
         {
-            if (editor.Text != text)
-                editor.Text = text;
-            owner.Committed = text;
-        }
-        finally
-        {
-            owner.Updating = false;
-        }
-    }
-    private bool Commit(Owner owner)
-    {
-        if (!owner.Valid)
-            return true;
-        if (owner.Composing)
-        {
-            Status = CommitResult.Composing;
-            return false;
-        }
-        if (owner.Committed == owner.Editor.Text)
-            return true;
-        long revision = owner.Revision;
-        string text = owner.Editor.Text;
-        try
-        {
-            new PendingCommitTracker(database).Save(() => owner.Save(text), () =>
+            if (!session.Refresh(owner, text, editor.IsKeyboardFocusWithin))
+                return;
+            updating = true;
+            try
             {
-                if (owner.Valid && revision == owner.Revision)
-                    owner.Committed = text;
-            }, () =>
+                if (editor.Text != text)
+                    editor.Text = text;
+            }
+            finally
             {
-                if (!owner.Valid)
-                    return;
-                Status = CommitResult.Failed;
-                owner.Timer.Stop();
-                if (!owner.Composing)
-                    owner.Timer.Start();
-            });
-            Status = CommitResult.Committed;
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Status = CommitResult.Failed;
-            owner.Timer.Stop();
-            if (!owner.Composing)
-                owner.Timer.Start();
-            SaveFailed?.Invoke(this, EventArgs.Empty);
-            log.Error($"保存编辑失败：{owner.Id}，保留缓冲。", ex);
-            return false;
-        }
+                updating = false;
+            }
+        }));
     }
-    public CommitResult TryCommitPending()
-    {
-        if (HasComposition)
-            return Status = CommitResult.Composing;
-        bool success = true;
-        foreach (var owner in owners.Values)
-        {
-            owner.Timer.Stop();
-            success &= Commit(owner);
-        }
-        return Status = success ? CommitResult.Committed : CommitResult.Failed;
-    }
+    public bool IsComposing(TextBox editor) => owners.TryGetValue(editor, out var binding) && binding.Owner.Composing;
+    public void Refresh(TextBox editor, string text) => owners[editor].Refresh(text);
+    public CommitResult TryCommitPending() => session.TryCommitPending();
     public void Remove(TextBox editor)
     {
-        if (owners.Remove(editor, out var owner))
+        if (owners.Remove(editor, out var binding))
         {
-            owner.Valid = false;
-            owner.Timer.Stop();
+            session.Remove(binding.Owner);
+            binding.Timer.Stop();
         }
     }
     public void InvalidateAll()
     {
-        foreach (var owner in owners.Values)
+        session.InvalidateAll();
+        foreach (var pair in owners)
         {
-            owner.Valid = false;
-            owner.Timer.Stop();
-            owner.Editor.IsUndoEnabled = false;
+            pair.Value.Timer.Stop();
+            pair.Key.IsUndoEnabled = false;
         }
         owners.Clear();
-        Status = CommitResult.Committed;
     }
     public void Dispose() => InvalidateAll();
 }

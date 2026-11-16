@@ -4,7 +4,7 @@ using DeskNodes.Core.Services;
 namespace DeskNodes.App.Platform;
 
 /// <summary>Candidate leases keep the old registration alive until persistence succeeds.</summary>
-internal sealed class HotkeyService(nint window) : IDisposable
+internal sealed class HotkeyService(nint window) : IHotkeyRegistrationService, IDisposable
 {
     internal sealed record Binding(int Id, HotkeyGesture Gesture);
     private readonly Dictionary<HotkeyAction, Binding> bindings = [];
@@ -34,6 +34,7 @@ internal sealed class HotkeyService(nint window) : IDisposable
             Invoked?.Invoke(match.Key);
     }
     public bool IsRegistered(HotkeyGesture gesture) => bindings.Values.Any(binding => binding.Gesture == gesture);
+    IHotkeyCandidate IHotkeyRegistrationService.Prepare(HotkeyAction action, string? text) => Prepare(action, text);
     public Candidate Prepare(HotkeyAction action, string? text)
     {
         var gesture = text is null ? null : HotkeyGesture.Parse(text);
@@ -57,7 +58,7 @@ internal sealed class HotkeyService(nint window) : IDisposable
         }
         return new(this, action, candidate, true);
     }
-    internal sealed class Candidate : IDisposable
+    internal sealed class Candidate : IHotkeyCandidate
     {
         private readonly HotkeyService owner;
         private readonly HotkeyAction action;
