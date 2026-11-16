@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using DeskNodes.Core.Backup;
 using DeskNodes.Core.Domain;
 using DeskNodes.Core.Storage;
+using DeskNodes.Core.Services;
 using static DeskNodes.Core.Tests.TestData;
 
 namespace DeskNodes.Core.Tests;
@@ -154,6 +155,44 @@ public sealed class WindowsBackupTests
         Assert.ThrowsAny<IOException>(() => WindowsBackupCodec.Publish(target, WindowsBackupCodec.Parse(Golden)));
         Assert.Equal("retained", File.ReadAllText(retained));
         Assert.Empty(Directory.GetFiles(directory.DirectoryPath, ".desknodes-*.tmp"));
+    }
+
+    [Theory]
+    [InlineData("notes", 2147483647L)]
+    [InlineData("snapshot_notes", 2147483647L)]
+    [InlineData("notes", 2147483648L)]
+    [InlineData("snapshot_notes", 2147483648L)]
+    [InlineData("notes", long.MaxValue)]
+    [InlineData("snapshot_notes", long.MaxValue)]
+    public void DockOrderMustFitDomainAndFailurePreservesLiveDatabase(string table, long order)
+    {
+        using var directory = new TestDirectory();
+        using var live = directory.Open();
+        var original = Note();
+        new NoteRepository(live).Insert(original);
+        var root = JsonNode.Parse(Golden)!;
+        root[table]![0]!["dock_edge"] = "left";
+        root[table]![0]!["dock_order"] = order;
+        var backup = WindowsBackupCodec.Parse(root.ToJsonString());
+        string path = Path.Combine(directory.DirectoryPath, "stage.sqlite3");
+        if (order > int.MaxValue)
+        {
+            Assert.Throws<InvalidDataException>(() =>
+            {
+                using var invalid = WindowsBackupCodec.Stage(backup, path);
+                live.ReplaceFrom(invalid);
+            });
+            Assert.Equal(original, Assert.Single(new NoteRepository(live).GetNotes(true)));
+            return;
+        }
+        using var stage = WindowsBackupCodec.Stage(backup, path);
+        live.ReplaceFrom(stage);
+        var repo = new NoteRepository(live);
+        var note = Assert.Single(repo.GetNotes(true));
+        Assert.Single(repo.GetItems(note.Id, true, true));
+        var frozen = Assert.Single(new HistoryQueries(live).DaySnapshot(HistoryDay.Parse("2026-11-14")).Notes);
+        Assert.Single(frozen.Items);
+        Assert.Equal(int.MaxValue, table == "notes" ? note.Placement.DockOrder : frozen.Note.Placement.DockOrder);
     }
 
 }

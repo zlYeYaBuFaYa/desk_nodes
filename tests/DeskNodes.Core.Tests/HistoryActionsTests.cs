@@ -137,4 +137,34 @@ public sealed class HistoryActionsTests
         clock.TimeZone = TimeZoneInfo.CreateCustomTimeZone("test", TimeSpan.FromHours(-8), "test", "test");
         Assert.Equal(Day("2026-11-14"), context.Current);
     }
+    [Fact]
+    public void SnapshotGroupsInterleavedItemsByParentIncludingEmptyDeletedAndArchivedGroups()
+    {
+        using var directory = new TestDirectory();
+        using var db = directory.Open();
+        var repo = new NoteRepository(db);
+        var empty = Note(0);
+        var active = Note(1);
+        var deleted = Note(2);
+        repo.Insert(empty);
+        repo.Insert(active);
+        repo.Insert(deleted);
+        var activeLate = Item(active.Id, 8);
+        var activeEarly = Item(active.Id, 1, completed: true, archivedDay: Day("2026-11-13"));
+        var deletedEarly = Item(deleted.Id, 0);
+        var deletedLate = Item(deleted.Id, 7);
+        foreach (var item in new[] { activeLate, deletedEarly, activeEarly, deletedLate })
+            repo.Insert(item);
+        repo.SoftDelete(deleted.Id, Now, Day("2026-11-15"));
+        Freeze(db, "2026-11-14");
+        var notes = new HistoryQueries(db).DaySnapshot(Day("2026-11-14")).Notes;
+        Assert.Equal(new[] { empty.Id, active.Id, deleted.Id }, notes.Select(n => n.Note.Id));
+        Assert.Empty(notes[0].Items);
+        Assert.Equal(new[] { activeEarly.Id, activeLate.Id }, notes[1].Items.Select(i => i.Item.Id));
+        Assert.Equal(activeEarly.ArchivedDay, notes[1].Items[0].Item.ArchivedDay);
+        Assert.Equal(new[] { deletedEarly.Id, deletedLate.Id }, notes[2].Items.Select(i => i.Item.Id));
+        Assert.True(notes[2].Deleted);
+        Assert.All(notes[2].Items, item => Assert.True(item.Deleted));
+    }
+
 }

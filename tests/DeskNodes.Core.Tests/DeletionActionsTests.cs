@@ -173,4 +173,74 @@ public sealed class DeletionActionsTests
         Assert.Equal(RestoreResult.Archived, deleted.Restore(archived.Id));
         Assert.Equal(RestoreResult.NotFoundOrNotDeleted, deleted.Restore(ItemId.New()));
     }
+    [Theory]
+    [InlineData("hints")]
+    [InlineData("count")]
+    [InlineData("available")]
+    [InlineData("decision")]
+    [InlineData("undo")]
+    [InlineData("deleteNote")]
+    [InlineData("deleteItem")]
+    [InlineData("remove")]
+    public void EveryQueueOperationPermanentlyPrunesExpiredEntries(string operation)
+    {
+        using var directory = new TestDirectory();
+        using var db = directory.Open();
+        var clock = new ActionClock();
+        var repository = new NoteRepository(db);
+        var queue = new DeletionUndoQueue(db, clock);
+        var notes = Enumerable.Range(0, 100).Select(i => Note(i)).ToArray();
+        foreach (var note in notes)
+        {
+            repository.Insert(note);
+            Assert.True(queue.DeleteNote(note.Id));
+        }
+        Assert.Equal(100, queue.PromptCount(Now));
+        clock.UtcNow = Now.AddSeconds(5);
+        switch (operation)
+        {
+            case "hints": Assert.Empty(queue.Hints(clock.UtcNow)); break;
+            case "count": Assert.Equal(0, queue.PromptCount(clock.UtcNow)); break;
+            case "available": Assert.False(queue.HasUndoableDeletion(clock.UtcNow)); break;
+            case "decision": Assert.Equal(UndoDecision.TextUndo, queue.DecideUndo(clock.UtcNow, true)); break;
+            case "undo": Assert.False(queue.Undo(clock.UtcNow)); break;
+            case "deleteNote": Assert.False(queue.DeleteNote(NoteId.New())); break;
+            case "deleteItem": Assert.False(queue.DeleteItem(ItemId.New())); break;
+            case "remove": queue.RemoveMember(new(notes[0].Id, null)); break;
+        }
+        clock.UtcNow = Now.AddSeconds(1);
+        Assert.Empty(queue.Hints(clock.UtcNow));
+        Assert.False(queue.Undo(clock.UtcNow));
+        Assert.Empty(repository.GetNotes());
+        Assert.Equal(100, repository.GetNotes(true).Count);
+    }
+
+    [Fact]
+    public void PruningKeepsNewerBatchMembersAndNewestFirstUndo()
+    {
+        using var directory = new TestDirectory();
+        using var db = directory.Open();
+        var clock = new ActionClock();
+        var repository = new NoteRepository(db);
+        var notes = Enumerable.Range(0, 4).Select(i => Note(i)).ToArray();
+        foreach (var note in notes)
+            repository.Insert(note);
+        var queue = new DeletionUndoQueue(db, clock);
+        queue.DeleteNote(notes[0].Id);
+        clock.UtcNow = Now.AddSeconds(3);
+        queue.DeleteNotes([notes[1].Id, notes[2].Id]);
+        clock.UtcNow = Now.AddSeconds(4);
+        queue.DeleteNote(notes[3].Id);
+        clock.UtcNow = Now.AddSeconds(5);
+        queue.RemoveMember(new(notes[1].Id, null));
+        Assert.Equal(2, queue.PromptCount(clock.UtcNow));
+        Assert.All(queue.Hints(clock.UtcNow), hint => Assert.Equal(1, hint.MemberCount));
+        Assert.True(queue.Undo(clock.UtcNow));
+        Assert.Equal(notes[3], Assert.Single(repository.GetNotes()));
+        Assert.True(queue.Undo(clock.UtcNow));
+        Assert.Equal(new[] { notes[2].Id, notes[3].Id }, repository.GetNotes().Select(n => n.Id));
+        clock.UtcNow = Now;
+        Assert.False(queue.Undo(clock.UtcNow));
+    }
+
 }

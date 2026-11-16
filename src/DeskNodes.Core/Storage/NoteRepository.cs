@@ -186,16 +186,47 @@ public sealed class NoteRepository(DeskNodesDatabase database)
 
     public bool Restore(ItemId id, DateTimeOffset at) => database.Transaction(connection =>
     {
-        int changed = Execute(connection, "UPDATE items SET deleted_at=NULL, updated_at=$at, " +
-            "sort_order=(SELECT COALESCE(MAX(sibling.sort_order),-1)+1 FROM items sibling " +
-            "WHERE sibling.note_id=items.note_id AND sibling.deleted_at IS NULL AND sibling.archived_day IS NULL) " +
-            "WHERE id=$id AND deleted_at IS NOT NULL AND archived_day IS NULL " +
-            "AND EXISTS(SELECT 1 FROM notes WHERE notes.id=items.note_id AND notes.deleted_at IS NULL);",
-            id.ToString(), at.ToUnixTimeMilliseconds());
+        var item = GetItem(id, includeDeleted: true, includeArchived: true);
+        if (item is null || item.DeletedAt is null || item.ArchivedDay is not null || GetNote(item.NoteId) is null)
+            return false;
+        long order = NextOrder(connection, "items", "note_id=$parent AND deleted_at IS NULL AND archived_day IS NULL", item.NoteId.ToString());
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE items SET deleted_at=NULL, updated_at=$at, sort_order=$order WHERE id=$id;";
+        command.Parameters.AddWithValue("$at", at.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$order", order);
+        command.Parameters.AddWithValue("$id", id.ToString());
+        int changed = command.ExecuteNonQuery();
         if (changed != 0)
             Execute(connection, "DELETE FROM pending_deleted_items WHERE item_id=$id;", id.ToString(), at.ToUnixTimeMilliseconds());
         return changed != 0;
     });
+
+    // Called inside the same outer transaction as the append. Include note tombstones in its ordering.
+    internal long NextNoteOrder() => database.Transaction(connection => NextOrder(connection, "notes", "1=1"));
+
+    private static long NextOrder(SqliteConnection connection, string table, string filter, string? parent = null)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COALESCE(MAX(sort_order),-1) FROM {table} WHERE {filter};";
+        command.Parameters.AddWithValue("$parent", parent ?? (object)DBNull.Value);
+        long maximum = Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+        if (maximum != long.MaxValue)
+            return checked(maximum + 1);
+        command.CommandText = $"SELECT id FROM {table} WHERE {filter} ORDER BY sort_order,id;";
+        var rows = new List<string>();
+        using (var reader = command.ExecuteReader())
+            while (reader.Read())
+                rows.Add(reader.GetString(0));
+        for (int index = 0; index < rows.Count; index++)
+        {
+            using var update = connection.CreateCommand();
+            update.CommandText = $"UPDATE {table} SET sort_order=$order WHERE id=$id;";
+            update.Parameters.AddWithValue("$order", index);
+            update.Parameters.AddWithValue("$id", rows[index]);
+            update.ExecuteNonQuery();
+        }
+        return rows.Count;
+    }
 
     private static int Execute(SqliteConnection connection, string sql, string id, long timestamp, HistoryDay? day = null)
     {

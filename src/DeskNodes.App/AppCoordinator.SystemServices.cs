@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using DeskNodes.App.Platform;
 using DeskNodes.Core.Backup;
@@ -108,7 +109,7 @@ internal sealed partial class AppCoordinator
     }
     public void ExportData()
     {
-        if (!CommitForDataOperation())
+        if (dataOperation || !CommitForDataOperation())
             return;
         dataOperation = true;
         try
@@ -135,9 +136,9 @@ internal sealed partial class AppCoordinator
             dataOperation = false;
         }
     }
-    public void ImportData()
+    public async void ImportData()
     {
-        if (!CommitForDataOperation())
+        if (dataOperation || !CommitForDataOperation())
             return;
         dataOperation = true;
         bool replaced = false;
@@ -147,8 +148,15 @@ internal sealed partial class AppCoordinator
             var dialog = new OpenFileDialog { Title = "导入 DeskNodes 数据", Filter = "DeskNodes JSON 备份 (*.json)|*.json" };
             if (dialog.ShowDialog(settingsWindow!) != true)
                 return;
-            var backup = WindowsBackupCodec.Parse(File.ReadAllText(dialog.FileName));
-            using var staging = WindowsBackupCodec.Stage(backup, stagingPath);
+            string sourcePath = dialog.FileName;
+            using var staging = await Task.Run(() =>
+            {
+                using var stream = File.OpenRead(sourcePath);
+                var backup = WindowsBackupCodec.Parse(stream);
+                return WindowsBackupCodec.Stage(backup, stagingPath);
+            });
+            if (database is null)
+                return;
             var incoming = new BusinessPreferencesStore(staging).Load();
             if (MessageBox.Show(settingsWindow!, "替换全部本机数据？此操作无法撤销。系统登录启动项保持当前状态。",
                 "导入 DeskNodes 数据", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) != MessageBoxResult.OK)
@@ -187,7 +195,7 @@ internal sealed partial class AppCoordinator
         catch (Exception exception)
         {
             Log.Error("导入数据失败。", exception);
-            RecordError(replaced ? "数据已导入，但窗口刷新失败。请重新启动 DeskNodes。" :
+            RecordError(exception is BackupLimitException ? exception.Message : replaced ? "数据已导入，但窗口刷新失败。请重新启动 DeskNodes。" :
                 "导入失败，原数据和快捷键已保留。请检查备份格式、数据完整性和快捷键是否被占用。");
         }
         finally

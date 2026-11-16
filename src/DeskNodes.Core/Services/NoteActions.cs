@@ -24,7 +24,7 @@ public sealed class NoteActions(DeskNodesDatabase database, IClock clock)
             var color = Enumerable.Range(0, colors.Length).Select(i => colors[(start + i) % colors.Length])
                 .First(c => counts[c] == counts.Values.Min());
             var now = clock.UtcNow;
-            var note = new Note(NoteId.New(), "今日待办", color, notes.Select(n => n.SortOrder).DefaultIfEmpty(-1).Max() + 1,
+            var note = new Note(NoteId.New(), "今日待办", color, repository.NextNoteOrder(),
                 placement, level, null, automaticHeight, false, now, now);
             repository.Insert(note);
             var item = NewItem(note.Id, "", 0);

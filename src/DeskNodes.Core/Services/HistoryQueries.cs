@@ -49,6 +49,7 @@ public sealed class HistoryQueries(DeskNodesDatabase database)
             while (reader.Read()) items.Add(new(NoteRepository.ReadItem(reader), reader.GetBoolean(reader.GetOrdinal("deleted")),
                 reader.IsDBNull(reader.GetOrdinal("carried_to")) ? null : HistoryDay.Parse(reader.GetString(reader.GetOrdinal("carried_to")))));
         }
+        var itemsByNote = items.ToLookup(i => i.Item.NoteId);
         var notes = new List<FrozenNote>();
         using (var command = connection.CreateCommand())
         {
@@ -58,7 +59,7 @@ public sealed class HistoryQueries(DeskNodesDatabase database)
             while (reader.Read())
             {
                 var note = NoteRepository.ReadNote(reader);
-                notes.Add(new(note, reader.GetBoolean(reader.GetOrdinal("deleted")), items.Where(i => i.Item.NoteId == note.Id).ToArray()));
+                notes.Add(new(note, reader.GetBoolean(reader.GetOrdinal("deleted")), itemsByNote[note.Id].ToArray()));
             }
         }
         return new FrozenDay(day, true, notes);

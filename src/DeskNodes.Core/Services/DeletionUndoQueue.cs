@@ -19,6 +19,7 @@ public sealed class DeletionUndoQueue(DeskNodesDatabase database, IClock clock)
     public bool DeleteNotes(IEnumerable<NoteId> ids)
     {
         var at = clock.UtcNow;
+        Prune(at);
         var members = database.Transaction(_ =>
         {
             var result = new List<Member>();
@@ -40,6 +41,7 @@ public sealed class DeletionUndoQueue(DeskNodesDatabase database, IClock clock)
     public bool DeleteItem(ItemId id)
     {
         var at = clock.UtcNow;
+        Prune(at);
         var member = database.Transaction(_ =>
         {
             var item = repository.GetItem(id);
@@ -53,15 +55,32 @@ public sealed class DeletionUndoQueue(DeskNodesDatabase database, IClock clock)
     }
 
     private static bool Valid(Entry entry, DateTimeOffset now) => now >= entry.At && now - entry.At < TimeSpan.FromSeconds(5);
-    public IReadOnlyList<DeletionHint> Hints(DateTimeOffset now) => entries.Where(e => Valid(e, now))
-        .Select(e => new DeletionHint(e.At, TimeSpan.FromSeconds(5) - (now - e.At), e.Members.Count)).ToArray();
-    public int PromptCount(DateTimeOffset now) => entries.Count(e => Valid(e, now));
-    public bool HasUndoableDeletion(DateTimeOffset now) => entries.Any(e => Valid(e, now));
+    private void Prune(DateTimeOffset now) => entries.RemoveAll(e => now >= e.At && now - e.At >= TimeSpan.FromSeconds(5));
+    public IReadOnlyList<DeletionHint> Hints(DateTimeOffset now)
+    {
+        Prune(now);
+        return entries.Where(e => Valid(e, now))
+            .Select(e => new DeletionHint(e.At, TimeSpan.FromSeconds(5) - (now - e.At), e.Members.Count)).ToArray();
+    }
+    public int PromptCount(DateTimeOffset now)
+    {
+        Prune(now);
+        return entries.Count(e => Valid(e, now));
+    }
+    public bool HasUndoableDeletion(DateTimeOffset now)
+    {
+        Prune(now);
+        return entries.Any(e => Valid(e, now));
+    }
     public UndoDecision DecideUndo(DateTimeOffset now, bool hasNewTextInputSinceDeletion)
-        => !hasNewTextInputSinceDeletion && HasUndoableDeletion(now) ? UndoDecision.StructuralUndo : UndoDecision.TextUndo;
+    {
+        Prune(now);
+        return !hasNewTextInputSinceDeletion && entries.Any(e => Valid(e, now)) ? UndoDecision.StructuralUndo : UndoDecision.TextUndo;
+    }
 
     public bool Undo(DateTimeOffset now)
     {
+        Prune(now);
         var entry = entries.LastOrDefault(e => Valid(e, now));
         if (entry is null) return false;
         database.Transaction(connection =>
@@ -89,6 +108,7 @@ public sealed class DeletionUndoQueue(DeskNodesDatabase database, IClock clock)
 
     public void RemoveMember(DeletionMember member)
     {
+        Prune(clock.UtcNow);
         foreach (var entry in entries) entry.Members.RemoveAll(m => m.Key == member);
         entries.RemoveAll(e => e.Members.Count == 0);
     }

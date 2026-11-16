@@ -3,16 +3,18 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeskNodes.Core.Domain;
 using DeskNodes.Core.Storage;
+using DeskNodes.Core.Services;
 using Microsoft.Data.Sqlite;
 
 namespace DeskNodes.Core.Backup;
 
-public static class WindowsBackupCodec
+public static partial class WindowsBackupCodec
 {
     public static JsonSerializerOptions JsonOptions { get; } = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         WriteIndented = true,
+        MaxDepth = MaxDepth,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
     static WindowsBackupCodec() => JsonOptions.MakeReadOnly(populateMissingResolver: true);
@@ -35,12 +37,6 @@ public static class WindowsBackupCodec
     private static bool IsBoolean(string name) => name is "completed" or "struck" or "deleted" or "automatic_height" or
         "collapsed" or "login_intent" or "login_prompt_answered";
     public static string Serialize(WindowsBackup backup) => JsonSerializer.Serialize(backup, JsonOptions);
-    public static WindowsBackup Parse(string json)
-    {
-        var backup = JsonSerializer.Deserialize<WindowsBackup>(json, JsonOptions) ?? throw new InvalidDataException("备份内容为空。");
-        ValidateHeader(backup);
-        return backup;
-    }
     private static void ValidateHeader(WindowsBackup backup)
     {
         if (backup.Format != "desknodes.windows.backup" || backup.Version != 1 || backup.Schema != 1)
@@ -139,6 +135,12 @@ public static class WindowsBackupCodec
                     throw new InvalidDataException("备份完整性检查失败。");
                 return 0;
             });
+            var repository = new NoteRepository(database);
+            foreach (var note in repository.GetNotes(includeDeleted: true))
+                _ = repository.GetItems(note.Id, includeDeleted: true, includeArchived: true);
+            var history = new HistoryQueries(database);
+            foreach (var snapshot in backup.Snapshots)
+                _ = history.DaySnapshot(HistoryDay.Parse(snapshot.Day));
             // Re-read through the public protocol path before the caller can replace the live database.
             Export(database, new FixedExportClock(backup.ExportedAt));
             return database;
@@ -183,6 +185,8 @@ public static class WindowsBackupCodec
     {
         string[] invalidQueries =
         [
+            "SELECT 1 FROM notes WHERE dock_order IS NOT NULL AND (typeof(dock_order)!='integer' OR dock_order<0 OR dock_order>2147483647)",
+            "SELECT 1 FROM snapshot_notes WHERE dock_order IS NOT NULL AND (typeof(dock_order)!='integer' OR dock_order<0 OR dock_order>2147483647)",
             "SELECT 1 FROM notes n JOIN items i ON n.id=i.id",
             "SELECT 1 FROM snapshot_notes n JOIN snapshot_items i ON n.day=i.day AND n.note_id=i.item_id",
             "SELECT 1 FROM snapshots s WHERE NOT EXISTS (SELECT 1 FROM checkpoint c WHERE c.active_day>s.day)",
