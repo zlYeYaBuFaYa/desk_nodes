@@ -108,7 +108,7 @@
 - 方案列表（利弊）：普通窗口：抢焦点；NOACTIVATE：键盘依赖其他入口；临时激活：复杂。
 - 推荐／采用：WS_EX_NOACTIVATE + SWP_NOACTIVATE。
 - 理由：工具条是指针操作入口，保持编辑焦点可避免点击引发失焦提交；键盘操作走已有等价入口。
-- 影响：托盘与全局热键提供键盘等价入口。
+- 影响：托盘与全局热键提供键盘等价入口；完整范围见 [D39](#d39-托盘作为非激活工具条的键盘等价入口)。
 - 需真机验证项：工具条点击期间编辑焦点。
 - 相关代码／文档：[ToolbarWindow.xaml.cs](../src/DeskNodes.App/Views/ToolbarWindow.xaml.cs)、[技术设计](TECHNICAL_DESIGN.md)、[验证门槛](FEASIBILITY.md#verification)。
 
@@ -382,3 +382,13 @@
 - 影响：保留 [D35](#d35-偏好与布局的提交边界) 的文件与 SQLite 非崩溃原子取舍；数据库回滚时恢复旧偏好，提交后发布失败则保留已提交数据，界面可能需要重新刷新。
 - 需真机验证项：分别注入偏好保存失败、外层 COMMIT 失败与提交后发布异常，核对偏好文件、布局、错误提示及日志；发布失败时已提交数据保持，重启后读取一致。
 - 相关代码／文档：[组合提交](../src/DeskNodes.Core/Presentation/CombinedCommitCoordinator.cs)、[应用协调器](../src/DeskNodes.App/AppCoordinator.cs)、[事务确认测试](../tests/DeskNodes.Core.Tests/TransactionConfirmationTests.cs)、[D35](#d35-偏好与布局的提交边界)、[第三轮回归清单](WINDOWS_BUILD.md#4-第三轮审查回归全部待执行)。
+
+## D39 托盘作为非激活工具条的键盘等价入口
+
+- 背景：[D11](#d11-工具条非激活) 保持工具条非激活，键盘操作依赖等价入口；原托盘缺少整理、收起／展开与翻页。
+- 方案列表（利弊）：托盘补齐：复用通知区域键盘入口与既有动作，菜单变长；便签内快捷键：操作直接，但无便签时不可达；命令面板：可集中检索命令，但增加界面与焦点管理成本。
+- 推荐／采用：托盘补齐整理、收起／展开、上一页／下一页，共用工具条动作与可用条件。
+- 理由：保持非激活工具条模型，以已有系统入口补齐键盘可达性，避免新增交互层与重复业务规则。
+- 影响：托盘菜单比 FR-01 的“工具条菜单同类项 + 显示工具条／新建／浮起”多出整理、收起／展开、上一页／下一页，属于 Windows 可达性补充。
+- 需真机验证项：通过通知区域键盘导航与 Narrator，全程不用指针完成整理、收起／展开和翻页，核对菜单名称、状态与结果。
+- 相关代码／文档：[托盘菜单](../src/DeskNodes.App/Views/AppMenus.cs)、[工具条视图模型](../src/DeskNodes.App/Views/ToolbarViewModel.cs)、[工具条可用规则](../src/DeskNodes.Core/Presentation/ToolbarRules.cs)、[应用协调器](../src/DeskNodes.App/AppCoordinator.cs)、[第四轮回归清单](WINDOWS_BUILD.md#5-第四轮整体审查回归全部待执行)。

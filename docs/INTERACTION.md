@@ -1,6 +1,6 @@
 # DeskNodes Windows 交互设计
 
-交互的业务结果以 [FR-01～15](REQUIREMENTS.md) 为准，数值集中在 [UI 规格](UI_SPEC.md)，窗口机制见 [技术设计](TECHNICAL_DESIGN.md)。这里定义事件分派与 Windows 使用习惯；全部尚待实施。
+交互的业务结果以 [FR-01～15](REQUIREMENTS.md) 为准，数值集中在 [UI 规格](UI_SPEC.md)，窗口机制见 [技术设计](TECHNICAL_DESIGN.md)。这里定义事件分派与 Windows 使用习惯；已有实现，系统交互仍待 Windows 真机验收，见 [WINDOWS_BUILD 当前验证证据](WINDOWS_BUILD.md#当前验证证据)。
 
 ## 指针、触控板与触摸
 
