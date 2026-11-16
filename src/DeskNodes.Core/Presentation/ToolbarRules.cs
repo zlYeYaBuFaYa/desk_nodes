@@ -37,6 +37,8 @@ public static class ToolbarRules
     }
     public static bool IsVisible(bool collapsed, int? notePage, int sharedPage, int screenLastPage) =>
         !collapsed && (notePage is null || notePage == Math.Min(sharedPage, screenLastPage));
+    public static (bool Previous, bool Next) PagingAvailability(int count, int page, int lastPage) =>
+        (CanManage(count) && page > 0, CanManage(count) && page < lastPage);
     public static bool CanManage(int count) => count > 0;
     public static bool IsDrag(double x, double y) => Math.Max(Math.Abs(x), Math.Abs(y)) >= 4;
     public static double Spring(double seconds)

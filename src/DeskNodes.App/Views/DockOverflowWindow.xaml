@@ -12,6 +12,16 @@
     Background="{DynamicResource Paper}"
     Foreground="{DynamicResource Body}"
     AutomationProperties.Name="停靠溢出便签与分页">
+    <Window.Resources>
+        <Style x:Key="PaperAction" TargetType="Button" BasedOn="{StaticResource PresentationAction}">
+            <Setter Property="Foreground" Value="{DynamicResource Body}"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource Secondary}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
     <Border Padding="4" BorderThickness="1" BorderBrush="{DynamicResource ToolbarBorder}" CornerRadius="8">
         <Grid>
             <Grid.RowDefinitions>
@@ -20,12 +30,12 @@
             </Grid.RowDefinitions>
             <DockPanel>
                 <Button
-                    Style="{StaticResource PresentationAction}"
+                    Style="{StaticResource PaperAction}"
                     Content="‹"
                     Click="Previous"
                     AutomationProperties.Name="上一停靠页"/>
                 <Button
-                    Style="{StaticResource PresentationAction}"
+                    Style="{StaticResource PaperAction}"
                     Content="›"
                     DockPanel.Dock="Right"
                     Click="Next"
@@ -37,7 +47,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Button
-                                Style="{StaticResource PresentationAction}"
+                                Style="{StaticResource PaperAction}"
                                 Content="{Binding Title}"
                                 Tag="{Binding Id}"
                                 Click="Reveal"

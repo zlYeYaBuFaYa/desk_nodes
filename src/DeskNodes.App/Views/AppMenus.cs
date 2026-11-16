@@ -150,6 +150,15 @@ internal sealed class AppMenus(AppCoordinator app)
         Add("新建便签", app.CreateNote);
         Add("选择便签…", () => app.Presentation.EnterSelection(), app.NoteCount > 0);
         Add(app.Raised ? "放回" : "浮起", app.ToggleRaised, app.NoteCount > 0);
+        bool manage = ToolbarRules.CanManage(app.NoteCount);
+        Add("整理", app.Arrange, manage);
+        Add(app.Preferences.DeskCollapsed ? "展开便签" : "收起便签", app.ToggleCollapsed, manage);
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        int last = app.Preferences.Pages.Values.DefaultIfEmpty().Max();
+        var paging = ToolbarRules.PagingAvailability(app.NoteCount, app.Preferences.Page, last);
+        Add("上一页", () => app.ChangePage(-1), paging.Previous);
+        Add("下一页", () => app.ChangePage(1), paging.Next);
+        menu.Items.Add(new Forms.ToolStripSeparator());
         var history = new Forms.ToolStripMenuItem("历史记录");
         foreach (var entry in History())
         {

@@ -46,7 +46,8 @@ internal sealed class ToolbarViewModel : INotifyPropertyChanged
         Actions = [Action("\uE710", "新建", app.CreateNote, true), Action("\uE8F4", Raised ? "放回" : "浮起", app.ToggleRaised, manage),
             Action("\uE8A9", "整理", app.Arrange, manage), Action("\uE8B4", Collapsed ? "展开" : "收起", app.ToggleCollapsed, manage)];
         int last = app.Preferences.Pages.Values.DefaultIfEmpty().Max();
-        Paging = new($"{app.Preferences.Page + 1}/{last + 1}", app.Preferences.Page > 0, app.Preferences.Page < last,
+        var paging = ToolbarRules.PagingAvailability(NoteCount, app.Preferences.Page, last);
+        Paging = new($"{app.Preferences.Page + 1}/{last + 1}", paging.Previous, paging.Next,
             Command(() => app.ChangePage(-1)), Command(() => app.ChangePage(1)));
         var parts = new List<object>();
         parts.AddRange(Actions);

@@ -6,6 +6,19 @@ namespace DeskNodes.Core.Tests;
 public sealed class ToolbarRulesTests
 {
     [Theory]
+    [InlineData(0, 0, 0, false, false)]
+    [InlineData(0, 1, 2, false, false)]
+    [InlineData(1, 0, 0, false, false)]
+    [InlineData(3, 0, 2, false, true)]
+    [InlineData(3, 1, 2, true, true)]
+    [InlineData(3, 2, 2, true, false)]
+    public void PagingAvailabilityRespectsNoteCountAndPageBoundaries(
+        int count, int page, int last, bool previous, bool next)
+    {
+        Assert.Equal((previous, next), ToolbarRules.PagingAvailability(count, page, last));
+    }
+
+    [Theory]
     [InlineData(false, 1.5)]
     [InlineData(true, 15)]
     public void HoverExitUsesGraceUntilUserScrollResetsIdle(bool operated, double delay)

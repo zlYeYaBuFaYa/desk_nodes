@@ -11,7 +11,11 @@ internal partial class SettingsWindow : Window
         var model = new SettingsViewModel(app, () => LicenseWindow.Open(this, app), Dispatcher);
         DataContext = model;
         SourceInitialized += (_, _) => AuxiliaryWindowPlacement.Position(this, app.Screens, 760, 576);
-        PreviewKeyDown += (_, e) => model.CaptureKey(e);
+        PreviewKeyDown += (_, e) =>
+        {
+            model.CaptureKey(e);
+            AuxiliaryWindowShortcuts.TryCreateNote(app, e);
+        };
         Deactivated += (_, _) => model.CancelRecording();
         Closed += (_, _) =>
         {

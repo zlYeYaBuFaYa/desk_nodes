@@ -238,6 +238,7 @@
                             </Canvas>
                             <TextBlock Text="固定收缩位置；拖动圆形入口可更改。" TextWrapping="Wrap" Margin="0,6"/>
                             <Button
+                                Style="{StaticResource SettingsButton}"
                                 Command="{Binding ResetHome}"
                                 IsEnabled="{Binding CanResetHome}"
                                 Content="恢复默认"

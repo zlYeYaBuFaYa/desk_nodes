@@ -102,6 +102,9 @@ internal partial class HistoryWindow : Window
     }
     private void Navigate(object sender, KeyEventArgs e)
     {
+        AuxiliaryWindowShortcuts.TryCreateNote(app, e);
+        if (e.Handled)
+            return;
         bool control = Keyboard.Modifiers == ModifierKeys.Control;
         var focus = Keyboard.FocusedElement;
         if (!HistoryRules.HandlesNavigation(!IsDeleted, focus is TextBoxBase, focus is Control && focus != this, control))
