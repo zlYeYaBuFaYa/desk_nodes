@@ -38,6 +38,7 @@ internal partial class ToolbarWindow : Window
         this.app = app;
         timeline = new(app.TimeProvider);
         InitializeComponent();
+        ActionScroll.AddHandler(ManipulationDeltaEvent, new EventHandler<ManipulationDeltaEventArgs>(ToolbarManipulationDelta), true);
         DataContext = model;
         theme = ((App)Application.Current).Theme;
         theme.Changed += ThemeChanged;
@@ -158,6 +159,7 @@ internal partial class ToolbarWindow : Window
         model.Round = round;
         model.Update(app, HandleAtEnd, Operate);
         bool vertical = model.Orientation == Orientation.Vertical;
+        ActionScroll.PanningMode = vertical ? PanningMode.VerticalOnly : PanningMode.HorizontalOnly;
         DockPanel.SetDock(FixedHandle, vertical ? (HandleAtEnd ? Dock.Bottom : Dock.Top) : (HandleAtEnd ? Dock.Right : Dock.Left));
         DockPanel.SetDock(ScrollBack, vertical ? Dock.Top : Dock.Left);
         DockPanel.SetDock(ScrollForward, vertical ? Dock.Bottom : Dock.Right);
@@ -178,6 +180,16 @@ internal partial class ToolbarWindow : Window
         else
             ActionScroll.ScrollToHorizontalOffset(ActionScroll.HorizontalOffset + direction * ToolbarGeometry.HorizontalButtonLength);
         ResetIdle();
+    }
+    private void ToolbarMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta != 0)
+            ResetIdle();
+    }
+    private void ToolbarManipulationDelta(object? sender, ManipulationDeltaEventArgs e)
+    {
+        if (e.DeltaManipulation.Translation.LengthSquared > 0)
+            ResetIdle();
     }
     private void ToolbarScrollChanged(object sender, ScrollChangedEventArgs e)
     {

@@ -146,7 +146,7 @@ internal sealed class AppMenus(AppCoordinator app)
             }));
             item.Enabled = enabled;
         }
-        Add("显示工具条", app.ShowToolbar);
+        Add("显示工具条", app.ShowToolbarFromTray);
         Add("新建便签", app.CreateNote);
         Add("选择便签…", () => app.Presentation.EnterSelection(), app.NoteCount > 0);
         Add(app.Raised ? "放回" : "浮起", app.ToggleRaised, app.NoteCount > 0);

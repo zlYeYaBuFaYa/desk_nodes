@@ -4,6 +4,65 @@ using DeskNodes.Core.Presentation;
 namespace DeskNodes.Core.Tests;
 public sealed class PresentationRulesTests
 {
+    private static ScreenSet ReservationScreens => new([
+        new("a", "a", new(0, 0, 1000, 800), new(0, 0, 1000, 760), true),
+        new("b", "b", new(1000, 0, 1000, 800), new(1000, 0, 1000, 760), false, 1.5)]);
+
+    [Fact]
+    public void HomeChangesRequireDockReservationLayout()
+    {
+        var previous = new LocalPreferences();
+        Assert.True(PresentationRules.DockReservationChanged(ReservationScreens, previous, previous with { Home = new(ScreenEdge.Left) }));
+        Assert.True(PresentationRules.DockReservationChanged(ReservationScreens, previous, previous with { Home = new(previous.Home.Edge, .2) }));
+    }
+    [Fact]
+    public void AnchorScreenChangesRequireDockReservationLayout()
+    {
+        var previous = new LocalPreferences { Anchor = new(new(100, 100)) };
+        Assert.True(PresentationRules.DockReservationChanged(ReservationScreens, previous, previous with { Anchor = new(new(1800, 100)) }));
+        Assert.True(PresentationRules.DockReservationChanged(ReservationScreens, previous, previous with { Anchor = new(Edge: ScreenEdge.Right, DeviceHint: "b") }));
+    }
+    [Fact]
+    public void UnrelatedPreferencesDoNotRearrangeDock()
+    {
+        var previous = new LocalPreferences();
+        Assert.False(PresentationRules.DockReservationChanged(ReservationScreens, previous,
+            previous with { Appearance = Appearance.Dark, Orientation = ToolbarOrientation.Horizontal, DeskCollapsed = true }));
+    }
+    [Fact]
+    public void FreeMovementOnSameScreenDoesNotRearrangeDock()
+    {
+        var previous = new LocalPreferences { Anchor = new(new(1600, 100)) };
+        Assert.False(PresentationRules.DockReservationChanged(ReservationScreens, previous, previous with { Anchor = new(new(2900, 600)) }));
+    }
+    [Theory]
+    [InlineData(DeskTransition.Expanding, false, false)]
+    [InlineData(DeskTransition.Expanding, true, true)]
+    [InlineData(DeskTransition.Expanded, false, true)]
+    [InlineData(DeskTransition.Collapsing, true, true)]
+    public void RefreshDefersHiddenExpansionToPresent(DeskTransition transition, bool visible, bool show) =>
+        Assert.Equal(show, PresentationRules.ShouldShowOnRefresh(transition, visible));
+
+    [Fact]
+    public void OtherDesktopPromptRequiresEveryNoteOnOtherDesktop()
+    {
+        Assert.True(PresentationRules.NeedsOtherDesktopPrompt([SuppressionReason.OtherDesktop, SuppressionReason.OtherDesktop | SuppressionReason.ArrangementPage]));
+        Assert.False(PresentationRules.NeedsOtherDesktopPrompt([SuppressionReason.OtherDesktop, SuppressionReason.None]));
+        Assert.False(PresentationRules.NeedsOtherDesktopPrompt([SuppressionReason.ArrangementPage, SuppressionReason.DockOverflow]));
+        Assert.False(PresentationRules.NeedsOtherDesktopPrompt([]));
+        var fallback = PresentationRules.Suppressed(false, null, 0, 0, false, true);
+        Assert.False(PresentationRules.NeedsOtherDesktopPrompt([SuppressionReason.OtherDesktop, fallback]));
+    }
+    [Theory]
+    [InlineData(SuppressionReason.Collapsed)]
+    [InlineData(SuppressionReason.ArrangementPage)]
+    [InlineData(SuppressionReason.DockOverflow)]
+    [InlineData(SuppressionReason.Collapsed | SuppressionReason.ArrangementPage | SuppressionReason.DockOverflow)]
+    public void HiddenCurrentDesktopNotePreventsOtherDesktopPrompt(SuppressionReason currentDesktopReason)
+    {
+        Assert.False(PresentationRules.NeedsOtherDesktopPrompt([
+            currentDesktopReason, SuppressionReason.OtherDesktop | SuppressionReason.Collapsed]));
+    }
     [Fact]
     public void RefreshCannotRemoveIndependentSuppressionReasons()
     {

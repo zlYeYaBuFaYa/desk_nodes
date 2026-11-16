@@ -31,6 +31,16 @@ public sealed class PresentationState
 }
 public static class PresentationRules
 {
+    public static bool DockReservationChanged(ScreenSet screens, LocalPreferences previous, LocalPreferences current) =>
+        previous.Home != current.Home ||
+        ToolbarGeometry.AnchorScreen(screens, previous).Id != ToolbarGeometry.AnchorScreen(screens, current).Id;
+    public static bool ShouldShowOnRefresh(DeskTransition transition, bool isVisible) =>
+        transition != DeskTransition.Expanding || isVisible;
+    public static bool NeedsOtherDesktopPrompt(IEnumerable<SuppressionReason> reasons)
+    {
+        var targets = reasons.ToArray();
+        return targets.Length > 0 && targets.All(r => (r & SuppressionReason.OtherDesktop) != 0);
+    }
     public static SuppressionReason Suppressed(bool collapsed, int? page, int currentPage, int lastPage,
         bool dockOverflow, bool currentDesktop) =>
         (collapsed ? SuppressionReason.Collapsed : 0) |

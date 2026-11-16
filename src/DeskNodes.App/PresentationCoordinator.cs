@@ -126,7 +126,8 @@ internal sealed class PresentationCoordinator : IDisposable
             Suppressed[note.Id] = reasons;
             if (reasons == SuppressionReason.None)
             {
-                window.Show();
+                if (PresentationRules.ShouldShowOnRefresh(state.Transition, window.IsVisible))
+                    window.Show();
                 window.SetTemporarilyRaised(app.Raised || Selecting);
             }
             else if (state.Transition != DeskTransition.Collapsing || reasons != SuppressionReason.Collapsed) window.Hide();
@@ -143,7 +144,7 @@ internal sealed class PresentationCoordinator : IDisposable
         var screen = app.Screens.GetScreens().Screens.FirstOrDefault(s => s.Id == key.Screen);
         return screen is null ? null : Dock(screen, key.Edge);
     }
-    private void ChangeDockPage((string Screen, DockEdge Edge) key, int delta)
+    private void ChangeDockPage((string Screen, DockEdge Edge) key, int delta) => app.Run(() =>
     {
         var result = CurrentDock(key);
         if (result is null)
@@ -152,8 +153,8 @@ internal sealed class PresentationCoordinator : IDisposable
         foreach (var window in app.Windows.Values)
             window.Place();
         Refresh();
-    }
-    private void SelectDockNote((string Screen, DockEdge Edge) key, NoteId id)
+    });
+    private void SelectDockNote((string Screen, DockEdge Edge) key, NoteId id) => app.Run(() =>
     {
         var result = CurrentDock(key);
         if (result is null || DockLayout.PageForNote(result, id) is not { } page)
@@ -164,7 +165,7 @@ internal sealed class PresentationCoordinator : IDisposable
         Refresh();
         if (app.Windows.TryGetValue(id, out var target))
             target.SetTemporarilyRaised(true);
-    }
+    });
     private IEnumerable<NoteId> Visible() => Suppressed.Where(p => p.Value == SuppressionReason.None).Select(p => p.Key);
     public void Collapse(bool collapsed)
     {

@@ -51,7 +51,11 @@ internal sealed partial class NoteWindow
         foreach (var property in new[] { LeftProperty, TopProperty, WidthProperty, HeightProperty, OpacityProperty }) BeginAnimation(property, null);
         Place();
         var target = collapse ? entrance : restore;
-        if (!collapse && !IsVisible) from = entrance;
+        if (!collapse && !IsVisible)
+        {
+            from = entrance;
+            opacity = 0;
+        }
         bool reduced = app.Animations.ReducedMotion;
         if (reduced)
         {
@@ -60,14 +64,13 @@ internal sealed partial class NoteWindow
         }
         MinWidth = MinHeight = 1;
         MaxWidth = MaxHeight = double.PositiveInfinity;
-        Show();
         var duration = TimeSpan.FromSeconds(seconds);
         void AnimateProperty(DependencyProperty property, double start, double end) => BeginAnimation(property, new DoubleAnimation(start, end, duration) { FillBehavior = FillBehavior.HoldEnd, EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
         AnimateProperty(LeftProperty, from.X, target.X);
         AnimateProperty(TopProperty, from.Y, target.Y);
         AnimateProperty(WidthProperty, from.Width, target.Width);
         AnimateProperty(HeightProperty, from.Height, target.Height);
-        var fade = new DoubleAnimation(collapse ? opacity : 0, collapse ? 0 : 1, duration);
+        var fade = new DoubleAnimation(opacity, collapse ? 0 : 1, duration);
         fade.Completed += (_, _) =>
         {
             if (generation != presentationGeneration) return;
@@ -78,5 +81,6 @@ internal sealed partial class NoteWindow
             completed();
         };
         BeginAnimation(OpacityProperty, fade);
+        Show();
     }
 }

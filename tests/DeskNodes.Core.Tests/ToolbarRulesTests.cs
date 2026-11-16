@@ -6,6 +6,27 @@ namespace DeskNodes.Core.Tests;
 public sealed class ToolbarRulesTests
 {
     [Theory]
+    [InlineData(false, 1.5)]
+    [InlineData(true, 15)]
+    public void HoverExitUsesGraceUntilUserScrollResetsIdle(bool operated, double delay)
+    {
+        var machine = new ToolbarIdleMachine();
+        machine.Update(TimeSpan.Zero, new());
+        machine.Update(TimeSpan.FromSeconds(15), new());
+        machine.Update(TimeSpan.FromSeconds(16), new(AnimationCompleted: true));
+        machine.Update(TimeSpan.FromSeconds(17), new(PointerInside: true));
+        var expand = machine.Update(TimeSpan.FromSeconds(17.14), new(PointerInside: true));
+        Assert.Equal(ToolbarIdleAction.StartExpand, expand.Action);
+        machine.Update(TimeSpan.FromSeconds(18), new(PointerInside: true, AnimationCompleted: true, AnimationGeneration: expand.Generation));
+        if (operated)
+            machine.ResetIdle();
+        var exit = machine.Update(TimeSpan.FromSeconds(19), new());
+        Assert.Equal(TimeSpan.FromSeconds(19 + delay), exit.NextWake);
+        Assert.Equal(ToolbarIdleAction.None, machine.Update(TimeSpan.FromSeconds(19 + delay - .01), new()).Action);
+        Assert.Equal(ToolbarIdleAction.StartShrinkToHome, machine.Update(TimeSpan.FromSeconds(19 + delay), new()).Action);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

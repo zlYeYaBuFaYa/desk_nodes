@@ -187,7 +187,7 @@ internal sealed partial class AppCoordinator : System.ComponentModel.INotifyProp
         };
         tray.MouseClick += (_, e) =>
         {
-            if (e.Button == Forms.MouseButtons.Left) ShowToolbar();
+            if (e.Button == Forms.MouseButtons.Left) ShowToolbarFromTray();
         };
         timer = new DispatcherTimer
         {
@@ -263,7 +263,21 @@ internal sealed partial class AppCoordinator : System.ComponentModel.INotifyProp
         RefreshTrayIcon();
         tray.Visible = true;
     }
-    public void ShowToolbar() => toolbar?.RestoreExpanded();
+    public void ShowToolbar()
+    {
+        toolbar?.RestoreExpanded();
+    }
+    public void ShowToolbarFromTray()
+    {
+        ShowToolbar();
+        Presentation.Refresh();
+        ShowOtherDesktopPrompt();
+    }
+    private void ShowOtherDesktopPrompt()
+    {
+        if (PresentationRules.NeedsOtherDesktopPrompt(Presentation.Suppressed.Values))
+            Presentation.Error("便签位于其他虚拟桌面，可按 Win+Tab 返回原桌面");
+    }
     public bool SavePreferences(LocalPreferences value)
     {
         value = value.Normalize();
@@ -278,11 +292,12 @@ internal sealed partial class AppCoordinator : System.ComponentModel.INotifyProp
             Presentation.Error("无法保存设置，请检查磁盘空间和文件权限；已恢复上次设置。");
             return false;
         }
+        var previous = Preferences;
         Preferences = preferenceState.Value;
-        PublishPreferences(typographyChanged);
+        PublishPreferences(typographyChanged, previous);
         return true;
     }
-    private void PublishPreferences(bool typographyChanged = false)
+    private void PublishPreferences(bool typographyChanged = false, LocalPreferences? previous = null)
     {
         if (typographyChanged)
             foreach (var window in windows.Values) window.RefreshTypography();
@@ -290,6 +305,9 @@ internal sealed partial class AppCoordinator : System.ComponentModel.INotifyProp
         RefreshTheme();
         toolbar?.Rebuild();
         toolbar?.InputChanged();
+        if (previous is not null && PresentationRules.DockReservationChanged(Screens.GetScreens(), previous, Preferences))
+            foreach (var window in windows.Values)
+                window.Place();
         RefreshVisibility();
     }
     private void PersistPreferences(LocalPreferences value)
@@ -321,6 +339,7 @@ internal sealed partial class AppCoordinator : System.ComponentModel.INotifyProp
         if (target is not null && !NativeMethods.SetForegroundWindow(new WindowInteropHelper(target).Handle))
             Presentation.Error("点击便签继续");
         toolbar?.Rebuild();
+        ShowOtherDesktopPrompt();
     }
     public void Arrange()
     {
@@ -342,7 +361,7 @@ internal sealed partial class AppCoordinator : System.ComponentModel.INotifyProp
             }
         }, () => PersistPreferences(previous with { DeskCollapsed = false, Page = 0,
             Pages = arrangement.Notes.ToImmutableDictionary(n => n.Id.ToString(), n => n.Page) }),
-            () => PersistPreferences(previous), () => PublishPreferences());
+            () => PersistPreferences(previous), () => PublishPreferences(previous: previous));
         Refresh();
         foreach (var pair in windows.Where(p => p.Value.IsVisible)) pair.Value.ArrangeFrom(previousBounds[pair.Key]);
     }

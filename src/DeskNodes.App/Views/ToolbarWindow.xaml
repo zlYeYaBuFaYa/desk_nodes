@@ -125,6 +125,7 @@
                     Click="ScrollToolbarForward"/>
                 <ScrollViewer
                     x:Name="ActionScroll"
+                    PreviewMouseWheel="ToolbarMouseWheel"
                     HorizontalScrollBarVisibility="Hidden"
                     VerticalScrollBarVisibility="Hidden"
                     ScrollChanged="ToolbarScrollChanged">
