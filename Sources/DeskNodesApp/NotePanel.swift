@@ -174,7 +174,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         titleEditor.textColor = NoteTheme.primary; titleEditor.delegate = self
         count.textColor = NoteTheme.secondary; count.alignment = .right
         collapsedLabel.textColor = NoteTheme.primary
-        collapsedLabel.font = NoteType.font(ofSize: NoteMetrics.titleSize - 2, weight: .semibold)
+        collapsedLabel.font = NoteType.font(ofSize: NoteMetrics.collapsedTitleSize, weight: .semibold)
         collapsedLabel.lineBreakMode = .byTruncatingTail
         grip.resize = true
         let finish: (NoteFrame, Bool) -> Void = { [weak self] frame, resize in
@@ -195,7 +195,7 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     /// 文字大小 and 字体. The count stays in system digits so fractions line up.
     func applyTextSize() {
         titleEditor.font = NoteType.font(ofSize: NoteType.titleSize, weight: .semibold)
-        collapsedLabel.font = NoteType.font(ofSize: NoteMetrics.titleSize - 2, weight: .semibold)
+        collapsedLabel.font = NoteType.font(ofSize: NoteMetrics.collapsedTitleSize, weight: .semibold)
         // A quiet placeholder: an untitled note is normal, not a missing field.
         titleEditor.placeholderAttributedString = NSAttributedString(string: "标题",
             attributes: [.font: NoteType.font(ofSize: NoteType.titleSize), .foregroundColor: NoteTheme.tertiary])
@@ -222,8 +222,8 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
         let footer = !compact
         addButton.isHidden = !footer; separator.isHidden = !footer
         grip.isHidden = compact || !hovering || (window as? NotePanel)?.docked == true
-        // Title band: 18pt down and 22pt tall at standard size, scaled with the type.
-        let scale = CGFloat(NoteType.size.scale), titleHeight = (22 * scale).rounded()
+        // Paper White title: 18pt down and 24pt tall; folded labels keep their 14pt type.
+        let scale = CGFloat(NoteType.size.scale), titleHeight = (24 * scale).rounded()
         let titleY: CGFloat = compact ? (bounds.height - 22) / 2 : (18 * scale).rounded()
         let countWidth = max(32, ceil(count.attributedStringValue.size().width) + 2)
         let countHeight = compact ? 16 : (16 * scale).rounded()

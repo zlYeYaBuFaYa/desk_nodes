@@ -28,11 +28,11 @@ for case_name, (name, light, dark) in zip(case_names, pairs):
         for value, section in zip((name, light, dark), sections)))
 # Seven light/dark backgrounds plus their seven light/dark selection tones.
 check('exactly twenty-eight palette hex literals', len(re.findall(r'return "[A-F0-9]{6}"', tokens)) == 28)
-for hex_value in ('1F1F1F', 'EDEBE6', '5F5A52', 'B3ADA2', '6F6A61', 'A39D92'):
+for hex_value in ('252D29', 'E5EBE6', '626B65', 'B7C2BA'):
     check(f'documented ink {hex_value}', f'#{hex_value}' in spec and f'"{hex_value}"' in tokens)
 # Current note metrics are documented in docs/UI_SPEC.md.
-for key, value in [('width', 288), ('padding', 18), ('cornerRadius', 13), ('titleSize', 16),
-                   ('itemSize', 14), ('rowHeight', 32), ('collapsedHeight', 32)]:
+for key, value in [('width', 288), ('padding', 18), ('cornerRadius', 14), ('titleSize', 17),
+                   ('itemSize', 14), ('rowHeight', 36), ('collapsedHeight', 32)]:
     check(f'metric {key}', f'let {key} = {value}.0' in tokens)
 
 with (ROOT / 'Resources/Info.plist').open('rb') as stream:

@@ -46,10 +46,12 @@ final class HistoryPresentationTests: XCTestCase {
         XCTAssertEqual(model.selected, try HistoryDay("2026-11-01")); XCTAssertEqual(model.month.first, try HistoryDay("2026-11-01"))
         model.step(days: -7)
         XCTAssertEqual(model.selected, try HistoryDay("2026-10-25"))
-        model.select(try HistoryDay("2026-11-10")); model.step(days: 7)
-        XCTAssertEqual(model.selected, today, "clamped to today")
+        // Crossing months reloads the real current business day; do not pin the upper
+        // bound to the historical date supplied when the presentation was created.
+        model.select(try XCTUnwrap(model.today.adding(days: -1))); model.step(days: 7)
+        XCTAssertEqual(model.selected, model.today, "clamped to today")
         model.select(try HistoryDay("2026-09-02")); model.showToday()
-        XCTAssertEqual(model.selected, today); XCTAssertEqual(model.month.first, try HistoryDay("2026-11-01"))
+        XCTAssertEqual(model.selected, model.today); XCTAssertEqual(model.month, HistoryMonth(containing: model.today))
     }
 
     func testMenuLabelsUseBusinessDaysAndHeatFollowsTheRate() throws {

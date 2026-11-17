@@ -39,50 +39,50 @@ public enum NotePalette: String, CaseIterable, Codable, Sendable {
 
     public var lightHex: String {
         switch self {
-        case .paper: return "F6F1E7"
-        case .lemon: return "FAF0C8"
-        case .apricot: return "FBE7D6"
-        case .cherry: return "F7E1E4"
-        case .lavender: return "ECE6F5"
-        case .mist: return "E3ECF5"
-        case .mint: return "E2F0E8"
+        case .paper: return "FAFBF8"
+        case .lemon: return "F6F2DE"
+        case .apricot: return "F5ECE2"
+        case .cherry: return "F4E9EC"
+        case .lavender: return "EFECF5"
+        case .mist: return "EBF1F7"
+        case .mint: return "EDF2EB"
         }
     }
 
     public var darkHex: String {
         switch self {
-        case .paper: return "2B2822"
-        case .lemon: return "35301A"
-        case .apricot: return "3A2A20"
-        case .cherry: return "3A2328"
-        case .lavender: return "2A2536"
-        case .mist: return "1F2A36"
-        case .mint: return "1E2E26"
+        case .paper: return "252C28"
+        case .lemon: return "302E23"
+        case .apricot: return "322B25"
+        case .cherry: return "31282C"
+        case .lavender: return "2C2933"
+        case .mist: return "252D35"
+        case .mint: return "273129"
         }
     }
 
     /// Selection outline: a deeper tone of the same hue, so it never clashes with the card.
     public var selectionLightHex: String {
         switch self {
-        case .paper: return "B59E74"
-        case .lemon: return "C9A93A"
-        case .apricot: return "D9905F"
-        case .cherry: return "CF7F90"
-        case .lavender: return "9A82C9"
-        case .mist: return "6F97C4"
-        case .mint: return "6FA585"
+        case .paper: return "68796B"
+        case .lemon: return "827036"
+        case .apricot: return "946D49"
+        case .cherry: return "936272"
+        case .lavender: return "776993"
+        case .mist: return "577798"
+        case .mint: return "587B62"
         }
     }
 
     public var selectionDarkHex: String {
         switch self {
-        case .paper: return "C4B08A"
-        case .lemon: return "D6BE5C"
-        case .apricot: return "E0A47E"
-        case .cherry: return "DB98A6"
-        case .lavender: return "B5A2DE"
-        case .mist: return "92B4DA"
-        case .mint: return "8FC4A3"
+        case .paper: return "A8C0AF"
+        case .lemon: return "D5C580"
+        case .apricot: return "D2AD89"
+        case .cherry: return "D0A0B0"
+        case .lavender: return "B8A9D2"
+        case .mist: return "9CBAD7"
+        case .mint: return "A0C5AA"
         }
     }
 }
@@ -95,13 +95,13 @@ public enum NoteMetrics {
     /// Default new-note height: room for about four items, so an empty note does not look cramped.
     public static let newHeight = 240.0
     public static let padding = 18.0
-    public static let cornerRadius = 13.0
-    public static let titleSize = 16.0
+    public static let cornerRadius = 14.0
+    public static let titleSize = 17.0
     public static let itemSize = 14.0
     public static let secondarySize = 12.0
     /// A single-line item row; wrapped lines inside it use the tighter `lineHeight`.
-    public static let rowHeight = 32.0
-    public static let lineHeight = 22.0
+    public static let rowHeight = 36.0
+    public static let lineHeight = 23.0
     public static var rowPadding: Double { (rowHeight - lineHeight) / 2 }
     public static let checkboxSize = 16.0
     public static let checkboxGap = 11.0
@@ -112,6 +112,7 @@ public enum NoteMetrics {
     /// Hover-only delete/reorder controls at the end of an item row.
     public static let rowTrailing = 64.0
     public static let collapsedHeight = 32.0
+    public static let collapsedTitleSize = 14.0
     public static let collapsedCornerRadius = 10.0
     public static let minimumWidth = 200.0
     public static let minimumHeight = 120.0
@@ -142,10 +143,10 @@ public enum NoteTextSize: String, CaseIterable, Sendable {
     }
     public var titleSize: Double {
         switch self {
-        case .small: return 15
-        case .standard: return 16
-        case .large: return 18
-        case .extraLarge: return 20
+        case .small: return 16
+        case .standard: return 17
+        case .large: return 19
+        case .extraLarge: return 21
         }
     }
     public var secondarySize: Double {
@@ -238,12 +239,12 @@ public enum ArrangeMetrics {
 }
 
 public enum NoteInk {
-    public static let primaryLight = "1F1F1F"
-    public static let primaryDark = "EDEBE6"
-    public static let secondaryLight = "5F5A52"
-    public static let secondaryDark = "B3ADA2"
-    public static let completedLight = "6F6A61"
-    public static let completedDark = "A39D92"
+    public static let primaryLight = "252D29"
+    public static let primaryDark = "E5EBE6"
+    public static let secondaryLight = "626B65"
+    public static let secondaryDark = "B7C2BA"
+    public static let completedLight = "626B65"
+    public static let completedDark = "B7C2BA"
 }
 
 public enum MotionPolicy {

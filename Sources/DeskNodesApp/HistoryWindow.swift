@@ -66,15 +66,15 @@ final class HistoryPresentation: ObservableObject {
 }
 
 enum HistoryColors {
-    static let progressInk = NoteTheme.dynamic("4F7A64", "8CB69D")
-    static let trackInk = NoteTheme.dynamic("E4E1DA", "4D4942")
-    static let background = Color(nsColor: NoteTheme.dynamic("FBFAF8", "242321"))
-    static let quiet = Color(nsColor: NoteTheme.dynamic("EFEDE8", "35332F"))
-    static let selected = Color(nsColor: NoteTheme.dynamic("2F2C27", "EDEBE6"))
-    static let selectedInk = Color(nsColor: NoteTheme.dynamic("FFFFFF", "242321"))
+    static let progressInk = NoteTheme.accent
+    static let trackInk = NoteTheme.dynamic("DDE4DC", "46534A")
+    static let background = Color(nsColor: NoteTheme.dynamic("FAFBF8", "252C28"))
+    static let quiet = Color(nsColor: NoteTheme.dynamic("EDF2EB", "303A34"))
+    static let selected = Color(nsColor: NoteTheme.dynamic("354239", "E5EBE6"))
+    static let selectedInk = Color(nsColor: NoteTheme.dynamic("FFFFFF", "252C28"))
     static let progress = Color(nsColor: progressInk)
-    static let carryInk = Color(nsColor: NoteTheme.dynamic("6B5A2E", "E4CF8D"))
-    static let carryFill = Color(nsColor: NoteTheme.dynamic("F3E9C9", "494025"))
+    static let carryInk = Color(nsColor: NoteTheme.dynamic("6D5C32", "E3D09A"))
+    static let carryFill = Color(nsColor: NoteTheme.dynamic("F4EEDB", "443E2B"))
     static func fill(_ heat: HistoryHeat) -> Color {
         switch heat {
         case .none: return .clear

@@ -4,10 +4,10 @@ import XCTest
 final class DesignTokensTests: XCTestCase {
     func testSevenPalettePairsInOrderWithoutGraphite() {
         let expected = [
-            ["宣纸", "F6F1E7", "2B2822"], ["柠黄", "FAF0C8", "35301A"],
-            ["杏", "FBE7D6", "3A2A20"], ["樱", "F7E1E4", "3A2328"],
-            ["薰衣草", "ECE6F5", "2A2536"], ["雾蓝", "E3ECF5", "1F2A36"],
-            ["薄荷", "E2F0E8", "1E2E26"]
+            ["宣纸", "FAFBF8", "252C28"], ["柠黄", "F6F2DE", "302E23"],
+            ["杏", "F5ECE2", "322B25"], ["樱", "F4E9EC", "31282C"],
+            ["薰衣草", "EFECF5", "2C2933"], ["雾蓝", "EBF1F7", "252D35"],
+            ["薄荷", "EDF2EB", "273129"]
         ]
         XCTAssertEqual(NotePalette.allCases.map { [$0.name, $0.lightHex, $0.darkHex] }, expected)
         // Outlines are a deeper tone of each colour: darker than the light card, lighter than the dark one.
@@ -45,10 +45,10 @@ final class DesignTokensTests: XCTestCase {
     func testRedesignSizingAndCollapsedHeight() {
         XCTAssertEqual(NoteMetrics.width, 288)
         XCTAssertEqual(NoteMetrics.padding, 18)
-        XCTAssertEqual(NoteMetrics.cornerRadius, 13)
-        XCTAssertEqual(NoteMetrics.titleSize, 16)
+        XCTAssertEqual(NoteMetrics.cornerRadius, 14)
+        XCTAssertEqual(NoteMetrics.titleSize, 17)
         XCTAssertEqual(NoteMetrics.itemSize, 14)
-        XCTAssertEqual(NoteMetrics.rowHeight, 32)
+        XCTAssertEqual(NoteMetrics.rowHeight, 36)
         XCTAssertEqual(NoteMetrics.collapsedHeight, 32)
         XCTAssertEqual(NoteMetrics.minimumWidth, 200)
         XCTAssertEqual(NoteMetrics.maximumHeight, 600)
@@ -57,12 +57,12 @@ final class DesignTokensTests: XCTestCase {
     func testTextSizesScaleFromTheStandardMetrics() {
         XCTAssertEqual(NoteTextSize.allCases.map(\.name), ["小", "标准", "大", "特大"])
         XCTAssertEqual(NoteTextSize.allCases.map(\.itemSize), [13, 14, 16, 18])
-        XCTAssertEqual(NoteTextSize.allCases.map(\.titleSize), [15, 16, 18, 20])
+        XCTAssertEqual(NoteTextSize.allCases.map(\.titleSize), [16, 17, 19, 21])
         // Standard is exactly today's note.
         XCTAssertEqual(NoteTextSize.standard.titleSize, NoteMetrics.titleSize)
         XCTAssertEqual(NoteTextSize.standard.secondarySize, NoteMetrics.secondarySize)
         XCTAssertEqual(NoteTextSize.standard.scaled(NoteMetrics.rowHeight), NoteMetrics.rowHeight)
-        XCTAssertEqual(NoteTextSize.extraLarge.scaled(NoteMetrics.rowHeight), 41)
+        XCTAssertEqual(NoteTextSize.extraLarge.scaled(NoteMetrics.rowHeight), 46)
         XCTAssertEqual(NoteTextSize.standard.stepped(1), .large)
         XCTAssertEqual(NoteTextSize.extraLarge.stepped(1), .extraLarge)
         XCTAssertEqual(NoteTextSize.small.stepped(-1), .small)

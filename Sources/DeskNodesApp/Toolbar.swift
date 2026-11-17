@@ -748,7 +748,7 @@ final class ToolbarEntry: NSView {
 final class ToolbarBadge: NSView {
     var text = "" { didSet { needsDisplay = true; setAccessibilityLabel("已收起 \(text) 张便签") } }
     private var attributes: [NSAttributedString.Key: Any] {
-        [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white]
+        [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: NoteTheme.checkmark]
     }
     override var fittingSize: NSSize {
         NSSize(width: max(18, ceil((text as NSString).size(withAttributes: attributes).width) + 10), height: 18)

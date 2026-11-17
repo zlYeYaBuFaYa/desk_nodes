@@ -40,35 +40,23 @@ enum NoteTheme {
     static let primary = dynamic(NoteInk.primaryLight, NoteInk.primaryDark)
     static let secondary = dynamic(NoteInk.secondaryLight, NoteInk.secondaryDark)
     static let completed = dynamic(NoteInk.completedLight, NoteInk.completedDark)
-    /// Low-saturation sage: completion fill and the undo action.
-    static let accent = dynamic("6E9A68", "8DB887")
+    /// Paper White: deep pine on light paper, soft pine on dark auxiliary surfaces.
+    static let accent = dynamic("426B58", "9AC7AB")
     static let checkboxFill = accent
-    static let checkboxBorder = NSColor(name: nil) { appearance in
-        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return NSColor(sRGBHex: dark ? NoteInk.primaryDark : NoteInk.primaryLight).withAlphaComponent(dark ? 0.5 : 0.42)
-    }
-    static let checkmark = dynamic("FFFFFF", "2B2822")
-    static let border = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor.white.withAlphaComponent(0.08) : NSColor.black.withAlphaComponent(0.06)
-    }
-    static let tertiary = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(sRGBHex: NoteInk.secondaryDark).withAlphaComponent(0.55)
-            : NSColor(sRGBHex: NoteInk.secondaryLight).withAlphaComponent(0.5)
-    }
+    // Unchecked controls and struck text remain readable on every paper colour.
+    static let checkboxBorder = secondary
+    static let checkmark = dynamic("FFFFFF", "243029")
+    static let border = dynamic("D5DCD5", "4A574E")
+    static let tertiary = secondary
     /// Selection outline in the note's own hue; faded while another app is active.
     static func selection(_ palette: NotePalette, active: Bool) -> NSColor {
         dynamic(palette.selectionLightHex, palette.selectionDarkHex).withAlphaComponent(active ? 1 : 0.45)
     }
-    static let hairline = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor.white.withAlphaComponent(0.10) : NSColor.black.withAlphaComponent(0.08)
-    }
+    static let hairline = dynamic("D5DCD5", "4A574E")
     // The toolbar sits on system material; stable ink and a fine rim keep it legible on any wallpaper.
-    static let toolbarInk = dynamic("24282D", "F2F4F6")
-    static let toolbarSecondary = dynamic("5C636B", "BDC4CC")
-    static let toolbarDisabled = dynamic("878D94", "858D97")
+    static let toolbarInk = dynamic("354239", "E4EBE6")
+    static let toolbarSecondary = dynamic("626E65", "BFCBC2")
+    static let toolbarDisabled = dynamic("858F87", "8D9C92")
     static let toolbarBorder = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor.white.withAlphaComponent(0.14) : NSColor.black.withAlphaComponent(0.10)
