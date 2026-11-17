@@ -186,25 +186,65 @@ extension NoteActions {
         }
     }
     /// Empty topology is transient (sleep/reconfiguration): never manufacture a screen.
-    public func reconcileScreens(_ screens: [DockScreen]) throws {
-        guard let primary = screens.first else { return }
-        try store.transaction { store in
+    ///
+    /// A note whose display is missing moves to the primary one, in the store, so what is
+    /// saved always matches what is shown. `displaced` remembers where such notes came from:
+    /// when their display returns and the note has not been moved, docked or arranged since,
+    /// it goes back. Returns the records still waiting for their display.
+    @discardableResult
+    public func reconcileScreens(_ screens: [DockScreen], displaced: [DisplacedPlacement] = []) throws -> [DisplacedPlacement] {
+        guard let primary = screens.first else { return displaced }
+        let present = Set(screens.map(\.id))
+        func missing(_ placement: Placement?) -> Bool { placement?.displayID.map { !present.contains($0) } ?? false }
+        return try store.transaction { store in
+            var waiting: [NoteID: DisplacedPlacement] = [:]
+            let live = Dictionary(uniqueKeysWithValues: try store.notes().map { ($0.id, $0) })
+            for record in displaced {
+                // Moved by the user (or deleted) since it was displaced: the record is stale.
+                guard var note = live[record.id], note.placement == record.migrated,
+                      note.freeRestore == record.migratedRestore else { continue }
+                guard !missing(record.original) else { waiting[record.id] = record; continue }
+                note.placement = record.original; note.freeRestore = record.originalRestore
+                try store.update(note) // the pass below clamps it to the display as it is now
+            }
             for var note in try store.notes() {
                 let before = note
                 func recovered(_ placement: Placement) -> Placement {
-                    let missing = placement.displayID.map { id in !screens.contains { $0.id == id } } ?? false
+                    let gone = missing(placement)
                     if case .dock(let edge, _) = placement {
-                        return missing ? .dock(edge: edge, displayID: primary.persistentID) : placement
+                        return gone ? .dock(edge: edge, displayID: primary.persistentID) : placement
                     }
                     guard let frame = placement.freeFrame else { return placement }
-                    let screen = missing ? primary : (screens.first { $0.id == placement.displayID }
+                    let screen = gone ? primary : (screens.first { $0.id == placement.displayID }
                         ?? screens.first { DockGeometry.contains($0.visible, x: frame.x + frame.width / 2, y: frame.y + frame.height / 2) } ?? primary)
                     return .free(DockGeometry.clamp(frame, to: screen), displayID: screen.persistentID)
                 }
                 note.placement = recovered(note.placement)
                 note.freeRestore = note.freeRestore.map(recovered)
                 if note != before { try store.update(note) }
+                if let record = waiting[note.id] {
+                    // Still waiting; follow any clamping so the record keeps matching the note.
+                    waiting[note.id] = DisplacedPlacement(id: note.id, original: record.original, originalRestore: record.originalRestore,
+                                                          migrated: note.placement, migratedRestore: note.freeRestore)
+                } else if missing(before.placement) || missing(before.freeRestore) {
+                    waiting[note.id] = DisplacedPlacement(id: note.id, original: before.placement, originalRestore: before.freeRestore,
+                                                          migrated: note.placement, migratedRestore: note.freeRestore)
+                }
             }
+            return displaced.compactMap { waiting.removeValue(forKey: $0.id) } + waiting.values.sorted { $0.id.rawValue.uuidString < $1.id.rawValue.uuidString }
         }
+    }
+}
+
+/// Where a note was before its display went missing, and where that put it.
+public struct DisplacedPlacement: Equatable, Codable, Sendable {
+    public let id: NoteID
+    public let original: Placement
+    public let originalRestore: Placement?
+    public let migrated: Placement
+    public let migratedRestore: Placement?
+    public init(id: NoteID, original: Placement, originalRestore: Placement?, migrated: Placement, migratedRestore: Placement?) {
+        self.id = id; self.original = original; self.originalRestore = originalRestore
+        self.migrated = migrated; self.migratedRestore = migratedRestore
     }
 }

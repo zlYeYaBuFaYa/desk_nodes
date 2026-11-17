@@ -60,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
             installRolloverScheduler()
             catchUpDay()
-            try actions?.reconcileScreens(DockController.screens())
+            try reconcileScreens()
             refresh(.all)
             desk?.start()
             // Global 置顶 is gone; per-note levels are untouched, so say once where it went.
@@ -335,11 +335,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                        changed: { [weak self] in self?.refresh(.layout) }, failure: { [weak self] in self?.report($0) })
         docking.suppressed = desk?.state.targetsCollapsed ?? false
         docking.toolbar = { [weak self] in self?.desk?.toolbarReservation }
+        docking.reconcileScreens = { [weak self] in try self?.reconcileScreens() }
         return docking
     }
     @objc private func screensChanged() {
         desk?.screensChanged()
-        do { try actions?.reconcileScreens(DockController.screens()); refresh(.all) } catch { report(error) }
+        do { try reconcileScreens(); refresh(.all) } catch { report(error) }
+    }
+    /// Every screen correction goes through here, so notes moved off a missing display
+    /// are remembered and go back when it returns.
+    private func reconcileScreens() throws {
+        guard let actions else { return }
+        let defaults = PresentationDefaults.standard()
+        defaults.displaced = try actions.reconcileScreens(DockController.screens(), displaced: defaults.displaced)
     }
     func applicationDidResignActive(_ notification: Notification) {
         surfaces?.lowerTransientRaises()
@@ -454,7 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             desk?.expand()
             try actions.restoreDeletedNote(id)
             // The display it lived on may be gone; bring it back on screen.
-            try actions.reconcileScreens(DockController.screens())
+            try reconcileScreens()
             refresh(); surfaces?.panels[id]?.orderFrontRegardless()
         case .item(let id):
             try actions.restoreDeletedItem(id)
@@ -517,6 +525,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for card in surfaces?.cards ?? [] { card.prepareForRemoval() }
         docking?.invalidateAfterImport()
         surfaces?.discardAll(); actions.invalidateUndoAfterImport()
+        PresentationDefaults.standard().displaced = [] // they describe the replaced notes
         docking = makeDocking(actions)
         desk?.applyModes()
         rolloverDeferred = false

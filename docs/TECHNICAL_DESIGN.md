@@ -105,8 +105,9 @@ WindowModes 的有效 peek 为 `peeking || picking`，再按每张保存 level �
 - app.appearance。
 - note.newWidth、note.newHeight、note.textSize、note.font。
 - arrange.pages、arrange.page。
+- screens.displaced（因显示器离线迁到主屏的便签：原位置与迁移后位置）。
 
-旧 toolbar.place 迁为自由锚点，不按距离推断吸边；自由锚点存中心，吸边锚点存边及沿边比例。toolbar.home 无效时恢复 ToolbarHome.standard。note.newHeight 缺失时使用默认高度，显式 0 表示随内容。字号、字体与外观使用枚举原值，未知值分别回退到标准、默认字体与跟随系统。
+旧 toolbar.place 迁为自由锚点，不按距离推断吸边；自由锚点存中心，吸边锚点存边及沿边比例。toolbar.home 无效时恢复 ToolbarHome.standard。note.newHeight 缺失时使用默认高度，显式 0 表示随内容。字号、字体与外观使用枚举原值，未知值分别回退到标准、默认字体与跟随系统。screens.displaced 由 `NoteActions.reconcileScreens(_:displaced:)` 读写：原显示器返回且便签位置仍等于迁移后位置时写回原位置，否则丢弃记录；数据库始终保存实际显示位置。无法解码时视为空，导入备份时清空。
 
 上述键不属于业务库和 JSON。验证域为 local.desknodes.native.verification，不同验证目录共用此域。临时焦点、选择、peeking／picking、动画与撤销也不序列化。
 

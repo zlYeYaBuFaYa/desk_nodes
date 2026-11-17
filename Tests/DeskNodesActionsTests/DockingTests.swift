@@ -128,13 +128,39 @@ final class DockingTests: XCTestCase {
             try actions.dock(dock.id, edge: .right, displayID: "secondary", index: 0)
             try actions.reconcileScreens([primary, secondary])
             let before = try store.notes()
-            try actions.reconcileScreens([]); XCTAssertEqual(try store.notes(), before)
-            try actions.reconcileScreens([primary])
+            XCTAssertEqual(try actions.reconcileScreens([]), []); XCTAssertEqual(try store.notes(), before)
+            let displaced = try actions.reconcileScreens([primary])
             let migrated = try store.notes()
             XCTAssertEqual(migrated.first { $0.id == dock.id }?.placement, .dock(edge: .right, displayID: "primary"))
             assertInside(try XCTUnwrap(migrated.first { $0.id == free.id }?.placement.freeFrame), primary.available)
+            XCTAssertEqual(Set(displaced.map(\.id)), [free.id, dock.id])
+            // Transient empty topology and repeated corrections keep the memory as it is.
+            XCTAssertEqual(try actions.reconcileScreens([], displaced: displaced), displaced)
+            XCTAssertEqual(try actions.reconcileScreens([primary], displaced: displaced), displaced)
+            // Without the memory (e.g. after an import) the notes stay where they were moved.
             try actions.reconcileScreens([primary, secondary]); XCTAssertEqual(try store.notes(), migrated)
+            // With it, the returning display takes its notes back exactly.
+            XCTAssertEqual(try actions.reconcileScreens([primary, secondary], displaced: displaced), [])
+            for note in before {
+                let now = try XCTUnwrap(store.notes().first { $0.id == note.id })
+                XCTAssertEqual(now.placement, note.placement); XCTAssertEqual(now.freeRestore, note.freeRestore)
+            }
             XCTAssertEqual(DockGeometry.screen(nil, screens: [primary], preferred: "unavailable"), primary)
+        }
+    }
+    func testDisplacedNoteMovedMeanwhileStaysWhereTheUserPutIt() throws {
+        try database { _, store, actions in
+            let moved = try actions.createNote(), kept = try actions.createNote()
+            for note in [moved, kept] {
+                try actions.detach(note.id, frame: NoteFrame(x: -1000, y: 0, width: 300, height: 300), displayID: "secondary")
+            }
+            let displaced = try actions.reconcileScreens([primary])
+            try actions.finalGeometry(moved.id, frame: NoteFrame(x: 400, y: 300, width: 300, height: 300))
+            let placed = try XCTUnwrap(store.notes().first { $0.id == moved.id }?.placement)
+            XCTAssertEqual(try actions.reconcileScreens([primary, secondary], displaced: displaced), [])
+            let notes = try store.notes()
+            XCTAssertEqual(notes.first { $0.id == moved.id }?.placement, placed)
+            XCTAssertEqual(notes.first { $0.id == kept.id }?.placement.displayID, "secondary")
         }
     }
     func testCombinedStripsHaveDisjointRegions() {

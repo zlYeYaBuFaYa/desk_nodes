@@ -27,6 +27,8 @@ final class DockController: NSObject {
     var suppressed = false
     /// The toolbar's home zone and its display; strips there keep clear of it.
     var toolbar: () -> (display: String, frame: NoteFrame)? = { nil }
+    /// Screen correction after an undock; the app routes it through its displaced-note memory.
+    var reconcileScreens: () throws -> Void
     private func region(_ edge: DockEdge, occupied: Set<DockEdge>, screen: DockScreen) -> DockScreen {
         let base = DockGeometry.region(edge: edge, occupied: occupied, screen: screen)
         guard let toolbar = toolbar(), toolbar.display == screen.id else { return base }
@@ -35,6 +37,7 @@ final class DockController: NSObject {
     init(actions: NoteActions, canMutate: @escaping () -> Bool = { true }, changed: @escaping () -> Void, failure: @escaping (Error) -> Void) {
         self.canMutate = canMutate
         self.actions = actions; self.changed = changed; self.failure = failure
+        reconcileScreens = { try actions.reconcileScreens(Self.screens()) }
     }
     func invalidateAfterImport() {
         for panel in panels.values {
@@ -319,7 +322,7 @@ final class DockController: NSObject {
         guard canMutate() else { return }
         do {
             if let edge { try actions.dock(id, edge: edge, displayID: try display(of: id), index: Int.max, screens: Self.screens()) }
-            else { try actions.detach(id); try actions.reconcileScreens(Self.screens()) }
+            else { try actions.detach(id); try reconcileScreens() }
             changed()
         } catch { failure(error) }
     }

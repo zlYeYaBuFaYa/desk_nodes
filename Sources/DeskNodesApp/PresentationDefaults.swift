@@ -151,6 +151,18 @@ final class PresentationDefaults {
                          forKey: "arrange.pages")
         }
     }
+    /// Notes moved off a missing display, waiting to go back when it returns. Mac-local like
+    /// the rest of this file; an unreadable record is dropped, never guessed.
+    var displaced: [DisplacedPlacement] {
+        get {
+            guard let data = defaults.data(forKey: "screens.displaced") else { return [] }
+            return (try? JSONDecoder().decode([DisplacedPlacement].self, from: data)) ?? []
+        }
+        set {
+            if newValue.isEmpty { defaults.removeObject(forKey: "screens.displaced"); return }
+            defaults.set(try? JSONEncoder().encode(newValue), forKey: "screens.displaced")
+        }
+    }
     var currentPage: Int {
         get { max(0, defaults.integer(forKey: "arrange.page")) }
         set { defaults.set(max(0, newValue), forKey: "arrange.page") }

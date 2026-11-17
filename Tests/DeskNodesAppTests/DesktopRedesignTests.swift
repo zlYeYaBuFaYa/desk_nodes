@@ -111,6 +111,22 @@ final class DesktopRedesignTests: XCTestCase {
         XCTAssertEqual(selectionEvents, 2)
     }
 
+    @MainActor func testDisplacedNotesRoundTripAndClear() throws {
+        let suite = "local.desknodes.native.tests." + UUID().uuidString
+        let raw = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { raw.removePersistentDomain(forName: suite) }
+        let defaults = PresentationDefaults(raw)
+        XCTAssertTrue(defaults.displaced.isEmpty)
+        let record = DisplacedPlacement(id: NoteID(), original: .dock(edge: .left, displayID: "external"), originalRestore: nil,
+                                        migrated: .dock(edge: .left, displayID: "built-in"), migratedRestore: nil)
+        defaults.displaced = [record]
+        XCTAssertEqual(PresentationDefaults(raw).displaced, [record])
+        defaults.displaced = []
+        XCTAssertNil(raw.object(forKey: "screens.displaced"))
+        raw.set(Data("not json".utf8), forKey: "screens.displaced")
+        XCTAssertTrue(PresentationDefaults(raw).displaced.isEmpty, "an unreadable record is dropped")
+    }
+
     @MainActor func testPresentationDefaultsRoundTripOutsideTheBackup() throws {
         let suite = "local.desknodes.native.tests." + UUID().uuidString
         let raw = try XCTUnwrap(UserDefaults(suiteName: suite))
