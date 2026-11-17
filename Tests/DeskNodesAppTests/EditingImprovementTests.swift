@@ -43,6 +43,55 @@ final class EditingImprovementTests: XCTestCase {
         XCTAssertEqual(try store.items(in: note.id).first?.text, "abcd")
         XCTAssertEqual(refreshes, 1, "one refresh per pause, not per keystroke")
     }
+
+    @MainActor
+    private func withCard(_ body: (Store, NoteActions, NoteCardView, ItemID) throws -> Void) throws {
+        _ = NSApplication.shared
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: url.path + suffix) } }
+        let store = try Store(url: url); defer { try? store.close() }
+        let actions = NoteActions(store: store), note = try actions.createNote()
+        let item = try XCTUnwrap(store.items(in: note.id).first)
+        let card = NoteCardView(note: note, actions: actions, changed: {}, undoDelete: { false }, failure: { XCTFail("\($0)") })
+        try body(store, actions, card, item.id)
+    }
+
+    /// Holding Backspace clears a saved row and then removes it before the pause elapses.
+    @MainActor
+    func testDeletingARowClearedBeforeThePauseDiscardsIt() throws {
+        try withCard { store, actions, card, item in
+            let editor = try XCTUnwrap(card.firstEditor)
+            editor.string = "abc"; card.save(item, text: editor.string)
+            try card.flushRolloverEdits()
+            for text in ["ab", "a", ""] { editor.string = text; card.save(item, text: text) }
+            card.delete(item)
+            XCTAssertTrue(try store.items(in: card.id, includeDeleted: true).isEmpty, "a blank row leaves no tombstone")
+            XCTAssertFalse(actions.canUndoDeletion)
+        }
+    }
+
+    @MainActor
+    func testDeletingRightAfterTypingKeepsTheTextForUndo() throws {
+        try withCard { store, actions, card, item in
+            let editor = try XCTUnwrap(card.firstEditor)
+            editor.string = "买牛奶"; card.save(item, text: editor.string)
+            card.delete(item)
+            XCTAssertTrue(actions.canUndoDeletion)
+            XCTAssertTrue(try actions.undoDeletion())
+            XCTAssertEqual(try store.items(in: card.id).first?.text, "买牛奶")
+        }
+    }
+
+    @MainActor
+    func testTogglingRightAfterTypingKeepsTheText() throws {
+        try withCard { store, _, card, item in
+            let editor = try XCTUnwrap(card.firstEditor)
+            editor.string = "交电费"; card.save(item, text: editor.string)
+            card.toggle(item)
+            let saved = try XCTUnwrap(store.items(in: card.id).first)
+            XCTAssertEqual(saved.text, "交电费"); XCTAssertTrue(saved.completed)
+        }
+    }
 }
 
 final class RecentlyDeletedPresentationTests: XCTestCase {

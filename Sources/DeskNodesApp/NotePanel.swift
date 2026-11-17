@@ -445,7 +445,12 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     @objc private func startPicking() { guard !invalidated, canMutate() else { return }; pickMany?() }
     @objc private func collapse() { run { try actions.appearance(id, collapsed: !note.collapsed) } }
     @objc private func autoHeight() { run { try actions.appearance(id, automaticHeight: true) } }
-    func run(_ body: () throws -> Void) { guard !invalidated, canMutate() else { return }; do { try body(); changed() } catch { failure(error) } }
+    /// Typing still waiting for its pause is committed first, so every structural change
+    /// (toggle, delete, reorder, paste…) reads and keeps the text the user sees.
+    func run(_ body: () throws -> Void) {
+        guard !invalidated, canMutate() else { return }
+        do { try commitPendingSaves(notify: false); try body(); changed() } catch { failure(error) }
+    }
     func save(_ item: ItemID, text _: String) { // No reload while typing/composing.
         guard !invalidated, let editor = rows[item]?.editor, !editor.hasMarkedText() else { return }
         actions.noteTyping()
@@ -498,8 +503,8 @@ final class NoteCardView: NSView, NSTextFieldDelegate {
     func delete(_ item: ItemID) {
         guard canMutate() else { return }
         let previous = orderedRows.firstIndex(where: { $0.item.id == item }) ?? 0
+        // `run` commits this row's pending text first, so the store agrees with the editor.
         let blank = rows[item]?.editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
-        pendingItems.remove(item)
         // Blank rows vanish without a toast; rows with content stay recoverable.
         run { blank ? try actions.discardBlankItem(item, in: id) : try actions.deleteItem(item, in: id) }
         if !orderedRows.isEmpty {
