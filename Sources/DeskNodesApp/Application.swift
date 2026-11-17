@@ -392,8 +392,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notice?.show(message, seconds: seconds)
     }
     private func report(_ error: Error, modal: Bool = false) {
-        let message = String(describing: error)
-        log.error("\(message, privacy: .public)")
+        log.error("\(String(describing: error), privacy: .public)")
+        let message = error.localizedDescription
         guard modal else { inform("无法完成操作：\(message)"); return }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()

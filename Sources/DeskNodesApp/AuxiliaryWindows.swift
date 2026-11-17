@@ -35,7 +35,7 @@ final class AuxiliaryWindows {
             } catch {
                 let alert = NSAlert()
                 alert.messageText = "无法读取历史记录"
-                alert.informativeText = String(describing: error)
+                alert.informativeText = error.localizedDescription
                 alert.runModal()
                 return
             }

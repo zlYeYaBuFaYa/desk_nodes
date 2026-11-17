@@ -293,4 +293,15 @@ final class StoreTests: XCTestCase {
         XCTAssertTrue(try invalid.notes().isEmpty)
     }
 
+    func testUserFacingErrorTextHidesInternalDetails() {
+        func text(_ error: StoreError) -> String { (error as Error).localizedDescription }
+        XCTAssertEqual(text(.invalid("请先完成输入法组词，再导入备份")), "请先完成输入法组词，再导入备份")
+        XCTAssertEqual(text(.invalid("item is not blank")), "操作未能完成，请重试。")
+        XCTAssertEqual(text(.sqlite(code: SQLITE_BUSY, message: "database is locked")), "数据库正忙，请稍后重试。")
+        XCTAssertEqual(text(.sqlite(code: 261, message: "")), "数据库正忙，请稍后重试。") // SQLITE_BUSY_RECOVERY
+        for error: StoreError in [.notFound, .closed, .unsupportedSchema(99), .corrupt("x"), .sqlite(code: 1, message: "x")] {
+            XCTAssertFalse(text(error).contains(String(describing: error)), "\(error) must not leak the raw case")
+            XCTAssertFalse(text(error).unicodeScalars.allSatisfy(\.isASCII), "\(error) reads in Chinese")
+        }
+    }
 }

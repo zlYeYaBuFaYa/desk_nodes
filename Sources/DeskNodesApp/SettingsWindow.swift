@@ -82,7 +82,7 @@ final class SettingsPresentation: ObservableObject {
             settings = try actions.store.settings(); preferences = try actions.store.preferences()
             shortcut = preferences.hotkey; peekShortcut = preferences.peekHotkey
             loginEnabled = login.enabled; loginExplanation = login.explanation
-        } catch { message = String(describing: error) }
+        } catch { message = error.localizedDescription }
     }
     func saveSettings() {
         perform { try actions.store.update(settings); changed() }
@@ -199,7 +199,7 @@ final class SettingsPresentation: ObservableObject {
     }
     private func perform(_ operation: () throws -> Void) {
         message = nil
-        do { try operation() } catch { message = String(describing: error) }
+        do { try operation() } catch { message = error.localizedDescription }
     }
 }
 

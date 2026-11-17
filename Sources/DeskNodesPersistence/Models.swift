@@ -143,6 +143,27 @@ public enum StoreError: Error, Equatable {
     case corrupt(String)
     case closed
 }
+/// What the user reads; logs keep `String(describing:)` with the raw case and details.
+/// `invalid` messages written in Chinese are already meant for the user; ASCII ones are
+/// internal checks and read as a generic failure.
+extension StoreError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .invalid(let message):
+            return message.unicodeScalars.allSatisfy(\.isASCII) ? "操作未能完成，请重试。" : message
+        case .notFound: return "内容已不存在，可能已被删除。"
+        case .closed: return "数据库已关闭，请重新打开 DeskNodes。"
+        case .unsupportedSchema: return "数据来自更新版本的 DeskNodes，请升级后再打开。"
+        case .corrupt: return "数据可能已损坏，建议从备份恢复。"
+        case .sqlite(let code, _):
+            switch code & 0xFF { // primary result code
+            case 5, 6: return "数据库正忙，请稍后重试。" // SQLITE_BUSY, SQLITE_LOCKED
+            case 13: return "磁盘空间不足，无法保存。" // SQLITE_FULL
+            default: return "无法读写数据库（错误 \(code)）。"
+            }
+        }
+    }
+}
 
 public enum NativeStorage {
     /// Only explicit production callers use this path; test stores always supply their own URL.

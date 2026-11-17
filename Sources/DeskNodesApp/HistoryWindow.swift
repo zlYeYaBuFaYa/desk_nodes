@@ -33,7 +33,7 @@ final class HistoryPresentation: ObservableObject {
             today = try BusinessCalendar(timeZone: .current).day(at: Date(), settings: store.settings())
             snapshots = try store.history(in: month); failure = nil
         }
-        catch { snapshots = []; failure = "无法读取历史记录：\(error)" }
+        catch { snapshots = []; failure = "无法读取历史记录：\(error.localizedDescription)" }
     }
     func navigate(_ offset: Int) {
         guard let next = month.offset(offset) else { return }
@@ -55,12 +55,12 @@ final class HistoryPresentation: ObservableObject {
     func reloadDeleted() {
         guard let loadDeleted else { return }
         do { deleted = try loadDeleted(); deletedFailure = nil }
-        catch { deleted = RecentlyDeleted(); deletedFailure = "无法读取最近删除：\(error)" }
+        catch { deleted = RecentlyDeleted(); deletedFailure = "无法读取最近删除：\(error.localizedDescription)" }
     }
     func restore(_ target: DeletedTarget) {
         do { try restoreDeleted?(target); deletedFailure = nil }
         catch StoreError.notFound { deletedFailure = nil } // already restored elsewhere (e.g. toast undo)
-        catch { deletedFailure = "无法恢复：\(error)" }
+        catch { deletedFailure = "无法恢复：\(error.localizedDescription)" }
         reloadDeleted(); reload()
     }
 }
