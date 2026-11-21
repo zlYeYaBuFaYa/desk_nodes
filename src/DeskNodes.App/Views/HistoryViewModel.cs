@@ -81,8 +81,9 @@ internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChan
                 {
                     var stat = day is { } cellDay ? gridStats.GetValueOrDefault(cellDay) : null;
                     var shade = HistoryQueries.Shade(stat is not null, stat?.Progress.Rate);
-                    return new CalendarCell(day, day?.Value.Day.ToString(CultureInfo.InvariantCulture) ?? "", shade == CalendarShade.Weak ? "HistoryWeak" : "HistoryProgress",
-                        shade == CalendarShade.Weak ? 1 : HistoryQueries.ShadeOpacity(shade), day == Navigator.SelectedDay, day == Navigator.CurrentBusinessDay, day?.Value.Month == date.Month,
+                    var paint = HistoryQueries.Paint(shade, SystemParameters.HighContrast);
+                    return new CalendarCell(day, day?.Value.Day.ToString(CultureInfo.InvariantCulture) ?? "", paint.Key,
+                        paint.Opacity, day == Navigator.SelectedDay, day == Navigator.CurrentBusinessDay, day?.Value.Month == date.Month,
                         (day == Navigator.CurrentBusinessDay ? "今天；" : "") + (stat is null ? "无记录" : $"完成率 {100 * (stat.Progress.Rate ?? 0):0}%"));
                 }).ToArray();
                 var snapshot = app.History.DaySnapshot(Navigator.SelectedDay);

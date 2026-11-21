@@ -3,6 +3,10 @@
 <SolidColorBrush x:Key="HistoryWeak" Color="#32312F"/>
 <SolidColorBrush x:Key="HistorySelected" Color="#E8E3DA"/>
 <SolidColorBrush x:Key="HistoryProgress" Color="#9DC7AD"/>
+<SolidColorBrush x:Key="HistoryShadeWeak" Color="#32312F"/>
+<SolidColorBrush x:Key="HistoryShadeLow" Color="#9DC7AD"/>
+<SolidColorBrush x:Key="HistoryShadeMid" Color="#9DC7AD"/>
+<SolidColorBrush x:Key="HistoryShadeFull" Color="#9DC7AD"/>
 <SolidColorBrush x:Key="HistoryTrack" Color="#45423C"/>
 <SolidColorBrush x:Key="HistoryForeground" Color="#F2EFE9"/>
 <SolidColorBrush x:Key="HistorySecondary" Color="#C5C0B7"/>

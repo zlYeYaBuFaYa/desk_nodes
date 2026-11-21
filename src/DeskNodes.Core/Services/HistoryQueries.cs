@@ -72,6 +72,20 @@ public sealed class HistoryQueries(DeskNodesDatabase database)
         CalendarShade.Low => .18, CalendarShade.Mid => .38, CalendarShade.Full => .62,
         CalendarShade.None or CalendarShade.Weak => 0, _ => throw new ArgumentOutOfRangeException(nameof(shade))
     };
+    public readonly record struct CalendarShadePaint(string Key, double Opacity);
+    public static CalendarShadePaint Paint(CalendarShade shade, bool highContrast)
+    {
+        if (!highContrast)
+            return new(shade == CalendarShade.Weak ? "HistoryWeak" : "HistoryProgress", shade == CalendarShade.Weak ? 1 : ShadeOpacity(shade));
+        return shade switch
+        {
+            CalendarShade.Weak => new("HistoryShadeWeak", 1),
+            CalendarShade.Low => new("HistoryShadeLow", 1),
+            CalendarShade.Mid => new("HistoryShadeMid", 1),
+            CalendarShade.Full => new("HistoryShadeFull", 1),
+            _ => new("HistoryProgress", 0)
+        };
+    }
 
     public static string RelativeLabel(HistoryDay day, HistoryDay currentBusinessDay)
     {

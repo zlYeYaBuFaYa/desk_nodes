@@ -89,6 +89,19 @@ public sealed class HistoryActionsTests
         Assert.Equal(expected, HistoryQueries.Shade(snapshot, rate));
         double opacity = HistoryQueries.ShadeOpacity(expected);
         Assert.Equal(expected switch { CalendarShade.Low => .18, CalendarShade.Mid => .38, CalendarShade.Full => .62, _ => 0 }, opacity);
+        var plain = HistoryQueries.Paint(expected, false);
+        Assert.Equal(expected == CalendarShade.Weak ? "HistoryWeak" : "HistoryProgress", plain.Key);
+        Assert.Equal(expected == CalendarShade.Weak ? 1 : opacity, plain.Opacity);
+        var contrast = HistoryQueries.Paint(expected, true);
+        Assert.Equal(expected switch
+        {
+            CalendarShade.Weak => "HistoryShadeWeak",
+            CalendarShade.Low => "HistoryShadeLow",
+            CalendarShade.Mid => "HistoryShadeMid",
+            CalendarShade.Full => "HistoryShadeFull",
+            _ => "HistoryProgress"
+        }, contrast.Key);
+        Assert.Equal(expected == CalendarShade.None ? 0 : 1, contrast.Opacity);
     }
 
     [Theory]

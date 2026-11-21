@@ -210,7 +210,11 @@
 
 [`SaveHotkey`](../src/DeskNodes.App/Views/SettingsViewModel.SystemServices.cs) 在 `catch` 里设置 `HotkeyError`，不调用 `CancelRecording`。录制标志还在时，`NewHotkey` 和 `FloatHotkey` 返回刚录下的字符串。错误文案写的是原快捷键已保留。其他设置在保存被拒绝后会再通知一次，把界面绑回已保存的值。
 
-**M26 高对比下，日格档位只靠透明度区分。** [`HighContrast.xaml`](../src/DeskNodes.App/Themes/HighContrast.xaml) 里 `HistoryWeak` 和 `HistoryBackground` 都是系统 Window 色。日格的低、中、满三档共用 `HistoryProgress`（Highlight），不透明度来自 [`ShadeOpacity`](../src/DeskNodes.Core/Services/HistoryQueries.cs) 的 0.18、0.38、0.62。[UI 规格](UI_SPEC.md#selection) 写明高对比不能把低透明度当作唯一反馈。历史按钮禁用时只有 0.45 的透明度。多选遮罩是 Window 色加 0.5 透明度；已选便签仍有 Highlight 描边。七色便签在高对比下收成 Window，选中收成 Highlight，这与「用语义色替换装饰色」一致，不单列。
+**M26 高对比下，日格档位只靠透明度区分。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`HighContrast.xaml`](../src/DeskNodes.App/Themes/HighContrast.xaml) 里 `HistoryWeak` 和 `HistoryBackground` 都是系统 Window 色。日格的低、中、满三档共用 `HistoryProgress`（Highlight），不透明度来自 [`ShadeOpacity`](../src/DeskNodes.Core/Services/HistoryQueries.cs) 的 0.18、0.38、0.62。[UI 规格](UI_SPEC.md#selection) 写明高对比不能把低透明度当作唯一反馈。历史按钮禁用时只有 0.45 的透明度。多选遮罩是 Window 色加 0.5 透明度；已选便签仍有 Highlight 描边。七色便签在高对比下收成 Window，选中收成 Highlight，这与「用语义色替换装饰色」一致，不单列。
 
 ## 低
 

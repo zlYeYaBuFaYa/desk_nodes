@@ -31,6 +31,10 @@
     <SolidColorBrush x:Key="HistoryWeak" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
     <SolidColorBrush x:Key="HistorySelected" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
     <SolidColorBrush x:Key="HistoryProgress" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="HistoryShadeWeak" Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}"/>
+    <SolidColorBrush x:Key="HistoryShadeLow" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="HistoryShadeMid" Color="{DynamicResource {x:Static SystemColors.HotTrackColorKey}}"/>
+    <SolidColorBrush x:Key="HistoryShadeFull" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
     <SolidColorBrush x:Key="HistoryTrack" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
     <SolidColorBrush x:Key="HistoryForeground" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
     <SolidColorBrush x:Key="HistorySecondary" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
