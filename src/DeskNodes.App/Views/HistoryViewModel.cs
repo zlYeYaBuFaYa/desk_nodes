@@ -84,7 +84,7 @@ internal sealed class HistoryViewModel(AppCoordinator app) : INotifyPropertyChan
                     var paint = HistoryQueries.Paint(shade, SystemParameters.HighContrast);
                     return new CalendarCell(day, day?.Value.Day.ToString(CultureInfo.InvariantCulture) ?? "", paint.Key,
                         paint.Opacity, day == Navigator.SelectedDay, day == Navigator.CurrentBusinessDay, day?.Value.Month == date.Month,
-                        (day == Navigator.CurrentBusinessDay ? "今天；" : "") + (stat is null ? "无记录" : $"完成率 {100 * (stat.Progress.Rate ?? 0):0}%"));
+                        HistoryQueries.DayStatus(day == Navigator.CurrentBusinessDay, stat is not null, stat?.Progress.Rate));
                 }).ToArray();
                 var snapshot = app.History.DaySnapshot(Navigator.SelectedDay);
                 Notes = snapshot.Notes.Select(n => new HistoryNoteView(n.Note.Title, HistoryRules.ColorKey(n.Note.Color), n.Deleted,

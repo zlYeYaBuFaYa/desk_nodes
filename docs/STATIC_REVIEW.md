@@ -242,7 +242,11 @@
 
 便签和工具条会打开设置。快捷键表把 `Ctrl+,` 列为进入设置的键。历史窗口只通过 [`AuxiliaryWindowShortcuts`](../src/DeskNodes.App/Views/AuxiliaryWindowShortcuts.cs) 转发 `Ctrl+N`。[`LicenseWindow`](../src/DeskNodes.App/Views/LicenseWindow.xaml.cs) 没有按键处理。
 
-**L5 分母为 0 的日期，辅助说明说完成率 0%。** 月标题在 `Total == 0` 时是「—」。[`HistoryViewModel`](../src/DeskNodes.App/Views/HistoryViewModel.cs) 把 `Rate ?? 0` 写进日格的 `HelpText`。自动化名称只有日期。`HelpText` 不是 UIA 名称。Narrator 是否读出说明，见末节。
+**L5 分母为 0 的日期，辅助说明说完成率 0%。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+月标题在 `Total == 0` 时是「—」。[`HistoryViewModel`](../src/DeskNodes.App/Views/HistoryViewModel.cs) 把 `Rate ?? 0` 写进日格的 `HelpText`。自动化名称只有日期。`HelpText` 不是 UIA 名称。Narrator 是否读出说明，见末节。
 
 **L6 框选的起拖阈值是 5 个物理像素。** [`MoveBox`](../src/DeskNodes.App/PresentationCoordinator.cs) 用 `GetCursorPos` 的曼哈顿距离。缩放到 200% 以上时，一次很小的点击会变成拖动。
 

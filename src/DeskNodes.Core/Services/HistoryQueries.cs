@@ -87,6 +87,8 @@ public sealed class HistoryQueries(DeskNodesDatabase database)
         };
     }
 
+    public static string DayStatus(bool today, bool hasSnapshot, double? rate) =>
+        (today ? "今天；" : "") + (!hasSnapshot ? "无记录" : rate is null ? "完成率 —" : $"完成率 {100 * rate:0}%");
     public static string RelativeLabel(HistoryDay day, HistoryDay currentBusinessDay)
     {
         int elapsed = currentBusinessDay.Value.DayNumber - day.Value.DayNumber;

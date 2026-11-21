@@ -115,6 +115,14 @@ public sealed class HistoryActionsTests
     public void RelativeLabelsUseBusinessDay(string day, string expected)
         => Assert.Equal(expected, HistoryQueries.RelativeLabel(Day(day), Day("2026-11-15")));
 
+    [Theory]
+    [InlineData(false, false, null, "无记录")]
+    [InlineData(true, false, null, "今天；无记录")]
+    [InlineData(false, true, null, "完成率 —")]
+    [InlineData(false, true, 0.5, "完成率 50%")]
+    public void DayStatusDoesNotCallAnEmptyDenominatorZero(bool today, bool snapshot, double? rate, string expected) =>
+        Assert.Equal(expected, HistoryQueries.DayStatus(today, snapshot, rate));
+
     [Fact]
     public void CalendarNavigationCrossesMonthsClampsDaysButAllowsFutureMonthsAndSelection()
     {
