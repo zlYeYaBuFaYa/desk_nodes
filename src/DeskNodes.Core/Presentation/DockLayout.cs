@@ -13,6 +13,14 @@ public static class DockLayout
     private const double OverflowLength = 96;
     private const double MinimumNoteLength = 120;
     private const double DockSpacing = 12;
+    public static int NextOrder(IEnumerable<int> orders)
+    {
+        int max = -1;
+        foreach (var order in orders)
+            if (order > max) max = order;
+        return max == int.MaxValue ? max : max + 1;
+    }
+
     public static DockResult Arrange(ScreenInfo screen, DockEdge edge, IEnumerable<DockItem> items,
         RectD? homeZone = null, int page = 0)
     {

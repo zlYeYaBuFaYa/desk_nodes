@@ -65,7 +65,13 @@ internal sealed partial class NoteWindow
         {
             var current = Current();
             var screen = app.Screens.GetScreens().Resolve(ScreenProvider.DeviceForWindow(new WindowInteropHelper(this).Handle));
-            app.Update(current, placement: new(current.Placement.Bounds, screen.DeviceHint, edge, app.Repository.GetNotes().Count), free: current.FreeRestore ?? current.Placement.Bounds);
+            bool sameEdge = current.Placement.DockEdge == edge && current.Placement.DisplayDeviceHint == screen.DeviceHint;
+            int order = sameEdge
+                ? current.Placement.DockOrder ?? 0
+                : DockLayout.NextOrder(app.Repository.GetNotes().Where(n => n.Id != current.Id
+                    && n.Placement.DockEdge == edge && n.Placement.DisplayDeviceHint == screen.DeviceHint)
+                    .Select(n => n.Placement.DockOrder ?? 0));
+            app.Update(current, placement: new(current.Placement.Bounds, screen.DeviceHint, edge, order), free: current.FreeRestore ?? current.Placement.Bounds);
             foreach (Window window in Application.Current.Windows) if (window is NoteWindow n) n.Place();
         }, note.Placement.DockEdge == edge);
         if (note.Placement.DockEdge is not null) Command(menu, "取消停靠", () =>

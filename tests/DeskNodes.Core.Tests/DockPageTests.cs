@@ -121,4 +121,12 @@ public sealed class DockPageTests
         var second = DockLayout.Arrange(screen, DockEdge.Left, items, page: 1);
         Assert.Equal(items[1].Id, Assert.Single(second.Visible).Id);
     }
+
+    [Fact]
+    public void NextDockOrderAppendsAfterTheHighestOrderOnThatEdge()
+    {
+        Assert.Equal(0, DockLayout.NextOrder([]));
+        Assert.Equal(3, DockLayout.NextOrder([0, 2, 1]));
+        Assert.Equal(int.MaxValue, DockLayout.NextOrder([int.MaxValue]));
+    }
 }
