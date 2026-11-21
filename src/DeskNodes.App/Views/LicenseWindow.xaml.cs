@@ -15,6 +15,7 @@ internal partial class LicenseWindow : Window
         Owner = owner;
         DataContext = this;
         SourceInitialized += (_, _) => AuxiliaryWindowPlacement.Position(this, app.Screens, 680, 520);
+        PreviewKeyDown += (_, e) => AuxiliaryWindowShortcuts.TryOpenSettings(app, e);
     }
     internal static void Open(Window owner, AppCoordinator app)
     {

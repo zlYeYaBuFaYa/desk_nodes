@@ -103,6 +103,7 @@ internal partial class HistoryWindow : Window
     private void Navigate(object sender, KeyEventArgs e)
     {
         AuxiliaryWindowShortcuts.TryCreateNote(app, e);
+        AuxiliaryWindowShortcuts.TryOpenSettings(app, e);
         if (e.Handled)
             return;
         bool control = Keyboard.Modifiers == ModifierKeys.Control;
