@@ -148,7 +148,7 @@ public static class ToolbarGeometry
     {
         var size = FullSize(orientation, hasPaging, textScale);
         var c = home.Entrance.Center;
-        double x = c.X - 32, y = c.Y - 32;
+        double x = c.X - size.Width / 2, y = c.Y - size.Height / 2;
         if (orientation == ToolbarOrientation.Vertical)
             y = home.Position.Edge == ScreenEdge.Bottom ? c.Y + 28 - size.Height : c.Y - 28;
         else

@@ -160,7 +160,11 @@
 
 减少动画的 `Transition` 直接调用 `finished()`，不停止帧计时。下一帧把已经减少动画的经过时间当成时长，再调用一次 `finished`。`SavePreferences` 和 `AnimationCompleted` 会各跑两次。
 
-**M18 文字缩放 1.5 时，手柄和圆形入口不重合。** [`ToolbarGeometry.FullSize`](../src/DeskNodes.Core/Presentation/ToolbarGeometry.cs) 的短边是 `64 * max(1, textScale)`。展开的横轴中心用固定的 32 DIP 和沿边 ±28。圆形入口在文字缩放 1 时是 56 DIP，放在工作区角上。缩放 1.5 时，顶边或底边上的垂直工具条、左边或右边上的水平工具条，手柄会偏离圆形入口 16 DIP。贴住屏幕边的那一轴仍由 `Fit` 对齐。测试 `ExpandedHomePreservesTheHandleEntrance` 只用缩放 1。[FR-08](REQUIREMENTS.md) 要求手柄端留在圆形入口上。小于 1 的文字缩放不会缩小命中目标（`Math.Max(1, Scale)`），字号仍会变小。
+**M18 文字缩放 1.5 时，手柄和圆形入口不重合。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`ToolbarGeometry.FullSize`](../src/DeskNodes.Core/Presentation/ToolbarGeometry.cs) 的短边是 `64 * max(1, textScale)`。展开的横轴中心用固定的 32 DIP 和沿边 ±28。圆形入口在文字缩放 1 时是 56 DIP，放在工作区角上。缩放 1.5 时，顶边或底边上的垂直工具条、左边或右边上的水平工具条，手柄会偏离圆形入口 16 DIP。贴住屏幕边的那一轴仍由 `Fit` 对齐。测试 `ExpandedHomePreservesTheHandleEntrance` 只用缩放 1。[FR-08](REQUIREMENTS.md) 要求手柄端留在圆形入口上。小于 1 的文字缩放不会缩小命中目标（`Math.Max(1, Scale)`），字号仍会变小。
 
 **M19 悬停展开后的 1.5 秒宽限，不会被拖动或菜单重置成完整闲置。** [`ToolbarIdleMachine`](../src/DeskNodes.Core/Presentation/ToolbarIdleMachine.cs) 只在 `Operated` 或 `Clicked` 时清掉宽限。拖动、菜单打开、设置可见只把截止时间设成空，宽限标志还在。只靠悬停展开再离开后，宽限为真；接着拖动或打开菜单，下一次等待仍是 1.5 秒，而不是 10、15 或 30 秒。菜单关闭时的 `Tick()` 没有带 `Operated: true`。[FR-08](REQUIREMENTS.md) 要求菜单或打断重新计算完整闲置。测试从冷的工具条开始，宽限一开始就是 false。
 

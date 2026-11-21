@@ -180,15 +180,17 @@ public sealed class ToolbarRulesTests
     }
 
     [Theory]
-    [InlineData(ToolbarOrientation.Vertical, ScreenEdge.Bottom)]
-    [InlineData(ToolbarOrientation.Vertical, ScreenEdge.Right)]
-    [InlineData(ToolbarOrientation.Horizontal, ScreenEdge.Right)]
-    [InlineData(ToolbarOrientation.Horizontal, ScreenEdge.Top)]
-    public void ExpandedHomePreservesTheHandleEntrance(ToolbarOrientation orientation, ScreenEdge edge)
+    [InlineData(ToolbarOrientation.Vertical, ScreenEdge.Bottom, 1)]
+    [InlineData(ToolbarOrientation.Vertical, ScreenEdge.Right, 1)]
+    [InlineData(ToolbarOrientation.Vertical, ScreenEdge.Top, 1.5)]
+    [InlineData(ToolbarOrientation.Horizontal, ScreenEdge.Right, 1)]
+    [InlineData(ToolbarOrientation.Horizontal, ScreenEdge.Top, 1)]
+    [InlineData(ToolbarOrientation.Horizontal, ScreenEdge.Left, 1.5)]
+    public void ExpandedHomePreservesTheHandleEntrance(ToolbarOrientation orientation, ScreenEdge edge, double scale)
     {
         var screen = new ScreenInfo("a", "a", new(0, 0, 1000, 800), new(0, 0, 1000, 760), true);
         var home = ToolbarGeometry.Home(new([screen]), screen, new(edge));
-        var full = ToolbarGeometry.Expand(home, screen.WorkArea, orientation, false);
+        var full = ToolbarGeometry.Expand(home, screen.WorkArea, orientation, false, scale);
         Assert.Equal(home.Entrance, ToolbarRules.HandleRound(full, orientation, edge));
     }
 
