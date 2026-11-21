@@ -41,6 +41,7 @@ public static class ToolbarRules
         (CanManage(count) && page > 0, CanManage(count) && page < lastPage);
     public static bool CanManage(int count) => count > 0;
     public static bool IsDrag(double x, double y) => Math.Max(Math.Abs(x), Math.Abs(y)) >= 4;
+    public static bool PartReceivesPointer(double opacity) => opacity > 0;
     public static double Spring(double seconds)
     {
         if (seconds <= 0) return 0;

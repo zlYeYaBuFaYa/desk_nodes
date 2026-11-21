@@ -283,11 +283,7 @@ internal partial class ToolbarWindow : Window
         Parts.Visibility = Visibility.Visible;
         Parts.Opacity = 1;
         Rebuild();
-        foreach (UIElement child in AnimatedParts)
-        {
-            child.Opacity = 1;
-            child.RenderTransform = Transform.Identity;
-        }
+        ShowExpandedParts();
         RoundLabel.Visibility = Visibility.Collapsed;
         Place(ToolbarGeometry.ResolveAnchor(screens, app.Preferences, app.Preferences.Orientation, Paging, app.TextScale));
         Show();

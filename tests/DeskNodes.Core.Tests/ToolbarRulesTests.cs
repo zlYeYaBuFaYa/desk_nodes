@@ -113,6 +113,14 @@ public sealed class ToolbarRulesTests
     public void DragUsesMaximumAxisAndIncludesThreshold(double x, double y, bool expected) =>
         Assert.Equal(expected, ToolbarRules.IsDrag(x, y));
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(-1, false)]
+    [InlineData(0.01, true)]
+    [InlineData(1, true)]
+    public void FadedToolbarPartDoesNotReceivePointer(double opacity, bool expected) =>
+        Assert.Equal(expected, ToolbarRules.PartReceivesPointer(opacity));
+
     [Fact]
     public void SpringSettlesWithinHalfSecondAndHasSmallOvershoot()
     {

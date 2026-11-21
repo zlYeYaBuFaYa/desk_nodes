@@ -92,6 +92,7 @@ internal partial class ToolbarWindow
                 var child = children[i];
                 double progress = expand ? ToolbarRules.ControlProgress(t / expansionScale, atEnd ? children.Length - 1 - i : i) : Math.Clamp(t / .08, 0, 1);
                 child.Opacity = expand ? opacityFrom[i] + (1 - opacityFrom[i]) * progress : opacityFrom[i] * (1 - progress);
+                child.IsHitTestVisible = ToolbarRules.PartReceivesPointer(child.Opacity);
                 child.RenderTransform = new TranslateTransform(0, expand ? offsetFrom[i] * (1 - progress) : 0);
             }
         };
@@ -100,12 +101,8 @@ internal partial class ToolbarWindow
             if (generation != current) return;
             animating = false;
             Place(end);
-            Parts.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
-            foreach (UIElement child in AnimatedParts)
-            {
-                child.Opacity = 1;
-                child.RenderTransform = Transform.Identity;
-            }
+            if (expand) ShowExpandedParts();
+            else ConcealExpandedParts();
             bool saved;
             if (expand)
                 saved = app.SavePreferences(app.Preferences with { Anchor = new(new(end.Center.X * screen.DpiScale, end.Center.Y * screen.DpiScale)) });
@@ -124,6 +121,26 @@ internal partial class ToolbarWindow
         };
         if (reduce) finished();
         else frames.Start();
+    }
+    private void ShowExpandedParts()
+    {
+        Parts.Visibility = Visibility.Visible;
+        foreach (UIElement child in AnimatedParts)
+        {
+            child.Opacity = 1;
+            child.IsHitTestVisible = true;
+            child.RenderTransform = Transform.Identity;
+        }
+    }
+    private void ConcealExpandedParts()
+    {
+        Parts.Visibility = Visibility.Collapsed;
+        foreach (UIElement child in AnimatedParts)
+        {
+            child.Opacity = 1;
+            child.IsHitTestVisible = true;
+            child.RenderTransform = Transform.Identity;
+        }
     }
     private void RestoreStable() => RestoreExpanded();
     private void RenderFrame()

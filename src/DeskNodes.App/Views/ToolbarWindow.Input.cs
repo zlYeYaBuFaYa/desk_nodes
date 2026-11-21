@@ -35,6 +35,7 @@ internal partial class ToolbarWindow
         animating = false;
         Place(Bounds);
         generation++;
+        if (round) ConcealExpandedParts();
         pressed = true;
         dragging = false;
         downPixels = Pointer();
