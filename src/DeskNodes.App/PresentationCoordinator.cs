@@ -164,7 +164,7 @@ internal sealed class PresentationCoordinator : IDisposable
             window.Place();
         Refresh();
         if (app.Windows.TryGetValue(id, out var target))
-            target.SetTemporarilyRaised(true);
+            target.Reveal();
     });
     private IEnumerable<NoteId> Visible() => Suppressed.Where(p => p.Value == SuppressionReason.None).Select(p => p.Key);
     public void Collapse(bool collapsed)

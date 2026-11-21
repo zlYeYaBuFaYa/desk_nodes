@@ -192,7 +192,11 @@
 
 [`Collapse`](../src/DeskNodes.App/PresentationCoordinator.cs) 给每张可见便签调用一次 `Present`（0.28 秒）。回调里先 `state.Complete`，再 `Refresh`。刷新时，只要过渡不再是 `Collapsing`，或者隐藏原因不只是收起，窗口就被 `Hide`。第一张结束之后，其余仍在动画里的便签被藏起来。减少动画时 [`Present`](../src/DeskNodes.App/Views/NoteWindow.Presentation.cs) 在方法内部同步调用回调，循环还没走完过渡就结束了。更新的 `Request` 会增加 generation，旧回调被丢掉，这一条是对的。
 
-**M23 点溢出标签后，便签会停在临时置顶。** [`SelectDockNote`](../src/DeskNodes.App/PresentationCoordinator.cs) 在 `Refresh` 之后调用 `SetTemporarilyRaised(true)`。这个方法里没有再把它设回去。[`WindowLevelService`](../src/DeskNodes.App/Platform/WindowLevelService.cs) 于是使用 `HWND_TOPMOST`。下一次刷新会按「正在浮起或正在多选」重算；切到其他应用时 `EndRaised` 也会按是否仍在多选收回。[FR-05](REQUIREMENTS.md) 要求溢出标签把对应便签显示出来。
+**M23 点溢出标签后，便签会停在临时置顶。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`SelectDockNote`](../src/DeskNodes.App/PresentationCoordinator.cs) 在 `Refresh` 之后调用 `SetTemporarilyRaised(true)`。这个方法里没有再把它设回去。[`WindowLevelService`](../src/DeskNodes.App/Platform/WindowLevelService.cs) 于是使用 `HWND_TOPMOST`。下一次刷新会按「正在浮起或正在多选」重算；切到其他应用时 `EndRaised` 也会按是否仍在多选收回。[FR-05](REQUIREMENTS.md) 要求溢出标签把对应便签显示出来。
 
 **M24 从工具条或托盘进入多选时，键盘没有落点。** [`EnterSelection`](../src/DeskNodes.App/PresentationCoordinator.cs) 显示覆盖层和操作条，不把焦点给任何便签。[`PresentationBar`](../src/DeskNodes.App/Views/PresentationBar.xaml.cs) 设置 `WS_EX_NOACTIVATE`，自己不处理按键。`Esc`、`Ctrl+A`、`Delete` 只从便签的 `PreviewKeyDown` 进入 [`Keys`](../src/DeskNodes.App/PresentationCoordinator.cs)。[FR-15](REQUIREMENTS.md) 要求这些键在模式内可用。条上的按钮仍可用指针操作。空白点击清选择且不退出，这一条是对的。
 

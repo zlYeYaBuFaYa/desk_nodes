@@ -59,7 +59,7 @@ internal static partial class NativeMethods
     internal const uint SPI_GETCLIENTAREAANIMATION = 0x1042;
     internal const uint MONITOR_DEFAULTTONEAREST = 2, MONITORINFOF_PRIMARY = 1;
     internal const int MDT_EFFECTIVE_DPI = 0;
-    internal static readonly nint Bottom = 1, Topmost = -1, NotTopmost = -2;
+    internal static readonly nint Top = 0, Bottom = 1, Topmost = -1, NotTopmost = -2;
     internal const uint NoSize = 1, NoMove = 2, NoZOrder = 4, NoActivate = 0x10, NoOwnerZOrder = 0x200;
     [StructLayout(LayoutKind.Sequential)] internal struct Point { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)] internal struct Rect { public int Left, Top, Right, Bottom; }

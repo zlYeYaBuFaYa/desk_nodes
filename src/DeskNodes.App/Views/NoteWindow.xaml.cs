@@ -32,6 +32,7 @@ internal sealed partial class NoteWindow : Window
         levels.TemporarilyRaised = raised;
         levels.Apply(!raised);
     }
+    public void Reveal() => levels?.Reveal();
     public double MeasureForArrangement(double width)
     {
         rows.Measure(new Size(Math.Max(1, width - 36), double.PositiveInfinity));

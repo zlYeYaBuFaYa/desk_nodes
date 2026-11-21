@@ -13,4 +13,6 @@ internal sealed class WindowLevelService(nint handle)
         if (level == NoteLevel.Back && returnBoundary)
             NativeMethods.SetWindowPos(handle, NativeMethods.Bottom, 0, 0, 0, 0, NativeMethods.NoActivate | NativeMethods.NoMove | NativeMethods.NoSize | NativeMethods.NoOwnerZOrder);
     }
+    public void Reveal() => NativeMethods.SetWindowPos(handle, NativeMethods.Top, 0, 0, 0, 0,
+        NativeMethods.NoActivate | NativeMethods.NoMove | NativeMethods.NoSize | NativeMethods.NoOwnerZOrder);
 }
