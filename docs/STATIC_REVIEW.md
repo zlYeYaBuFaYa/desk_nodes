@@ -16,7 +16,9 @@
 
 ### H1 导入失败可以把活库写到一半
 
-[FR-13](REQUIREMENTS.md) 要求无效或冲突时保留旧库，替换本身是原子的。[`DeskNodesDatabase.ReplaceFrom`](../src/DeskNodes.Core/Storage/DeskNodesDatabase.cs) 的注释写成 “atomic online backup transaction”，实现是对已经打开的活连接调用 `SqliteConnection.BackupDatabase`。这是 `sqlite3_backup_step` 逐页拷贝，不包在事务里。拷贝开始之后若磁盘满或 I/O 失败，目标库不会回到拷贝前的内容。取消只在拷贝开始前检查。
+**复核：不成立，不改代码。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。SQLite 在目标库上持有写事务；`sqlite3_backup_step` 尚未返回 `SQLITE_DONE` 时，`sqlite3_backup_finish` 会回滚该事务。`Microsoft.Data.Sqlite` 的 `BackupDatabase` 用 `using` 持有备份句柄，`step` 抛错时仍会 `finish`。测试 `DestinationWriteLockCausesBackupFailureAndPreservesLiveData` 已覆盖失败后活库保持原数据。进程在未完成的写事务中退出时，由 SQLite 日志在下次打开时恢复。
+
+原先的判断是：[FR-13](REQUIREMENTS.md) 要求无效或冲突时保留旧库，替换本身是原子的。[`DeskNodesDatabase.ReplaceFrom`](../src/DeskNodes.Core/Storage/DeskNodesDatabase.cs) 的注释写成 “atomic online backup transaction”，实现是对已经打开的活连接调用 `SqliteConnection.BackupDatabase`。这是 `sqlite3_backup_step` 逐页拷贝，不包在事务里。拷贝开始之后若磁盘满或 I/O 失败，目标库不会回到拷贝前的内容。取消只在拷贝开始前检查。
 
 导入顺序是：先为新库准备新建热键候选，再 `ReplaceFrom`，成功后才 `Commit` 热键。`ReplaceFrom` 抛出时候选会被释放，旧热键还在；活库可能已经残缺。浮起热键在替换成功之后注册失败，只记冲突、不回滚数据，这与文档一致，不记在本项。
 
