@@ -15,6 +15,7 @@
 - [Windows 构建与手工验证](WINDOWS_BUILD.md)：字体、发布、数据目录与可执行检查清单。
 - [决策记录](DECISIONS.md)：D1–D39 的实现取舍与待验证影响。
 - [备份格式](BACKUP_FORMAT.md)：Windows 独立备份协议。
+- [静态审查](STATIC_REVIEW.md)：`feat-win` 在 `fbec819` 上已核对的静态缺陷。未在 Windows 真机运行。行为仍以需求为准，本记录不改产品规则。
 
 ## 维护约定
 
