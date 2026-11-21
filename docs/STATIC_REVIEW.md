@@ -224,7 +224,11 @@
 
 [`App.OnStartup`](../src/DeskNodes.App/App.xaml.cs) 的总 `catch` 使用这句话。偏好、字体或热键在数据库已经打开之后失败，对话框仍这么写。
 
-**L2 折叠后的摘要文字不能拖。** [`HeaderDrag`](../src/DeskNodes.App/Views/NoteWindow.Layout.cs) 只在事件源就是标题网格时开始拖动。折叠摘要 `TextBlock` 可以命中，没有自己的鼠标处理。顶部 30×10 的手柄仍可拖。[FR-05](REQUIREMENTS.md) 要求非编辑标题区域拖动。
+**L2 折叠后的摘要文字不能拖。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`HeaderDrag`](../src/DeskNodes.App/Views/NoteWindow.Layout.cs) 只在事件源就是标题网格时开始拖动。折叠摘要 `TextBlock` 可以命中，没有自己的鼠标处理。顶部 30×10 的手柄仍可拖。[FR-05](REQUIREMENTS.md) 要求非编辑标题区域拖动。
 
 **L3 收起落点在约 6 DIP 的窄带里会左右分开。** [`CollapseGeometry.Target`](../src/DeskNodes.Core/Presentation/CollapseGeometry.cs) 按每一层单独判断是否超出工作区右缘。层 0 和层 1 可以留在右侧，层 2 翻到左侧。
 

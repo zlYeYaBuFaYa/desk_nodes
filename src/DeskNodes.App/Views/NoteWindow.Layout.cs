@@ -134,7 +134,15 @@ internal sealed partial class NoteWindow
 
     private void HeaderDrag(object sender, MouseButtonEventArgs e)
     {
-        if (e.OriginalSource == sender) Drag(sender, e);
+        DependencyObject? source = e.OriginalSource as DependencyObject;
+        while (source is not null)
+        {
+            if (source is System.Windows.Controls.TextBox or System.Windows.Controls.Button) return;
+            source = source is System.Windows.ContentElement content
+                ? System.Windows.ContentOperations.GetParent(content)
+                : VisualTreeHelper.GetParent(source);
+        }
+        Drag(sender, e);
     }
 
     private void Animate(bool delete)
