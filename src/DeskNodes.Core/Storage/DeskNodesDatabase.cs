@@ -13,6 +13,8 @@ public sealed class DeskNodesDatabase : IDisposable
     private int transactionDepth;
     private long nextSavepoint;
     private bool disposed;
+    private bool poisoned;
+    internal int FailRollbackForTests;
     private readonly List<(Action Callback, bool? Commit)> completions = [];
 
     private DeskNodesDatabase(SqliteConnection connection) => this.connection = connection;
@@ -86,7 +88,7 @@ public sealed class DeskNodesDatabase : IDisposable
         ArgumentNullException.ThrowIfNull(read);
         lock (gate)
         {
-            ObjectDisposedException.ThrowIf(disposed, this);
+            EnsureUsable();
             return read(connection);
         }
     }
@@ -106,7 +108,7 @@ public sealed class DeskNodesDatabase : IDisposable
         {
             lock (gate)
             {
-                ObjectDisposedException.ThrowIf(disposed, this);
+                EnsureUsable();
                 bool outer = transactionDepth == 0;
                 int start = completions.Count;
                 bool committed = false;
@@ -124,33 +126,43 @@ public sealed class DeskNodesDatabase : IDisposable
                 {
                     try
                     {
-                        Execute(connection, outer ? "ROLLBACK;" :
-                            $"ROLLBACK TO SAVEPOINT {savepoint}; RELEASE SAVEPOINT {savepoint};");
+                        Rollback(outer, savepoint);
                     }
                     catch (SqliteException rollback)
                     {
+                        poisoned = true;
+                        completions.Clear();
                         throw new AggregateException("事务执行及回滚均失败，请关闭数据库后重试。", original, rollback);
                     }
                     throw;
                 }
                 finally
                 {
-                    transactionDepth--;
-                    if (outer)
+                    if (poisoned)
                     {
-                        callbacks = completions.Where(c => c.Commit is null || c.Commit == committed).Select(c => c.Callback).ToList();
+                        transactionDepth = 0;
+                        callbacks = [];
                         completions.Clear();
                     }
-                    else if (!committed)
+                    else
                     {
-                        // A caught savepoint failure must never acknowledge its writes at outer commit.
-                        for (int i = completions.Count - 1; i >= start; i--)
+                        transactionDepth--;
+                        if (outer)
                         {
-                            var entry = completions[i];
-                            if (entry.Commit == true)
-                                completions.RemoveAt(i);
-                            else
-                                completions[i] = (entry.Callback, null);
+                            callbacks = completions.Where(c => c.Commit is null || c.Commit == committed).Select(c => c.Callback).ToList();
+                            completions.Clear();
+                        }
+                        else if (!committed)
+                        {
+                            // A caught savepoint failure must never acknowledge its writes at outer commit.
+                            for (int i = completions.Count - 1; i >= start; i--)
+                            {
+                                var entry = completions[i];
+                                if (entry.Commit == true)
+                                    completions.RemoveAt(i);
+                                else
+                                    completions[i] = (entry.Callback, null);
+                            }
                         }
                     }
                 }
@@ -186,7 +198,7 @@ public sealed class DeskNodesDatabase : IDisposable
         ArgumentNullException.ThrowIfNull(callback);
         lock (gate)
         {
-            ObjectDisposedException.ThrowIf(disposed, this);
+            EnsureUsable();
             if (transactionDepth != 0)
             {
                 completions.Add((callback, commit));
@@ -205,7 +217,7 @@ public sealed class DeskNodesDatabase : IDisposable
             throw new ArgumentException("不能从同一个数据库导入。", nameof(staging));
         lock (gate)
         {
-            ObjectDisposedException.ThrowIf(disposed, this);
+            EnsureUsable();
             if (transactionDepth != 0)
                 throw new InvalidOperationException("导入不能在外层事务中执行。");
             staging.Read(source =>
@@ -214,6 +226,23 @@ public sealed class DeskNodesDatabase : IDisposable
                 return 0;
             });
         }
+    }
+
+    private void EnsureUsable()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (poisoned)
+            throw new InvalidOperationException("事务回滚失败，请关闭数据库后重试。");
+    }
+
+    private void Rollback(bool outer, string savepoint)
+    {
+        if (FailRollbackForTests > 0)
+        {
+            FailRollbackForTests--;
+            throw new SqliteException("simulated rollback failure", 10);
+        }
+        Execute(connection, outer ? "ROLLBACK;" : $"ROLLBACK TO SAVEPOINT {savepoint}; RELEASE SAVEPOINT {savepoint};");
     }
 
     internal static void Execute(SqliteConnection connection, string sql)

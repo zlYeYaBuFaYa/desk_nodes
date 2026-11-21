@@ -190,6 +190,31 @@ public sealed class DatabaseTests
     }
 
     [Fact]
+    public void FailedRollbackPoisonsTheConnectionAndSkipsRollbackCallbacks()
+    {
+        using var directory = new TestDirectory();
+        using var database = directory.Open();
+        var repository = new NoteRepository(database);
+        var note = Note();
+        repository.Insert(note);
+        bool rolledBack = false;
+        database.FailRollbackForTests = 1;
+        var failure = Assert.Throws<AggregateException>(() => database.Transaction(_ =>
+        {
+            database.OnOuterRolledBack(() => rolledBack = true);
+            throw new InvalidOperationException("fail");
+        }));
+        Assert.Equal(2, failure.InnerExceptions.Count);
+        Assert.False(rolledBack);
+        var blocked = Assert.Throws<InvalidOperationException>(() => repository.GetNote(note.Id));
+        Assert.Contains("关闭数据库", blocked.Message);
+        Assert.Throws<InvalidOperationException>(() => database.Transaction(_ => { }));
+        Assert.Equal(0, database.FailRollbackForTests);
+        using var reopened = directory.Open();
+        Assert.Equal(note, new NoteRepository(reopened).GetNote(note.Id));
+    }
+
+    [Fact]
     public void DeferredForeignKeyRequiresHeaderAtCommitAndRollbackKeepsConnectionUsable()
     {
         using var directory = new TestDirectory();
