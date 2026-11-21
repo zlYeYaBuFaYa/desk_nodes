@@ -180,7 +180,11 @@
 
 ### 展示、设置与外观
 
-**M21 未处理异常没有标记为已处理，退出也不冲掉编辑缓冲。** [`App.OnStartup`](../src/DeskNodes.App/App.xaml.cs) 的 `DispatcherUnhandledException` 显示对话框并 `Shutdown(1)`，没有把 `args.Handled` 设为 true。WPF 仍把它当作未处理异常。这条路径上的 `Stop()` 不等待 400 ms 编辑缓冲。菜单里的退出会先走 `Run`。
+**M21 未处理异常没有标记为已处理，退出也不冲掉编辑缓冲。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`App.OnStartup`](../src/DeskNodes.App/App.xaml.cs) 的 `DispatcherUnhandledException` 显示对话框并 `Shutdown(1)`，没有把 `args.Handled` 设为 true。WPF 仍把它当作未处理异常。这条路径上的 `Stop()` 不等待 400 ms 编辑缓冲。菜单里的退出会先走 `Run`。
 
 **M22 全局收起被第一张便签的结束回调提前关掉。** [`Collapse`](../src/DeskNodes.App/PresentationCoordinator.cs) 给每张可见便签调用一次 `Present`（0.28 秒）。回调里先 `state.Complete`，再 `Refresh`。刷新时，只要过渡不再是 `Collapsing`，或者隐藏原因不只是收起，窗口就被 `Hide`。第一张结束之后，其余仍在动画里的便签被藏起来。减少动画时 [`Present`](../src/DeskNodes.App/Views/NoteWindow.Presentation.cs) 在方法内部同步调用回调，循环还没走完过渡就结束了。更新的 `Request` 会增加 generation，旧回调被丢掉，这一条是对的。
 

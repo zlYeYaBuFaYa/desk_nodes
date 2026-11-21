@@ -526,6 +526,15 @@ internal sealed partial class AppCoordinator : System.ComponentModel.INotifyProp
 
     public void Stop()
     {
+        if (database is not null)
+        {
+            try { Editors.TryCommitPending(); }
+            catch (Exception ex)
+            {
+                try { Log.Error("退出时未能提交编辑缓冲。", ex); }
+                catch (Exception) { }
+            }
+        }
         StopImport();
         timer?.Stop();
         Hotkeys?.Dispose();

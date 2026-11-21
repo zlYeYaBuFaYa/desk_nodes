@@ -15,6 +15,7 @@ public partial class App : System.Windows.Application
     {
         DispatcherUnhandledException += (_, args) =>
         {
+            args.Handled = true;
             coordinator.Log?.Error("界面发生未处理异常，即将退出。", args.Exception);
             MessageBox.Show("DeskNodes 遇到错误，即将退出。请重新启动；已保存的数据会保留。", "DeskNodes", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
