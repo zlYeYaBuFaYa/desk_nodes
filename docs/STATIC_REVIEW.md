@@ -102,7 +102,11 @@
 
 [`DeskNodesDatabase`](../src/DeskNodes.Core/Storage/DeskNodesDatabase.cs) 原来在 `ROLLBACK` 或 `ROLLBACK TO` 抛错时，内层 `finally` 仍把 `transactionDepth` 减到 0 并安排回滚回调。连接没有被标记为不可用。下一次读取可能看到仍开着的事务。这是少见路径。
 
-**M9 备份 JSON 里的重复字段按最后一个值接受。** [`WindowsBackupCodec`](../src/DeskNodes.Core/Backup/WindowsBackupCodec.cs) 的 `JsonSerializerOptions` 没有把 `AllowDuplicateProperties` 设为 false。.NET 10 的默认值是 true。令牌扫描检查深度、长度和数组上限，不记录已经出现过的属性名。第二个 `deleted_at`、`completed` 或 `hotkey_new` 会静默覆盖。正常导出会每个属性写一次。
+**M9 备份 JSON 里的重复字段按最后一个值接受。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`WindowsBackupCodec`](../src/DeskNodes.Core/Backup/WindowsBackupCodec.cs) 原来的 `JsonSerializerOptions` 没有把 `AllowDuplicateProperties` 设为 false。.NET 10 的默认值是 true。令牌扫描检查深度、长度和数组上限，不记录已经出现过的属性名。第二个 `deleted_at`、`completed` 或 `hotkey_new` 会静默覆盖。正常导出会每个属性写一次。
 
 ### 停靠与布局
 

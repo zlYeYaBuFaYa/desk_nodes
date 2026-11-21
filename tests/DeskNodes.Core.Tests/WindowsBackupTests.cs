@@ -26,6 +26,15 @@ public sealed class WindowsBackupTests
     }
 
     [Fact]
+    public void DuplicateJsonPropertiesAreRejected()
+    {
+        const string needle = "\"format\"";
+        int at = Golden.IndexOf(needle, StringComparison.Ordinal);
+        string duplicated = Golden.Insert(at, "\"format\": \"desknodes.windows.backup\", ");
+        Assert.Throws<System.Text.Json.JsonException>(() => WindowsBackupCodec.Parse(duplicated));
+    }
+
+    [Fact]
     public void CancellationDuringReadStopsParsingAndLeavesLiveDatabaseUnchanged()
     {
         using var directory = new TestDirectory();

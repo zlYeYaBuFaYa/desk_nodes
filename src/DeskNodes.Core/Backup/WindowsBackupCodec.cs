@@ -15,6 +15,7 @@ public static partial class WindowsBackupCodec
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         WriteIndented = true,
         MaxDepth = MaxDepth,
+        AllowDuplicateProperties = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
     static WindowsBackupCodec() => JsonOptions.MakeReadOnly(populateMissingResolver: true);
