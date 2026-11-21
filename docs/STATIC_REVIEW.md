@@ -38,7 +38,9 @@
 
 ### H4 删掉唯一一行再撤销，会留下替补空白行
 
-[`NoteWindow.DeleteRow`](../src/DeskNodes.App/Views/NoteWindow.Editing.cs) 在删除前的快照只剩一项时，`DeleteItem` 之后调用 `CleanupBlankItems`。软删除后活事项为 0，[`CleanupBlankItems`](../src/DeskNodes.Core/Services/NoteActions.cs) 会插入 `sort_order` 为 0 的新空白行。[`DeletionUndoQueue.Undo`](../src/DeskNodes.Core/Services/DeletionUndoQueue.cs) 只 `Update` 被软删除的旧行。`Ctrl+Z` 把旧行恢复回来，替补行还在。占位空行上的 Backspace 走同一条路径。
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`NoteWindow.DeleteRow`](../src/DeskNodes.App/Views/NoteWindow.Editing.cs) 在删除前的快照只剩一项时，`DeleteItem` 之后调用 `CleanupBlankItems`。软删除后活事项为 0，[`CleanupBlankItems`](../src/DeskNodes.Core/Services/NoteActions.cs) 会插入 `sort_order` 为 0 的新空白行。[`DeletionUndoQueue.Undo`](../src/DeskNodes.Core/Services/DeletionUndoQueue.cs) 原来只 `Update` 被软删除的旧行。`Ctrl+Z` 会把旧行恢复回来，替补行还在。占位空行上的 Backspace 走同一条路径。
 
 失焦时的空白清理不进撤销队列，那条路径与本项无关。
 

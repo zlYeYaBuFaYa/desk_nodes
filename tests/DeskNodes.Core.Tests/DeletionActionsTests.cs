@@ -173,6 +173,37 @@ public sealed class DeletionActionsTests
         Assert.Equal(RestoreResult.Archived, deleted.Restore(archived.Id));
         Assert.Equal(RestoreResult.NotFoundOrNotDeleted, deleted.Restore(ItemId.New()));
     }
+
+    [Fact]
+    public void UndoDropsTheBlankThatReplacedTheLastItemUnlessItWasEdited()
+    {
+        using var dir = new TestDirectory();
+        using var db = dir.Open();
+        var clock = new ActionClock();
+        var repo = new NoteRepository(db);
+        var actions = new NoteActions(db, clock);
+        var queue = new DeletionUndoQueue(db, clock);
+        var created = actions.CreateNote(new Placement(new RectD(0, 0, 200, 160), "DISPLAY1"), true);
+        actions.EditText(created.FirstItemId, "只剩这一行");
+        Assert.True(queue.DeleteItem(created.FirstItemId));
+        Assert.Equal(0, actions.CleanupBlankItems(created.Note.Id));
+        var placeholder = Assert.Single(repo.GetItems(created.Note.Id));
+        queue.AssociateBlankPlaceholder(created.FirstItemId, placeholder.Id);
+        Assert.True(queue.Undo(clock.UtcNow));
+        var restored = Assert.Single(repo.GetItems(created.Note.Id));
+        Assert.Equal(created.FirstItemId, restored.Id);
+        Assert.Equal("只剩这一行", restored.Text);
+
+        Assert.True(queue.DeleteItem(created.FirstItemId));
+        actions.CleanupBlankItems(created.Note.Id);
+        var edited = Assert.Single(repo.GetItems(created.Note.Id));
+        actions.EditText(edited.Id, "替补里写下的");
+        queue.AssociateBlankPlaceholder(created.FirstItemId, edited.Id);
+        Assert.True(queue.Undo(clock.UtcNow));
+        Assert.Equal(
+            new HashSet<ItemId> { created.FirstItemId, edited.Id },
+            repo.GetItems(created.Note.Id).Select(item => item.Id).ToHashSet());
+    }
     [Theory]
     [InlineData("hints")]
     [InlineData("count")]

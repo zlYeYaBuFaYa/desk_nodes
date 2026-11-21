@@ -144,6 +144,7 @@ internal sealed partial class NoteWindow
         if (items.Count == 1)
         {
             app.Actions.CleanupBlankItems(note.Id);
+            app.Undo.AssociateBlankPlaceholder(id, app.Repository.GetItems(note.Id).Single().Id);
             app.Refresh();
         }
         var remaining = app.Repository.GetItems(note.Id);

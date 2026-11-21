@@ -11,7 +11,10 @@ public sealed record DeletionHint(DateTimeOffset DeletedAt, TimeSpan Remaining, 
 public sealed class DeletionUndoQueue(DeskNodesDatabase database, IClock clock)
 {
     private sealed record Member(DeletionMember Key, Note? Note, IReadOnlyList<NoteItem> Items);
-    private sealed record Entry(DateTimeOffset At, List<Member> Members);
+    private sealed record Entry(DateTimeOffset At, List<Member> Members)
+    {
+        public List<ItemId> BlankPlaceholders { get; } = [];
+    }
     private readonly List<Entry> entries = [];
     private readonly NoteRepository repository = new(database);
 
@@ -52,6 +55,15 @@ public sealed class DeletionUndoQueue(DeskNodesDatabase database, IClock clock)
         if (member is null) return false;
         entries.Add(new(at, [member]));
         return true;
+    }
+
+    /// <summary>The blank row inserted so the note stays editable. Undo removes it when it is still blank.</summary>
+    public void AssociateBlankPlaceholder(ItemId deleted, ItemId placeholder)
+    {
+        var entry = entries.LastOrDefault();
+        if (entry is null || placeholder == deleted) return;
+        if (!entry.Members.Any(member => member.Items.Any(item => item.Id == deleted))) return;
+        entry.BlankPlaceholders.Add(placeholder);
     }
 
     private static bool Valid(Entry entry, DateTimeOffset now) => now >= entry.At && now - entry.At < TimeSpan.FromSeconds(5);
@@ -100,6 +112,18 @@ public sealed class DeletionUndoQueue(DeskNodesDatabase database, IClock clock)
                     repository.Update(item);
                     ServiceSql.Run(connection, "DELETE FROM pending_deleted_items WHERE item_id=$id;", ("$id", item.Id.ToString()));
                 }
+            }
+            var restored = entry.Members.SelectMany(member => member.Items).Select(item => item.Id).ToHashSet();
+            foreach (var placeholder in entry.BlankPlaceholders)
+            {
+                if (restored.Contains(placeholder)) continue;
+                var current = repository.GetItem(placeholder, true, true);
+                if (current is null || current.DeletedAt is not null || current.ArchivedDay is not null
+                    || !string.IsNullOrWhiteSpace(current.Text))
+                    continue;
+                ServiceSql.Run(connection,
+                    "DELETE FROM pending_deleted_items WHERE item_id=$id; DELETE FROM note_deletion_items WHERE item_id=$id; DELETE FROM items WHERE id=$id;",
+                    ("$id", placeholder.ToString()));
             }
         });
         entries.Remove(entry);
