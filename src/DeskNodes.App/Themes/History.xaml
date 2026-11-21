@@ -337,6 +337,7 @@
                 <DockPanel>
                     <Button
                         Content="恢复"
+                        AutomationProperties.Name="{Binding Entry.Title, StringFormat=恢复 {0}}"
                         DockPanel.Dock="Right"
                         IsEnabled="{Binding CanRestore}"
                         Command="{x:Static local:HistoryCommands.Restore}"

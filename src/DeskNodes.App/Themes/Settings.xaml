@@ -55,7 +55,7 @@
             Style="{StaticResource SettingsFontCard}"
             GroupName="NoteFont"
             AutomationProperties.LabeledBy="{Binding ElementName=FontLabel}"
-            AutomationProperties.Name="{Binding Label}"
+            AutomationProperties.Name="{Binding AccessibleName}"
             IsChecked="{Binding IsSelected, Mode=OneWay}"
             Command="{Binding Select}">
             <StackPanel>

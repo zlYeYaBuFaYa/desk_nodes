@@ -296,7 +296,7 @@
                             Command="{Binding RecordNew}"
                             Content="{Binding NewHotkey}"
                             AutomationProperties.LabeledBy="{Binding ElementName=NewHotkeyLabel}"
-                            AutomationProperties.Name="全局新建"/>
+                            AutomationProperties.Name="{Binding NewHotkey, StringFormat=全局新建，{0}}"/>
                         <Button
                             Style="{StaticResource SettingsButton}"
                             Command="{Binding ResetNew}"
@@ -311,7 +311,7 @@
                             Command="{Binding RecordFloat}"
                             Content="{Binding FloatHotkey}"
                             AutomationProperties.LabeledBy="{Binding ElementName=FloatHotkeyLabel}"
-                            AutomationProperties.Name="全局浮起"/>
+                            AutomationProperties.Name="{Binding FloatHotkey, StringFormat=全局浮起，{0}}"/>
                         <Button
                             Style="{StaticResource SettingsButton}"
                             Command="{Binding ClearFloat}"

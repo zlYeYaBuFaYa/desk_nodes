@@ -16,6 +16,7 @@ internal sealed class FontCardViewModel : INotifyPropertyChanged
     public string Label { get; }
     public FontFamily Family { get; }
     public string Status { get; }
+    public string AccessibleName { get; }
     public bool IsSelected => owner.Font == Value;
     public ICommand Select { get; }
     public FontCardViewModel(SettingsViewModel owner, SettingsOption<NoteFont> option, NoteFonts fonts)
@@ -26,6 +27,7 @@ internal sealed class FontCardViewModel : INotifyPropertyChanged
         var mapping = fonts.Resolve(Value);
         Family = new(mapping.Family);
         Status = mapping.Available ? " " : Value == NoteFont.Wenkai ? "未包含" : "未安装";
+        AccessibleName = string.IsNullOrWhiteSpace(Status) ? Label : $"{Label}，{Status.Trim()}";
         Select = new RelayCommand(() => owner.Font = Value);
     }
 }
