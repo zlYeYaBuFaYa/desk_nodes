@@ -13,6 +13,22 @@ public static class DockLayout
     private const double OverflowLength = 96;
     private const double MinimumNoteLength = 120;
     private const double DockSpacing = 12;
+    public static int PeerIndex(IReadOnlyList<NoteId> peers, IReadOnlyList<NoteId> visible, NoteId? before)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(visible.Count);
+        var slot = before ?? visible[^1];
+        int index = -1;
+        for (int i = 0; i < peers.Count; i++)
+            if (peers[i] == slot)
+            {
+                index = i;
+                break;
+            }
+        if (index < 0)
+            throw new InvalidOperationException("可见便签不在这条停靠边上。");
+        return index;
+    }
+
     public static int NextOrder(IEnumerable<int> orders)
     {
         int max = -1;

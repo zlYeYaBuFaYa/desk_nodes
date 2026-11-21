@@ -129,4 +129,14 @@ public sealed class DockPageTests
         Assert.Equal(3, DockLayout.NextOrder([0, 2, 1]));
         Assert.Equal(int.MaxValue, DockLayout.NextOrder([int.MaxValue]));
     }
+
+    [Fact]
+    public void DropPastTheLastVisibleNoteStaysOnThatNote()
+    {
+        var first = NoteId.New();
+        var lastVisible = NoteId.New();
+        var overflow = NoteId.New();
+        Assert.Equal(1, DockLayout.PeerIndex([first, lastVisible, overflow], [first, lastVisible], null));
+        Assert.Equal(0, DockLayout.PeerIndex([first, lastVisible, overflow], [first, lastVisible], first));
+    }
 }

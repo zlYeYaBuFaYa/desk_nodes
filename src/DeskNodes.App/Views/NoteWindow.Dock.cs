@@ -37,8 +37,8 @@ internal sealed partial class NoteWindow
         int index = peers.FindIndex(n => n.Id == note.Id);
         var visible = app.Presentation.Dock(screen, edge).Visible;
         var target = visible.FirstOrDefault(n => edge == DockEdge.Top ? pointer.X < n.Bounds.Center.X : pointer.Y < n.Bounds.Center.Y);
-        if (target?.Id == note.Id) return;
-        int destination = target is null ? peers.Count - 1 : peers.FindIndex(n => n.Id == target.Id);
+        if (target?.Id == note.Id || visible.Count == 0) return;
+        int destination = DockLayout.PeerIndex(peers.Select(n => n.Id).ToArray(), visible.Select(n => n.Id).ToArray(), target?.Id);
         if (destination == index) return;
         var bounds = target?.Bounds ?? visible.Last().Bounds;
         Left = bounds.X;
