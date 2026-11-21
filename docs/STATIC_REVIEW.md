@@ -24,6 +24,8 @@
 
 ### H2 取消组词后编辑一直处于组词中
 
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
 [`EditorCoordinator`](../src/DeskNodes.App/Editing/EditorCoordinator.cs) 在 `PreviewTextInputStart` 和 `PreviewTextInputUpdate` 里把 `Composing` 设为 true，只在 `TextInput` 里设回 false。WPF 里用 Esc 取消候选通常不产生 `TextInput`。`Composing` 保持为 true 之后，400 ms 防抖不再排程，跨天保持 `Deferred`，`AppCoordinator.Run` 在 `TryCommitPending` 不是 `Committed` 时直接返回。结构操作会静默不发生。
 
 技术设计要求候选窗口的焦点不能当成一次结构提交。缺的是取消组词这条路径。完整输入法行为仍要真机确认，见末节。

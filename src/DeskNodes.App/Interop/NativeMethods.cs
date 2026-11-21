@@ -4,7 +4,7 @@ namespace DeskNodes.App.Interop;
 
 internal static partial class NativeMethods
 {
-    internal const int WM_HOTKEY = 0x0312, WM_POWERBROADCAST = 0x0218, WM_TIMECHANGE = 0x001E;
+    internal const int WM_HOTKEY = 0x0312, WM_POWERBROADCAST = 0x0218, WM_TIMECHANGE = 0x001E, WM_IME_ENDCOMPOSITION = 0x010E;
     internal const int PBT_APMSUSPEND = 0x0004, PBT_APMRESUMESUSPEND = 0x0007, PBT_APMRESUMEAUTOMATIC = 0x0012;
     internal const uint MOD_NOREPEAT = 0x4000;
     [LibraryImport("user32.dll", SetLastError = true)]
