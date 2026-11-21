@@ -6,7 +6,7 @@ public sealed record PasteResult(bool KeepNativePaste, string? FirstLine, IReadO
 
 public static partial class PasteParser
 {
-    [GeneratedRegex(@"^\s*(?:(?:[-*•·]\s+)?\[[ xX]\]\s*|[-*•·]\s+|\d+[.)]\s*|[（(]\d+[）)]\s*)")]
+    [GeneratedRegex(@"^\s*(?:(?:[-*•·]\s+)?\[[ xX]\]\s*|[-*•·]\s+|\d+[.)](?!\d)\s*|[（(]\d+[）)]\s*)")]
     private static partial Regex Prefix();
 
     public static PasteResult Parse(string text)

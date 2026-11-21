@@ -119,6 +119,15 @@ public sealed class NoteActionsTests
     }
 
     [Fact]
+    public void DecimalLinesStayIntactWhileNumberedListsStillSplit()
+    {
+        var result = PasteParser.Parse("3.14\n10.5\n1. one\n2) two");
+        Assert.False(result.KeepNativePaste);
+        Assert.Equal("3.14", result.FirstLine);
+        Assert.Equal(new[] { "10.5", "one", "two" }, result.FollowingLines);
+    }
+
+    [Fact]
     public void CleanupRetainsFirstBlankAndDoesNotTouchFrozenHistoryOrDeletedList()
     {
         using var dir = new TestDirectory();

@@ -32,7 +32,9 @@
 
 ### H3 多行粘贴把小数当成列表标记
 
-[`PasteParser`](../src/DeskNodes.Core/Services/PasteParser.cs) 的前缀是 `\d+[.)]\s*`。项目符号要求后面有空白，数字标记不要求。`3.14` 会被收成 `14`，`10.5` 会被收成 `5`。[FR-03](REQUIREMENTS.md) 只要求去掉常见列表前缀。测试只覆盖了 `1. one` 和 `2) two`。
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`PasteParser`](../src/DeskNodes.Core/Services/PasteParser.cs) 的前缀原来是 `\d+[.)]\s*`。项目符号要求后面有空白，数字标记不要求。`3.14` 会被收成 `14`，`10.5` 会被收成 `5`。[FR-03](REQUIREMENTS.md) 只要求去掉常见列表前缀。测试原来只覆盖了 `1. one` 和 `2) two`。
 
 ### H4 删掉唯一一行再撤销，会留下替补空白行
 
