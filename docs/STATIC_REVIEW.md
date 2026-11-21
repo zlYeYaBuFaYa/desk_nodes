@@ -268,18 +268,23 @@
 
 ## 测试没有锁住的缺陷
 
-这些测试现在是绿的，锁住的是有问题的行为，或者根本没走到有问题的输入。
+这一节记的是审查时测试没走到的输入。对应修复已经补上的，列在下面。剩下的两条不是再改行为。这些测试都没有在本机编译或运行。
 
-- 粘贴测试没有 `3.14` 或 `10.5`。
-- 编辑会话测试只通过 `SetComposition(false)` 结束组词，没有 Esc 取消。
-- `HistoryActionsTests` 原来期望从 2026-12-01 向左落到 2026-11-15。M4 已改成逐日退回。
-- 仓库恢复测试原来只恢复一张仍处于删除状态的便签。M6 已补上未删除便签的保存和恢复。
-- 停靠分页测试只在数量大于 1 时要求溢出标签。
-- 手柄与入口重合只在文字缩放 1 时断言。
-- 闲置宽限测试从冷工具条开始。
-- 导入锁测试在写出任何备份页之前就失败，没有覆盖拷贝中途失败。
-- 没有「删除唯一事项再撤销，仍然只有一行」的测试。
-- 没有「连续两次菜单停靠得到不同 `dock_order`」的测试。
+已经补上的：
+
+- `DecimalLinesStayIntactWhileNumberedListsStillSplit` 覆盖 `3.14` 和 `10.5`，编号列表仍去掉标记。
+- `CalendarNavigationCrossesMonthsClampsDaysButAllowsFutureMonthsAndSelection` 从 2026-12-01 向左落到 2026-11-30。
+- `SavingADeletedNoteDoesNotReviveItOrItsChildren` 覆盖未删除状态下的保存和恢复。
+- `OneTallSideNoteFillsTheStripWithoutAnOverflowLabel` 要求单张过高便签不留溢出标签。
+- `ExpandedHomePreservesTheHandleEntrance` 在文字缩放 1 和 1.5 下断言手柄压住入口。
+- `DragOrMenuAfterHoverUsesTheFullIdleDelay` 先展开，再拖动、开菜单或打开设置，然后要满 15 秒才收起。
+- `UndoDropsTheBlankThatReplacedTheLastItemUnlessItWasEdited` 删除唯一事项再撤销，未编辑的替补行消失。
+- `NextDockOrderAppendsAfterTheHighestOrderOnThatEdge` 要求下一次停靠序号接在同一条边现有最大序号之后；已经是 2147483647 时不再加大。
+
+仍然如此，不在这次改：
+
+- 编辑会话测试仍通过 `SetComposition(false)` 结束组词。Esc 和 `WM_IME_ENDCOMPOSITION` 在 WPF 适配层里，取消之后调用的就是这次会话测试已经锁住的 `SetComposition(false)` 加 `Reschedule`。按键和输入法消息要在 Windows 上看。
+- `DestinationWriteLockCausesBackupFailureAndPreservesLiveData` 在写出备份页之前就因写锁失败。H1 复核为不成立：未完成的备份由 SQLite 回滚。拷贝中途磁盘写满不在这次用静态测试声称覆盖。
 
 ## 已核对且与现行设计一致
 
