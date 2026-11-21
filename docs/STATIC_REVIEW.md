@@ -260,7 +260,11 @@
 
 最近删除的按钮内容只有「恢复」，多张卡片无法区分。字体卡片的 `AutomationProperties.Name` 只有字体名，可见的「未安装」不在名称里。设置里的热键按钮名称是「全局新建」和「全局浮起」，当前组合不在名称里。
 
-**L8 点工具条滚动会把键盘焦点从便签拿走。** [`ToolbarScroll`](../src/DeskNodes.App/Themes/Toolbar.xaml) 把 `Focusable` 设为 true，盖过动作按钮的 `Focusable` false。四个主按钮仍然不能获得焦点。
+**L8 点工具条滚动会把键盘焦点从便签拿走。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`ToolbarScroll`](../src/DeskNodes.App/Themes/Toolbar.xaml) 把 `Focusable` 设为 true，盖过动作按钮的 `Focusable` false。四个主按钮仍然不能获得焦点。
 
 ## 测试没有锁住的缺陷
 
