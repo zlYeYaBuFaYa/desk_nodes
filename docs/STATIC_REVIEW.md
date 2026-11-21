@@ -48,7 +48,11 @@
 
 ### 编辑与撤销
 
-**M1 多行粘贴在提交前就取消了原生粘贴。** [`NoteWindow.Paste`](../src/DeskNodes.App/Views/NoteWindow.Editing.cs) 对非单行结果先 `CancelCommand()`，再 `TryCommitPending`。尾随换行也会被判成非原生粘贴。组词中或提交失败时，这次粘贴被丢掉。`Trim` 同时去掉用户有意保留的首尾空格。首行用一次 `BeginChange` 写入；后续行按 [FR-03](REQUIREMENTS.md) 各自成新事项。
+**M1 多行粘贴在提交前就取消了原生粘贴。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`NoteWindow.Paste`](../src/DeskNodes.App/Views/NoteWindow.Editing.cs) 原来对非单行结果先 `CancelCommand()`，再 `TryCommitPending`。组词中或提交失败时，这次粘贴被丢掉。`Trim` 同时去掉用户有意保留的首尾空格。尾随换行仍按多行处理，空行滤掉后再拆项。首行用一次 `BeginChange` 写入；后续行按 [FR-03](REQUIREMENTS.md) 各自成新事项。
 
 **M2 编辑菜单的「撤销」不是 `Ctrl+Z` 的那一次撤销。** [`CreateEditorMenu`](../src/DeskNodes.App/Views/NoteWindow.Menus.cs) 把「撤销」绑到文本框的 `ApplicationCommands.Undo`。刚删除过、文本撤销栈为空时，菜单项禁用，快捷键提示仍是 `Ctrl+Z`。窗口按键仍会按 [FR-04](REQUIREMENTS.md) 恢复删除。[D7](DECISIONS.md) 要保留的是文字撤销入口。
 

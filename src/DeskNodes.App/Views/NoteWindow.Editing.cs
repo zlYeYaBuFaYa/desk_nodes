@@ -245,8 +245,14 @@ internal sealed partial class NoteWindow
         if (!e.DataObject.GetDataPresent(DataFormats.UnicodeText)) return;
         var result = PasteParser.Parse((string)e.DataObject.GetData(DataFormats.UnicodeText));
         if (result.KeepNativePaste) return;
+        // 组词或提交失败时保留原生粘贴。只有确认要拆项时才取消命令。
+        if (app.Editors.TryCommitPending() != CommitResult.Committed) return;
+        if (result.FirstLine is null)
+        {
+            e.CancelCommand();
+            return;
+        }
         e.CancelCommand();
-        if (app.Editors.TryCommitPending() != CommitResult.Committed || result.FirstLine is null) return;
         app.Run(() =>
         {
             editor.BeginChange();

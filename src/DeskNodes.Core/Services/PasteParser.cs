@@ -14,7 +14,8 @@ public static partial class PasteParser
         ArgumentNullException.ThrowIfNull(text);
         if (!text.Contains('\r') && !text.Contains('\n')) return new(true, null, []);
         var lines = text.Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
-            .Select(line => Prefix().Replace(line, "", 1).Trim()).Where(line => line.Length > 0).ToArray();
+            .Select(line => Prefix().Replace(line, "", 1))
+            .Where(line => !string.IsNullOrWhiteSpace(line)).ToArray();
         return new(false, lines.FirstOrDefault(), lines.Skip(1).ToArray());
     }
 }

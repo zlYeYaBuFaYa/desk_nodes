@@ -128,6 +128,15 @@ public sealed class NoteActionsTests
     }
 
     [Fact]
+    public void MultilinePasteKeepsSpacesAroundContent()
+    {
+        var result = PasteParser.Parse("  hello  \n \t \n1.  world  ");
+        Assert.False(result.KeepNativePaste);
+        Assert.Equal("  hello  ", result.FirstLine);
+        Assert.Equal(new[] { "world  " }, result.FollowingLines);
+    }
+
+    [Fact]
     public void CleanupRetainsFirstBlankAndDoesNotTouchFrozenHistoryOrDeletedList()
     {
         using var dir = new TestDirectory();
