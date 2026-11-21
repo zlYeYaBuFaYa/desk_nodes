@@ -228,6 +228,22 @@ public sealed class PresentationTests
         Assert.Equal(ToolbarIdleAction.StartExpand, m.Update(T(32.2), new(PointerInside: true)).Action);
     }
     [Theory]
+    [InlineData("drag")]
+    [InlineData("menu")]
+    [InlineData("settings")]
+    public void DragOrMenuAfterHoverUsesTheFullIdleDelay(string kind)
+    {
+        var m = new ToolbarIdleMachine();
+        m.Update(T(0), new());
+        m.Update(T(15), new(AtHome: true));
+        m.Update(T(15.3), new(AnimationCompleted: true));
+        m.Update(T(16), new(PointerInside: true));
+        Assert.Equal(ToolbarIdleAction.StartExpand, m.Update(T(16.14), new(PointerInside: true)).Action);
+        m.Update(T(16.5), new(PointerInside: true, AnimationCompleted: true));
+        m.Update(T(17), new(PointerInside: true, Dragging: kind == "drag", Pressed: kind == "drag", MenuOpen: kind == "menu", SettingsVisible: kind == "settings"));
+        Assert.Equal(T(32.4), m.Update(T(17.4), new()).NextWake);
+    }
+    [Theory]
     [InlineData(true)] [InlineData(false)]
     public void ReturnOnlyExpandsAtArrivalIfPointerStayed(bool stays)
     {

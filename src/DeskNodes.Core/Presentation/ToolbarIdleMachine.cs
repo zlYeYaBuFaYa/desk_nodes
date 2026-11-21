@@ -69,7 +69,11 @@ public sealed class ToolbarIdleMachine
             return ToolbarIdleAction.StartExpand;
         }
         ToolbarIdleAction action = ToolbarIdleAction.None;
-        if (input.Operated || input.Clicked) { hoverOnly = grace = false; deadline = null; }
+        if (input.Operated || input.Clicked || input.Dragging || input.Pressed || input.MenuOpen || input.SettingsVisible)
+        {
+            hoverOnly = grace = false;
+            deadline = null;
+        }
         if (hoverOnly && previousInside && !input.PointerInside && State == ToolbarIdleState.Expanding)
             grace = true;
         if (input.AnimationCompleted && (input.AnimationGeneration is null || input.AnimationGeneration == Generation))
