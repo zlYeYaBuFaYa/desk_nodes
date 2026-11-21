@@ -48,7 +48,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception exception)
         {
-            System.Windows.MessageBox.Show($"DeskNodes 无法打开本地数据库。请保留数据目录，不要删除原文件。\n\n" +
+            System.Windows.MessageBox.Show($"DeskNodes 启动失败。请保留数据目录，不要删除原文件。\n\n" +
                 $"数据目录：{coordinator.DataDirectoryPath ?? "解析失败"}\n\n{exception}\n\n" +
                 "按 Ctrl+C 可复制此对话框的完整内容。",
                 "DeskNodes 启动失败", MessageBoxButton.OK, MessageBoxImage.Error);

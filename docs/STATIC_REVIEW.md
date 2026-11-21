@@ -218,7 +218,11 @@
 
 ## 低
 
-**L1 启动失败一律说无法打开数据库。** [`App.OnStartup`](../src/DeskNodes.App/App.xaml.cs) 的总 `catch` 使用这句话。偏好、字体或热键在数据库已经打开之后失败，对话框仍这么写。
+**L1 启动失败一律说无法打开数据库。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`App.OnStartup`](../src/DeskNodes.App/App.xaml.cs) 的总 `catch` 使用这句话。偏好、字体或热键在数据库已经打开之后失败，对话框仍这么写。
 
 **L2 折叠后的摘要文字不能拖。** [`HeaderDrag`](../src/DeskNodes.App/Views/NoteWindow.Layout.cs) 只在事件源就是标题网格时开始拖动。折叠摘要 `TextBlock` 可以命中，没有自己的鼠标处理。顶部 30×10 的手柄仍可拖。[FR-05](REQUIREMENTS.md) 要求非编辑标题区域拖动。
 
