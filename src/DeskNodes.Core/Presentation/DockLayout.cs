@@ -127,8 +127,8 @@ public static class CollapseGeometry
     {
         // 24×32 DIP miniature sheets, offset by 3 DIP for at most three visible layers.
         int layer = Math.Clamp(index, 0, 2);
-        double x = toolbar.Right + 8 + layer * 3;
-        if (x + 24 > workArea.Right) x = toolbar.X - 8 - 24 - layer * 3;
+        bool left = toolbar.Right + 8 + 2 * 3 + 24 > workArea.Right;
+        double x = left ? toolbar.X - 8 - 24 - layer * 3 : toolbar.Right + 8 + layer * 3;
         return new RectD(x, toolbar.Center.Y - 16 + layer * 3, 24, 32).Fit(workArea);
     }
 }

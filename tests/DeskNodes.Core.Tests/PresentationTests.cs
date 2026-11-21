@@ -182,6 +182,10 @@ public sealed class PresentationTests
         Assert.Null(CollapseGeometry.Badge(0)); Assert.Equal("99", CollapseGeometry.Badge(99)); Assert.Equal("99+", CollapseGeometry.Badge(100));
         var target = CollapseGeometry.Target(new(936, 100, 56, 56), Screen().WorkArea, 2);
         Assert.True(target.Right < 936); Assert.Equal(24, target.Width);
+        var work = new RectD(0, 0, 297, 400);
+        var toolbar = new RectD(200, 100, 60, 56);
+        var layers = Enumerable.Range(0, 3).Select(i => CollapseGeometry.Target(toolbar, work, i)).ToArray();
+        Assert.All(layers, layer => Assert.True(layer.Right <= toolbar.X));
     }
     [Fact]
     public void PreferencesRoundTripAndUnknownValuesFallBackIndividually()

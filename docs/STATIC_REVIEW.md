@@ -230,7 +230,11 @@
 
 [`HeaderDrag`](../src/DeskNodes.App/Views/NoteWindow.Layout.cs) 只在事件源就是标题网格时开始拖动。折叠摘要 `TextBlock` 可以命中，没有自己的鼠标处理。顶部 30×10 的手柄仍可拖。[FR-05](REQUIREMENTS.md) 要求非编辑标题区域拖动。
 
-**L3 收起落点在约 6 DIP 的窄带里会左右分开。** [`CollapseGeometry.Target`](../src/DeskNodes.Core/Presentation/CollapseGeometry.cs) 按每一层单独判断是否超出工作区右缘。层 0 和层 1 可以留在右侧，层 2 翻到左侧。
+**L3 收起落点在约 6 DIP 的窄带里会左右分开。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`CollapseGeometry.Target`](../src/DeskNodes.Core/Presentation/DockLayout.cs) 按每一层单独判断是否超出工作区右缘。层 0 和层 1 可以留在右侧，层 2 翻到左侧。
 
 **L4 历史窗口和字体授权窗口不处理 `Ctrl+,`。** 便签和工具条会打开设置。快捷键表把 `Ctrl+,` 列为进入设置的键。历史窗口只通过 [`AuxiliaryWindowShortcuts`](../src/DeskNodes.App/Views/AuxiliaryWindowShortcuts.cs) 转发 `Ctrl+N`。[`LicenseWindow`](../src/DeskNodes.App/Views/LicenseWindow.xaml.cs) 没有按键处理。
 
