@@ -114,18 +114,17 @@ internal sealed partial class NoteWindow
         var screen = app.Screens.GetScreens().Resolve(initialized ? ScreenProvider.DeviceForWindow(new WindowInteropHelper(this).Handle) : note.Placement.DisplayDeviceHint);
         var bounds = Bounds;
         double height = type.AutomaticHeight(rows.DesiredSize.Height, screen.WorkArea.Height);
+        double top = NoteLayout.ClampedTop(bounds.Y, height, screen.WorkArea);
         placing = true;
         try
         {
             Height = height;
+            Top = top;
             if (initialized)
-            {
-                double top = Math.Clamp(bounds.Y, screen.WorkArea.Y + 8, Math.Max(screen.WorkArea.Y + 8, screen.WorkArea.Bottom - 8 - height));
                 NativeMethods.SetWindowPos(new WindowInteropHelper(this).Handle, 0,
                     (int)Math.Round(bounds.X * screen.DpiScale), (int)Math.Round(top * screen.DpiScale),
                     (int)Math.Round(Width * screen.DpiScale), (int)Math.Round(height * screen.DpiScale),
                     NativeMethods.NoActivate | NativeMethods.NoZOrder | NativeMethods.NoOwnerZOrder);
-            }
         }
         finally
         {

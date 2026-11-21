@@ -10,6 +10,12 @@ public static class NoteLayout
         return new(Math.Min(safe.Width, Math.Clamp(size.Width, 200, 400)),
             Math.Min(safe.Height, Math.Clamp(size.Height, 120, automaticHeight ? 480 : 600)));
     }
+
+    public static double ClampedTop(double top, double height, RectD workArea)
+    {
+        var safe = workArea.Inset(8);
+        return Math.Clamp(top, safe.Y, Math.Max(safe.Y, safe.Bottom - height));
+    }
     public static SizeD NewSize(LocalPreferences preferences, RectD workArea, Func<double, double> measure)
     {
         var p = preferences.Normalize();

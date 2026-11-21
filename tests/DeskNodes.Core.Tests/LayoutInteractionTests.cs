@@ -44,6 +44,15 @@ public sealed class LayoutInteractionTests
     }
 
     [Fact]
+    public void AutomaticGrowthClampsTheTopInsideTheWorkArea()
+    {
+        var work = new RectD(0, 0, 800, 600);
+        Assert.Equal(312, NoteLayout.ClampedTop(500, 280, work));
+        Assert.Equal(500, NoteLayout.ClampedTop(500, 80, work));
+        Assert.Equal(8, NoteLayout.ClampedTop(-40, 120, work));
+    }
+
+    [Fact]
     public void CollapsedMovementClampsVisibleHeaderWithoutClampingExpandedSize()
     {
         var captured = NoteLayout.Capture(new(new(0, 0, 320, 480), "s"), new(620, 590, 320, 32), Screen, true);
