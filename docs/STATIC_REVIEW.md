@@ -142,7 +142,11 @@
 
 [`ToolbarWindow.Down`](../src/DeskNodes.App/Views/ToolbarWindow.Input.cs) 增加 generation 并停掉帧计时。收缩的 `finished` 因此不再收起 `Parts`。透明度可以已经是 0，这些按钮仍然参与命中。圆形标签不参与命中，所以右键会落在隐藏按钮上，`OpenMenu` 直接返回。
 
-**M15 边缘唤起的命中层被放进普通窗口的最上面。** [`PlacePopupBehindActiveApplications`](../src/DeskNodes.App/Views/ToolbarWindow.xaml.cs) 使用 `HWND_NOTOPMOST`（-2）。这会取消置顶，并把窗口插到普通 Z 序的顶部，仍在其他应用之上。入口填充是 `#01000000`，别的应用盖住这条边时它仍能收到点击。[FR-08](REQUIREMENTS.md) 要求边缘唤起只在入口真正露出来时生效。入口和数量提示打开时都会走这里。
+**M15 边缘唤起的命中层被放进普通窗口的最上面。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`PlacePopupBehindActiveApplications`](../src/DeskNodes.App/Views/ToolbarWindow.xaml.cs) 使用 `HWND_NOTOPMOST`（-2）。这会取消置顶，并把窗口插到普通 Z 序的顶部，仍在其他应用之上。入口填充是 `#01000000`，别的应用盖住这条边时它仍能收到点击。[FR-08](REQUIREMENTS.md) 要求边缘唤起只在入口真正露出来时生效。入口和数量提示打开时都会走这里。
 
 **M16 停在数量叠放提示上会开始闲置计时。** 指针是否在内部只看工具条和入口命中层。叠放提示是另一个弹出层，不调用 `Tick`。鼠标放在提示上时闲置计时继续，下一次收缩会关掉提示。
 

@@ -314,6 +314,23 @@ internal partial class ToolbarWindow : Window
             NativeMethods.GetWindowLongPtr(source.Handle, NativeMethods.GWL_EXSTYLE) | NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOOLWINDOW);
         NativeMethods.SetWindowPos(source.Handle, NativeMethods.NotTopmost, 0, 0, 0, 0,
             NativeMethods.NoMove | NativeMethods.NoSize | NativeMethods.NoActivate);
+        nint owner = NativeMethods.GetWindow(source.Handle, NativeMethods.GwOwner);
+        if (owner == 0) return;
+        var above = new List<ZBandWindow>();
+        var seen = new HashSet<long>();
+        nint cursor = NativeMethods.GetWindow(owner, NativeMethods.GwHwndPrev);
+        while (cursor != 0 && seen.Add(cursor.ToInt64()))
+        {
+            bool topmost = (NativeMethods.GetWindowLongPtr(cursor, NativeMethods.GWL_EXSTYLE) & NativeMethods.WS_EX_TOPMOST) != 0;
+            above.Add(new(cursor.ToInt64(), topmost));
+            if (topmost) break;
+            cursor = NativeMethods.GetWindow(cursor, NativeMethods.GwHwndPrev);
+        }
+        above.Reverse();
+        above.Add(new(owner.ToInt64(), false));
+        if (PopupZOrder.InsertAfter(above, source.Handle.ToInt64(), owner.ToInt64()) is not long after) return;
+        NativeMethods.SetWindowPos(source.Handle, new nint(after), 0, 0, 0, 0,
+            NativeMethods.NoMove | NativeMethods.NoSize | NativeMethods.NoActivate);
     }
     private void UpdateStackHint()
     {

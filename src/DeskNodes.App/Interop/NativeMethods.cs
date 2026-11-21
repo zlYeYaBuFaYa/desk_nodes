@@ -50,6 +50,9 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool GetWindowRect(nint window, out Rect rect);
     internal const int GWL_EXSTYLE = -20;
     internal const int WS_EX_TOOLWINDOW = 0x80;
+    internal const int WS_EX_TOPMOST = 0x00000008;
+    internal const uint GwHwndPrev = 3, GwOwner = 4;
+    [LibraryImport("user32.dll")] internal static partial nint GetWindow(nint window, uint command);
     internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;
     internal const int WM_ACTIVATEAPP = 0x1C, WM_EXITSIZEMOVE = 0x232, WM_SIZING = 0x214;
     internal const int WM_DISPLAYCHANGE = 0x7E, WM_SETTINGCHANGE = 0x1A;
