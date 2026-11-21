@@ -65,6 +65,10 @@ public static class ToolbarGeometry
         };
         return new(new(edge, position.Ratio), r, hit.Fit(w));
     }
+    public static PointD GrabPixels(PointD pointerPixels, RectD bounds, double dpi) =>
+        new(pointerPixels.X - bounds.X * dpi, pointerPixels.Y - bounds.Y * dpi);
+    public static RectD DragBounds(PointD pointerPixels, PointD grabPixels, double dpi, double width, double height) =>
+        new((pointerPixels.X - grabPixels.X) / dpi, (pointerPixels.Y - grabPixels.Y) / dpi, width, height);
     // Pointer positions arrive in physical virtual-desktop pixels; projection uses destination-screen DIP.
     public static HomeGeometry ProjectHome(ScreenSet screens, ScreenInfo screen, PointD pointerPixels)
     {

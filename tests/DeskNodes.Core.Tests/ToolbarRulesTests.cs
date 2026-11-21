@@ -179,6 +179,15 @@ public sealed class ToolbarRulesTests
         Assert.Equal(bounds, ToolbarGeometry.ResolveAnchor(screens, new() { Anchor = free }, ToolbarOrientation.Vertical, false));
     }
 
+    [Fact]
+    public void FullToolbarDragKeepsThePhysicalGrabAcrossDpi()
+    {
+        var bounds = new RectD(10, 20, 64, 296);
+        var grab = ToolbarGeometry.GrabPixels(new(50, 40), bounds, 1);
+        Assert.Equal(bounds, ToolbarGeometry.DragBounds(new(50, 40), grab, 1, bounds.Width, bounds.Height));
+        Assert.Equal(new RectD(180, 90, 64, 296), ToolbarGeometry.DragBounds(new(400, 200), grab, 2, bounds.Width, bounds.Height));
+    }
+
     [Theory]
     [InlineData(ToolbarOrientation.Vertical, ScreenEdge.Bottom, 1)]
     [InlineData(ToolbarOrientation.Vertical, ScreenEdge.Right, 1)]

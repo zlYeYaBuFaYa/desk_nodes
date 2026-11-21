@@ -41,7 +41,7 @@ internal partial class ToolbarWindow
         downPixels = Pointer();
         safe = Bounds;
         safeScreen = screen;
-        grabOffset = new(downPixels.X / screen.DpiScale - safe.X, downPixels.Y / screen.DpiScale - safe.Y);
+        grabPixels = ToolbarGeometry.GrabPixels(downPixels, safe, screen.DpiScale);
         CaptureMouse();
         dragWatch.Start();
         Tick();
@@ -63,7 +63,7 @@ internal partial class ToolbarWindow
         }
         else
         {
-            var target = new RectD(point.X / screen.DpiScale - grabOffset.X, point.Y / screen.DpiScale - grabOffset.Y, safe.Width, safe.Height);
+            var target = ToolbarGeometry.DragBounds(point, grabPixels, screen.DpiScale, safe.Width, safe.Height);
             Place(ToolbarGeometry.Release(screens, point, screen.Id, target, app.Preferences.Anchor?.Edge).Bounds);
         }
     }

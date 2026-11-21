@@ -172,7 +172,11 @@
 
 [`ToolbarIdleMachine`](../src/DeskNodes.Core/Presentation/ToolbarIdleMachine.cs) 只在 `Operated` 或 `Clicked` 时清掉宽限。拖动、菜单打开、设置可见只把截止时间设成空，宽限标志还在。只靠悬停展开再离开后，宽限为真；接着拖动或打开菜单，下一次等待仍是 1.5 秒，而不是 10、15 或 30 秒。菜单关闭时的 `Tick()` 没有带 `Operated: true`。[FR-08](REQUIREMENTS.md) 要求菜单或打断重新计算完整闲置。测试从冷的工具条开始，宽限一开始就是 false。
 
-**M20 混合 DPI 下拖完整工具条会跳。** [`ToolbarWindow`](../src/DeskNodes.App/Views/ToolbarWindow.Input.cs) 在按下时用那块屏幕的 DIP 记下 `grabOffset`，指针换屏之后仍减去这个数。两块屏幕的 DIP 不是同一个空间。圆形入口拖动走物理点的 `ProjectHome`，不在本项。
+**M20 混合 DPI 下拖完整工具条会跳。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`ToolbarWindow`](../src/DeskNodes.App/Views/ToolbarWindow.Input.cs) 在按下时用那块屏幕的 DIP 记下 `grabOffset`，指针换屏之后仍减去这个数。两块屏幕的 DIP 不是同一个空间。圆形入口拖动走物理点的 `ProjectHome`，不在本项。
 
 ### 展示、设置与外观
 

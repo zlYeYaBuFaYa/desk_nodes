@@ -23,7 +23,7 @@ internal partial class ToolbarWindow : Window
     private PointD downPixels;
     private RectD safe;
     private ScreenInfo safeScreen = null!;
-    private PointD grabOffset;
+    private PointD grabPixels;
     private readonly DispatcherTimer dragWatch = new() { Interval = TimeSpan.FromMilliseconds(20) };
     private ScreenInfo screen = null!;
     private HomePosition? projected;
