@@ -139,4 +139,14 @@ public sealed class DockPageTests
         Assert.Equal(1, DockLayout.PeerIndex([first, lastVisible, overflow], [first, lastVisible], null));
         Assert.Equal(0, DockLayout.PeerIndex([first, lastVisible, overflow], [first, lastVisible], first));
     }
+
+    [Fact]
+    public void OneTallSideNoteFillsTheStripWithoutAnOverflowLabel()
+    {
+        var screen = new ScreenInfo("s", "s", new(0, 0, 400, 1000), new(0, 0, 400, 1000));
+        var result = DockLayout.Arrange(screen, DockEdge.Left, [new(NoteId.New(), 0, 400)], new(0, 320, 64, 360));
+        Assert.Empty(result.Overflow);
+        Assert.Null(result.OverflowBounds);
+        Assert.Equal(300, Assert.Single(result.Visible).Bounds.Height);
+    }
 }

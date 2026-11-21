@@ -122,7 +122,11 @@
 
 [`NoteWindow.DockMove`](../src/DeskNodes.App/Views/NoteWindow.Dock.cs) 原来在指针越过当前页每个可见中心时，`target` 为空。预览用当前页 `visible.Last()` 的边界，记录的下标是 `peers.Count - 1`，包含其他页。松手按这个下标插入。页已满时，放在最后一个可见槽会把便签送到整条边的末尾，也就是溢出列表的末尾。命中一张真实可见便签时，用的是那张的序号。拖出保留带仍恢复 `FreeRestore`。
 
-**M12 一张过高的侧边停靠便签被缩短，却没有溢出标签。** [`DockLayout`](../src/DeskNodes.Core/Presentation/DockLayout.cs) 用未钳制的长度判断溢出，再在可用高度至少 216 DIP（最短便签 120 加溢出条 96）时先扣掉 96 DIP 再排布。一张高于这段可用高度的便签被钳到第 0 页，`Overflow` 仍为空。[`PresentationCoordinator`](../src/DeskNodes.App/PresentationCoordinator.cs) 只在 `Overflow.Count > 0` 时显示标签。例如可用 300、便签 400 时，便签被排成 204，旁边留下空档。测试只在数量大于 1 时要求出现溢出标签。
+**M12 一张过高的侧边停靠便签被缩短，却没有溢出标签。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`DockLayout`](../src/DeskNodes.Core/Presentation/DockLayout.cs) 用未钳制的长度判断溢出，再在可用高度至少 216 DIP（最短便签 120 加溢出条 96）时先扣掉 96 DIP 再排布。一张高于这段可用高度的便签被钳到第 0 页，`Overflow` 仍为空。[`PresentationCoordinator`](../src/DeskNodes.App/PresentationCoordinator.cs) 只在 `Overflow.Count > 0` 时显示标签。例如可用 300、便签 400 时，便签被排成 204，旁边留下空档。测试只在数量大于 1 时要求出现溢出标签。
 
 **M13 自动增高只改了 Win32 的顶边。** [`MeasureHeight`](../src/DeskNodes.App/Views/NoteWindow.Layout.cs) 用 `SetWindowPos` 把顶边钳进工作区，不写 WPF 的 `Top`。靠近工作区底部长高的便签会被 Win32 挪上去，下一次 WPF 布局再把它拉回去。`Place` 会同时写 WPF 的 `Left`/`Top` 和 `SetWindowPos`。
 

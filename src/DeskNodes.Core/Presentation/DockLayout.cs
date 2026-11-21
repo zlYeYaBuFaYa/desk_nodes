@@ -63,7 +63,25 @@ public static class DockLayout
             end = top ? w.Right : w.Bottom;
         }
         double available = end - start;
-        bool overflow = ordered.Sum(i => Length(i) + DockSpacing) - DockSpacing > available;
+        List<List<DockItem>> Pack(double space)
+        {
+            var packed = new List<List<DockItem>> { new() };
+            double used = 0;
+            foreach (var item in ordered)
+            {
+                double length = Math.Min(Length(item), space);
+                if (packed[^1].Count > 0 && used + length > space)
+                {
+                    packed.Add(new());
+                    used = 0;
+                }
+                packed[^1].Add(item);
+                used += length + DockSpacing;
+            }
+            return packed;
+        }
+        var groups = Pack(available);
+        bool overflow = groups.Count > 1;
         // Overlay when reserving a full overflow entry would shrink the note below its minimum.
         bool overlay = available - MinimumNoteLength < OverflowLength;
         double overflowLength = overlay ? Math.Min(OverflowLength, available / 2) : OverflowLength;
@@ -71,19 +89,10 @@ public static class DockLayout
             ? top ? new(end - overflowLength, w.Y, overflowLength, cross)
                 : new(edge == DockEdge.Left ? w.X : w.Right - cross, end - overflowLength, cross, overflowLength)
             : null;
-        if (overflow && !overlay) available = Math.Max(0, available - overflowLength);
-        var groups = new List<List<DockItem>> { new() };
-        double used = 0;
-        foreach (var item in ordered)
+        if (overflow && !overlay)
         {
-            double length = Math.Min(Length(item), available);
-            if (groups[^1].Count > 0 && used + length > available)
-            {
-                groups.Add(new());
-                used = 0;
-            }
-            groups[^1].Add(item);
-            used += length + DockSpacing;
+            available = Math.Max(0, available - overflowLength);
+            groups = Pack(available);
         }
         page = Math.Clamp(page, 0, groups.Count - 1);
         var visible = new List<DockedNote>();
