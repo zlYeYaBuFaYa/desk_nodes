@@ -186,7 +186,11 @@
 
 [`App.OnStartup`](../src/DeskNodes.App/App.xaml.cs) 的 `DispatcherUnhandledException` 显示对话框并 `Shutdown(1)`，没有把 `args.Handled` 设为 true。WPF 仍把它当作未处理异常。这条路径上的 `Stop()` 不等待 400 ms 编辑缓冲。菜单里的退出会先走 `Run`。
 
-**M22 全局收起被第一张便签的结束回调提前关掉。** [`Collapse`](../src/DeskNodes.App/PresentationCoordinator.cs) 给每张可见便签调用一次 `Present`（0.28 秒）。回调里先 `state.Complete`，再 `Refresh`。刷新时，只要过渡不再是 `Collapsing`，或者隐藏原因不只是收起，窗口就被 `Hide`。第一张结束之后，其余仍在动画里的便签被藏起来。减少动画时 [`Present`](../src/DeskNodes.App/Views/NoteWindow.Presentation.cs) 在方法内部同步调用回调，循环还没走完过渡就结束了。更新的 `Request` 会增加 generation，旧回调被丢掉，这一条是对的。
+**M22 全局收起被第一张便签的结束回调提前关掉。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`Collapse`](../src/DeskNodes.App/PresentationCoordinator.cs) 给每张可见便签调用一次 `Present`（0.28 秒）。回调里先 `state.Complete`，再 `Refresh`。刷新时，只要过渡不再是 `Collapsing`，或者隐藏原因不只是收起，窗口就被 `Hide`。第一张结束之后，其余仍在动画里的便签被藏起来。减少动画时 [`Present`](../src/DeskNodes.App/Views/NoteWindow.Presentation.cs) 在方法内部同步调用回调，循环还没走完过渡就结束了。更新的 `Request` 会增加 generation，旧回调被丢掉，这一条是对的。
 
 **M23 点溢出标签后，便签会停在临时置顶。** [`SelectDockNote`](../src/DeskNodes.App/PresentationCoordinator.cs) 在 `Refresh` 之后调用 `SetTemporarilyRaised(true)`。这个方法里没有再把它设回去。[`WindowLevelService`](../src/DeskNodes.App/Platform/WindowLevelService.cs) 于是使用 `HWND_TOPMOST`。下一次刷新会按「正在浮起或正在多选」重算；切到其他应用时 `EndRaised` 也会按是否仍在多选收回。[FR-05](REQUIREMENTS.md) 要求溢出标签把对应便签显示出来。
 

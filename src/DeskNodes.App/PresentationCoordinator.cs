@@ -181,22 +181,25 @@ internal sealed class PresentationCoordinator : IDisposable
         var screens = app.Screens.GetScreens();
         var screen = ToolbarGeometry.AnchorScreen(screens, app.Preferences);
         var entry = app.CollapseEntrance;
-        int index = 0;
+        var animated = new List<(NoteWindow Window, RectD Target)>();
         foreach (var pair in app.Windows)
         {
             if ((Suppressed.GetValueOrDefault(pair.Key) & ~SuppressionReason.Collapsed) != 0) continue;
-            var target = CollapseGeometry.Target(entry, screen.WorkArea, index++);
+            var target = CollapseGeometry.Target(entry, screen.WorkArea, animated.Count);
             double scale = screens.Resolve(ScreenProvider.DeviceForWindow(new WindowInteropHelper(pair.Value).Handle)).DpiScale;
             double ratio = screen.DpiScale / scale;
             target = new(target.X * ratio, target.Y * ratio, target.Width * ratio, target.Height * ratio);
-            pair.Value.Present(collapsed, target, .28, () =>
+            animated.Add((pair.Value, target));
+        }
+        state.Expect(generation, animated.Count);
+        foreach (var (window, target) in animated)
+            window.Present(collapsed, target, .28, () =>
             {
                 if (generation != state.Generation) return;
-                state.Complete(generation);
+                if (!state.Complete(generation)) return;
                 Refresh();
             });
-        }
-        if (index == 0) state.Complete(generation);
+        if (animated.Count == 0) state.Complete(generation);
     }
     public void EnterSelection(NoteId? initial = null)
     {

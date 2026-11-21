@@ -92,6 +92,25 @@ public sealed class PresentationRulesTests
         Assert.Equal(DeskTransition.Expanded, state.Transition);
     }
     [Fact]
+    public void CollapseStaysOpenUntilTheLastNoteArrives()
+    {
+        var state = new PresentationState();
+        long generation = state.Request(true);
+        state.Expect(generation, 3);
+        Assert.False(state.Complete(generation));
+        Assert.Equal(DeskTransition.Collapsing, state.Transition);
+        Assert.False(state.Complete(generation));
+        Assert.True(state.Complete(generation));
+        Assert.Equal(DeskTransition.Collapsed, state.Transition);
+        long replaced = state.Request(true);
+        state.Expect(replaced, 2);
+        long newer = state.Request(false);
+        Assert.False(state.Complete(replaced));
+        Assert.Equal(DeskTransition.Expanding, state.Transition);
+        Assert.True(state.Complete(newer));
+        Assert.Equal(DeskTransition.Expanded, state.Transition);
+    }
+    [Fact]
     public void SelectionReplacesAppendsAndRetainsOnlyVisible()
     {
         var a = NoteId.New();

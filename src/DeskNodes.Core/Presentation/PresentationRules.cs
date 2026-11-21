@@ -12,14 +12,27 @@ public sealed class PresentationState
 {
     public long Generation { get; private set; }
     public DeskTransition Transition { get; private set; }
+    private int remaining = 1;
     public long Request(bool collapsed)
     {
         Transition = collapsed ? DeskTransition.Collapsing : DeskTransition.Expanding;
+        remaining = 1;
         return ++Generation;
+    }
+    public void Expect(long generation, int participants)
+    {
+        if (generation != Generation) return;
+        remaining = Math.Max(0, participants);
     }
     public bool Complete(long generation)
     {
         if (generation != Generation) return false;
+        if (remaining > 1)
+        {
+            remaining--;
+            return false;
+        }
+        remaining = 0;
         Transition = Transition switch
         {
             DeskTransition.Collapsing => DeskTransition.Collapsed,
