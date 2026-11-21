@@ -90,7 +90,11 @@
 
 [`Note.Update`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 原来把 `deleted_at` 当成普通列写回。[`AppCoordinator.Update`](../src/DeskNodes.App/AppCoordinator.cs) 构造 `Note` 时不传 `DeletedAt`，默认是 null。对一张已软删除便签的后续保存会把它写活，并留下 `note_deletion_items`。下一次 [`SoftDelete`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 向该表插入相同 `item_id`。该列是主键，语句没有 `ON CONFLICT`，插入失败会回滚整次删除。单项 `Restore(ItemId)` 在事项并未删除时会在写入前返回。
 
-**M7 `dock_order` 没有上限。** [`Schema`](../src/DeskNodes.Core/Storage/Schema.cs) 的检查只要求 `dock_order >= 0`。读取用 `GetInt32`。大于 2147483647 的手改行会让 `GetNotes()` 抛错，启动无法列出便签。[D31](DECISIONS.md) 要求范围是 0..2147483647。应用里的 `Placement.DockOrder` 是 `int?`，写不出更大的值；备份导入会拒绝。测试只覆盖了导入拒绝。
+**M7 `dock_order` 没有上限。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`Schema`](../src/DeskNodes.Core/Storage/Schema.cs) 原来的检查只要求 `dock_order >= 0`。读取用 `GetInt32`。大于 2147483647 的手改行会让 `GetNotes()` 抛错，启动无法列出便签。[D31](DECISIONS.md) 要求范围是 0..2147483647。应用里的 `Placement.DockOrder` 是 `int?`，写不出更大的值；备份导入会拒绝。测试原来只覆盖了导入拒绝。
 
 **M8 回滚本身失败后，连接仍被当成空闲。** [`DeskNodesDatabase`](../src/DeskNodes.Core/Storage/DeskNodesDatabase.cs) 在 `ROLLBACK` 或 `ROLLBACK TO` 抛错时，内层 `finally` 仍把 `transactionDepth` 减到 0 并安排回滚回调。连接没有被标记为不可用。下一次读取可能看到仍开着的事务。这是少见路径。
 

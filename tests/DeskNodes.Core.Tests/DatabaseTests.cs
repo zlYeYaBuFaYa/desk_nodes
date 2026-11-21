@@ -68,6 +68,23 @@ public sealed class DatabaseTests
     }
 
     [Fact]
+    public void DockOrderAcceptsInt32MaxAndRejectsTheNextValue()
+    {
+        using var directory = new TestDirectory();
+        using var database = directory.Open();
+        var repository = new NoteRepository(database);
+        var note = Note();
+        repository.Insert(note);
+        database.Transaction(connection => Execute(connection,
+            "UPDATE notes SET dock_edge='left', dock_order=2147483647 WHERE id='" + note.Id + "';"));
+        Assert.Equal(int.MaxValue, repository.GetNote(note.Id)!.Placement.DockOrder);
+        var exception = Assert.Throws<SqliteException>(() => database.Transaction(connection => Execute(connection,
+            "UPDATE notes SET dock_order=2147483648 WHERE id='" + note.Id + "';")));
+        Assert.Equal(19, exception.SqliteErrorCode);
+        Assert.Equal(int.MaxValue, repository.GetNote(note.Id)!.Placement.DockOrder);
+    }
+
+    [Fact]
     public void CorruptFileIsNotReplacedWithAnEmptyDatabase()
     {
         using var directory = new TestDirectory();
