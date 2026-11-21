@@ -82,9 +82,13 @@
 
 ### 存储与备份
 
-**M6 恢复一张并未删除的便签时，子项恢复仍会提交。** [`NoteRepository.Restore(NoteId)`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 在更新便签行之前，就按 `note_deletion_items` 把成员事项的 `deleted_at` 清掉。`pending_deleted_items` 的删除还要求便签当时仍是删除状态。便签更新影响 0 行时，成员行保留，`return false` 仍会提交事务。
+**M6 恢复一张并未删除的便签时，子项恢复仍会提交。**
 
-[`Note.Update`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 把 `deleted_at` 当成普通列写回。[`AppCoordinator.Update`](../src/DeskNodes.App/AppCoordinator.cs) 构造 `Note` 时不传 `DeletedAt`，默认是 null。对一张已软删除便签的后续保存会把它写活，并留下 `note_deletion_items`。下一次 [`SoftDelete`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 向该表插入相同 `item_id`。该列是主键，语句没有 `ON CONFLICT`，插入失败会回滚整次删除。单项 `Restore(ItemId)` 在事项并未删除时会在写入前返回。
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`NoteRepository.Restore(NoteId)`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 原来在更新便签行之前，就按 `note_deletion_items` 把成员事项的 `deleted_at` 清掉。`pending_deleted_items` 的删除还要求便签当时仍是删除状态。便签更新影响 0 行时，成员行保留，`return false` 仍会提交事务。
+
+[`Note.Update`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 原来把 `deleted_at` 当成普通列写回。[`AppCoordinator.Update`](../src/DeskNodes.App/AppCoordinator.cs) 构造 `Note` 时不传 `DeletedAt`，默认是 null。对一张已软删除便签的后续保存会把它写活，并留下 `note_deletion_items`。下一次 [`SoftDelete`](../src/DeskNodes.Core/Storage/NoteRepository.cs) 向该表插入相同 `item_id`。该列是主键，语句没有 `ON CONFLICT`，插入失败会回滚整次删除。单项 `Restore(ItemId)` 在事项并未删除时会在写入前返回。
 
 **M7 `dock_order` 没有上限。** [`Schema`](../src/DeskNodes.Core/Storage/Schema.cs) 的检查只要求 `dock_order >= 0`。读取用 `GetInt32`。大于 2147483647 的手改行会让 `GetNotes()` 抛错，启动无法列出便签。[D31](DECISIONS.md) 要求范围是 0..2147483647。应用里的 `Placement.DockOrder` 是 `int?`，写不出更大的值；备份导入会拒绝。测试只覆盖了导入拒绝。
 
@@ -157,7 +161,7 @@
 - 粘贴测试没有 `3.14` 或 `10.5`。
 - 编辑会话测试只通过 `SetComposition(false)` 结束组词，没有 Esc 取消。
 - `HistoryActionsTests` 原来期望从 2026-12-01 向左落到 2026-11-15。M4 已改成逐日退回。
-- 仓库恢复测试只恢复一张仍处于删除状态的便签。
+- 仓库恢复测试原来只恢复一张仍处于删除状态的便签。M6 已补上未删除便签的保存和恢复。
 - 停靠分页测试只在数量大于 1 时要求溢出标签。
 - 手柄与入口重合只在文字缩放 1 时断言。
 - 闲置宽限测试从冷工具条开始。

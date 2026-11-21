@@ -88,7 +88,7 @@ public sealed class NoteRepository(DeskNodesDatabase database)
                 $height, display_device_hint = $display_device_hint, dock_edge = $dock_edge, dock_order = $dock_order,
                 saved_level = $saved_level, free_x = $free_x, free_y = $free_y, free_width = $free_width, free_height =
                 $free_height, automatic_height = $automatic_height, collapsed = $collapsed, created_at = $created_at,
-                updated_at = $updated_at, deleted_at = $deleted_at
+                updated_at = $updated_at
                 WHERE id = $id;
                 """;
             Bind(command, value);
@@ -171,6 +171,13 @@ public sealed class NoteRepository(DeskNodesDatabase database)
 
     public bool Restore(NoteId id, DateTimeOffset at) => database.Transaction(connection =>
     {
+        using (var check = connection.CreateCommand())
+        {
+            check.CommandText = "SELECT deleted_at FROM notes WHERE id=$id;";
+            check.Parameters.AddWithValue("$id", id.ToString());
+            if (check.ExecuteScalar() is null or DBNull)
+                return false;
+        }
         // Only children from this whole-note deletion return; earlier individual tombstones stay deleted.
         Execute(connection, "DELETE FROM pending_deleted_items WHERE item_id IN " +
             "(SELECT i.id FROM items i JOIN notes n ON n.id=i.note_id WHERE n.id=$id " +

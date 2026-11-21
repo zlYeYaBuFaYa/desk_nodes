@@ -188,6 +188,28 @@ public sealed class RepositoryTests
     }
 
     [Fact]
+    public void SavingADeletedNoteDoesNotReviveItOrItsChildren()
+    {
+        using var directory = new TestDirectory();
+        using var database = directory.Open();
+        var repository = new NoteRepository(database);
+        var note = Note();
+        repository.Insert(note);
+        var item = Item(note.Id);
+        repository.Insert(item);
+        Assert.True(repository.SoftDelete(note.Id, Now, HistoryDay.Parse("2026-11-15")));
+        repository.Update(new Note(note.Id, "改标题", note.Color, note.SortOrder, note.Placement,
+            note.SavedLevel, note.FreeRestore, note.AutomaticHeight, note.Collapsed, note.CreatedAt, Now.AddMinutes(1)));
+        Assert.Equal(Now, repository.GetNote(note.Id, includeDeleted: true)!.DeletedAt);
+        Assert.Equal("改标题", repository.GetNote(note.Id, includeDeleted: true)!.Title);
+        database.Transaction(connection => Execute(connection,
+            "UPDATE notes SET deleted_at=NULL WHERE id='" + note.Id + "';"));
+        Assert.False(repository.Restore(note.Id, Now.AddMinutes(2)));
+        Assert.Equal(Now, repository.GetItem(item.Id, includeDeleted: true, includeArchived: true)!.DeletedAt);
+        Assert.Equal(1L, database.Read(connection => Scalar(connection, "SELECT count(*) FROM note_deletion_items;")));
+    }
+
+    [Fact]
     public void DatabaseEnforcesForeignKeysAndExclusiveItemStates()
     {
         using var directory = new TestDirectory();

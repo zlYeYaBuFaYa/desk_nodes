@@ -15,7 +15,7 @@
 | M3 | 已修复 | 只有单独的 Ctrl+Z 会在提交成功后吃掉按键 |
 | M4 | 已修复 | 未来日期按方向键逐日或逐周移动 |
 | M5 | 已修复 | 普通方向键只在完整键盘导航时留给焦点控件 |
-| M6 | 待复核 | 恢复未删除便签时子项恢复仍提交 |
+| M6 | 已修复 | 未删除便签的保存和恢复不再改删除状态 |
 | M7 | 待复核 | dock_order 没有上限 |
 | M8 | 待复核 | 回滚失败后连接被当成空闲 |
 | M9 | 待复核 | 备份 JSON 重复字段按最后值接受 |
@@ -154,3 +154,15 @@ SQLite 文档约定备份期间在目标库上持有写事务。`sqlite3_backup_
 3. 把「今天」和翻月按钮设成不能获得焦点。键盘无法再激活这些按钮。
 
 测试 `PlainArrowsStayWithAControlOnlyDuringFullKeyboardNavigation` 覆盖四种组合。这次没有编译运行。
+
+## M6 恢复一张并未删除的便签时，子项恢复仍会提交
+
+复核结论：成立。`Restore(NoteId)` 先按 `note_deletion_items` 清掉子项的 `deleted_at`，再更新便签。便签当时并没有删除时，更新影响 0 行，方法返回 false，事务仍然提交，子项已经被写活。`Note.Update` 会写 `deleted_at`。调用处构造 `Note` 时不传这个值，默认是 null，于是一次普通保存会把已软删除的便签写活，并留下成员行。之后再次软删除会向主键 `item_id` 插入同一事项，整次删除回滚。单项恢复在写入前就会返回。
+
+考虑过的做法：
+
+1. 恢复前先确认便签仍处于删除状态，否则直接返回，不改子项。普通 `Update` 不再写 `deleted_at`，删除和恢复仍只走 `SoftDelete` 与 `Restore`。采用这个。
+2. 便签更新影响 0 行时抛异常，让事务回滚。子项不会留下，但普通保存仍会把已删除便签写活。
+3. 只在 `AppCoordinator.Update` 传入原来的 `DeletedAt`。内存里的对象如果是删除前读出来的，`DeletedAt` 仍是 null，保存还是会写活。
+
+测试 `SavingADeletedNoteDoesNotReviveItOrItsChildren` 覆盖保存后删除时间仍在，以及便签被写活后恢复不会清掉子项和成员行。这次没有编译运行。
