@@ -49,6 +49,16 @@ public static class PresentationRules
         ToolbarGeometry.AnchorScreen(screens, previous).Id != ToolbarGeometry.AnchorScreen(screens, current).Id;
     public static bool ShouldShowOnRefresh(DeskTransition transition, bool isVisible) =>
         transition != DeskTransition.Expanding || isVisible;
+    public static NoteId? SelectionFocus(IEnumerable<NoteId> visible, IReadOnlySet<NoteId> picked)
+    {
+        NoteId? first = null;
+        foreach (var id in visible)
+        {
+            first ??= id;
+            if (picked.Contains(id)) return id;
+        }
+        return first;
+    }
     public static bool NeedsOtherDesktopPrompt(IEnumerable<SuppressionReason> reasons)
     {
         var targets = reasons.ToArray();

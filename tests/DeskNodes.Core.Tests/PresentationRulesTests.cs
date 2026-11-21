@@ -92,6 +92,16 @@ public sealed class PresentationRulesTests
         Assert.Equal(DeskTransition.Expanded, state.Transition);
     }
     [Fact]
+    public void SelectionFocusPrefersThePickedNoteThenTheFirstVisible()
+    {
+        var first = NoteId.New();
+        var picked = NoteId.New();
+        var other = NoteId.New();
+        Assert.Null(PresentationRules.SelectionFocus([], new HashSet<NoteId>()));
+        Assert.Equal(first, PresentationRules.SelectionFocus([first, picked], new HashSet<NoteId>()));
+        Assert.Equal(picked, PresentationRules.SelectionFocus([first, picked, other], new HashSet<NoteId> { picked }));
+    }
+    [Fact]
     public void CollapseStaysOpenUntilTheLastNoteArrives()
     {
         var state = new PresentationState();

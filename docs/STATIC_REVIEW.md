@@ -198,7 +198,11 @@
 
 [`SelectDockNote`](../src/DeskNodes.App/PresentationCoordinator.cs) 在 `Refresh` 之后调用 `SetTemporarilyRaised(true)`。这个方法里没有再把它设回去。[`WindowLevelService`](../src/DeskNodes.App/Platform/WindowLevelService.cs) 于是使用 `HWND_TOPMOST`。下一次刷新会按「正在浮起或正在多选」重算；切到其他应用时 `EndRaised` 也会按是否仍在多选收回。[FR-05](REQUIREMENTS.md) 要求溢出标签把对应便签显示出来。
 
-**M24 从工具条或托盘进入多选时，键盘没有落点。** [`EnterSelection`](../src/DeskNodes.App/PresentationCoordinator.cs) 显示覆盖层和操作条，不把焦点给任何便签。[`PresentationBar`](../src/DeskNodes.App/Views/PresentationBar.xaml.cs) 设置 `WS_EX_NOACTIVATE`，自己不处理按键。`Esc`、`Ctrl+A`、`Delete` 只从便签的 `PreviewKeyDown` 进入 [`Keys`](../src/DeskNodes.App/PresentationCoordinator.cs)。[FR-15](REQUIREMENTS.md) 要求这些键在模式内可用。条上的按钮仍可用指针操作。空白点击清选择且不退出，这一条是对的。
+**M24 从工具条或托盘进入多选时，键盘没有落点。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`EnterSelection`](../src/DeskNodes.App/PresentationCoordinator.cs) 显示覆盖层和操作条，不把焦点给任何便签。[`PresentationBar`](../src/DeskNodes.App/Views/PresentationBar.xaml.cs) 设置 `WS_EX_NOACTIVATE`，自己不处理按键。`Esc`、`Ctrl+A`、`Delete` 只从便签的 `PreviewKeyDown` 进入 [`Keys`](../src/DeskNodes.App/PresentationCoordinator.cs)。[FR-15](REQUIREMENTS.md) 要求这些键在模式内可用。条上的按钮仍可用指针操作。空白点击清选择且不退出，这一条是对的。
 
 **M25 快捷键保存被拒绝后，按钮仍显示被拒绝的组合。** [`SaveHotkey`](../src/DeskNodes.App/Views/SettingsViewModel.SystemServices.cs) 在 `catch` 里设置 `HotkeyError`，不调用 `CancelRecording`。录制标志还在时，`NewHotkey` 和 `FloatHotkey` 返回刚录下的字符串。错误文案写的是原快捷键已保留。其他设置在保存被拒绝后会再通知一次，把界面绑回已保存的值。
 

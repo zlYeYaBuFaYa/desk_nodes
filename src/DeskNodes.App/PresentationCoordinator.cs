@@ -218,6 +218,8 @@ internal sealed class PresentationCoordinator : IDisposable
         selectionBar.Show();
         if (initial is { } id) selection.Apply([id]);
         Refresh();
+        if (PresentationRules.SelectionFocus(Visible(), selection.Picked) is { } focus && app.Windows.TryGetValue(focus, out var window))
+            window.Activate();
     }
     private void UpdateDockLabelVisibility()
     {
