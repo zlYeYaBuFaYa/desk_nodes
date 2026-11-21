@@ -1,4 +1,5 @@
 using DeskNodes.Core.Presentation;
+using DeskNodes.Core.Services;
 
 namespace DeskNodes.Core.Tests;
 
@@ -71,4 +72,10 @@ public sealed class NoteTypographyTests
     [InlineData(false, 0, -1, 0, true, false)]
     public void ArrowNavigationPreservesSelectionCompositionAndInnerLines(bool composing, int selection, int line, int count, bool up, bool expected)
         => Assert.Equal(expected, EditorRules.CanMoveBetweenItems(composing, selection, line, count, up));
+    [Theory]
+    [InlineData(false, UndoDecision.StructuralUndo, true)]
+    [InlineData(true, UndoDecision.StructuralUndo, false)]
+    [InlineData(false, UndoDecision.TextUndo, false)]
+    public void EditorUndoMatchesCtrlZUnlessComposing(bool composing, UndoDecision decision, bool expected)
+        => Assert.Equal(expected, EditorRules.UsesStructuralUndo(composing, decision));
 }

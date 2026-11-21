@@ -6,6 +6,8 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using DeskNodes.App.Platform;
 using DeskNodes.Core.Domain;
+using DeskNodes.Core.Presentation;
+using DeskNodes.Core.Services;
 
 namespace DeskNodes.App.Views;
 
@@ -87,9 +89,11 @@ internal sealed partial class NoteWindow
     private ContextMenu CreateEditorMenu(TextBox editor)
     {
         var menu = new ContextMenu();
+        var undo = new MenuItem { Header = "撤销", InputGestureText = "Ctrl+Z" };
+        undo.Click += (_, _) => UndoFromEditorMenu(editor);
+        menu.Items.Add(undo);
         (string Name, RoutedUICommand Command)[] commands =
         [
-            ("撤销", ApplicationCommands.Undo),
             ("剪切", ApplicationCommands.Cut),
             ("复制", ApplicationCommands.Copy),
             ("粘贴", ApplicationCommands.Paste),
@@ -110,11 +114,31 @@ internal sealed partial class NoteWindow
         menu.Items.Add(noteMenu);
         menu.Opened += (_, _) =>
         {
+            bool structural = EditorMenuUsesStructuralUndo();
+            undo.IsEnabled = structural || ApplicationCommands.Undo.CanExecute(null, editor);
             noteMenu.Items.Clear();
             PopulateNoteMenu(noteMenu);
         };
         TrackMenu(menu);
         return menu;
+    }
+
+    private bool EditorMenuUsesStructuralUndo() => EditorRules.UsesStructuralUndo(
+        app.Editors.HasComposition, app.Undo.DecideUndo(app.Clock.UtcNow, app.NewInputSinceDeletion));
+
+    private void UndoFromEditorMenu(TextBox editor)
+    {
+        if (EditorMenuUsesStructuralUndo())
+        {
+            app.Run(() =>
+            {
+                app.Undo.Undo(app.Clock.UtcNow);
+                app.Refresh();
+            });
+            return;
+        }
+        if (ApplicationCommands.Undo.CanExecute(null, editor))
+            ApplicationCommands.Undo.Execute(null, editor);
     }
 
     private void OpenContextMenu(object sender, ContextMenuEventArgs e)
