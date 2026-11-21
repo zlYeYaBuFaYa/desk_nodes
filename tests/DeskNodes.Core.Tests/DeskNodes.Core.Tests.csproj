@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/DeskNodes.App/Platform/LoginItemAvailability.cs" Link="Platform/LoginItemAvailability.cs" />
+    <Compile Include="../../src/DeskNodes.App/Platform/SingleInstance.cs" Link="Platform/SingleInstance.cs" />
+    <Compile Include="../../src/DeskNodes.App/Platform/FileLog.cs" Link="Platform/FileLog.cs" />
+    <None Update="Fixtures/backup-v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <ProjectReference Include="../../src/DeskNodes.Core/DeskNodes.Core.csproj" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

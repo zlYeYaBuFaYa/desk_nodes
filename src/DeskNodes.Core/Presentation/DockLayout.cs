@@ -1,0 +1,134 @@
+using DeskNodes.Core.Domain;
+
+namespace DeskNodes.Core.Presentation;
+
+public sealed record DockItem(NoteId Id, int Order, double Height = 240);
+public sealed record DockedNote(NoteId Id, RectD Bounds);
+public sealed record DockResult(IReadOnlyList<DockedNote> Visible, IReadOnlyList<NoteId> Overflow, int Page, int PageCount, RectD? OverflowBounds)
+{
+    public IReadOnlyDictionary<NoteId, int> Pages { get; init; } = new Dictionary<NoteId, int>();
+}
+public static class DockLayout
+{
+    private const double OverflowLength = 96;
+    private const double MinimumNoteLength = 120;
+    private const double DockSpacing = 12;
+    public static int PeerIndex(IReadOnlyList<NoteId> peers, IReadOnlyList<NoteId> visible, NoteId? before)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(visible.Count);
+        var slot = before ?? visible[^1];
+        int index = -1;
+        for (int i = 0; i < peers.Count; i++)
+            if (peers[i] == slot)
+            {
+                index = i;
+                break;
+            }
+        if (index < 0)
+            throw new InvalidOperationException("可见便签不在这条停靠边上。");
+        return index;
+    }
+
+    public static int NextOrder(IEnumerable<int> orders)
+    {
+        int max = -1;
+        foreach (var order in orders)
+            if (order > max) max = order;
+        return max == int.MaxValue ? max : max + 1;
+    }
+
+    public static DockResult Arrange(ScreenInfo screen, DockEdge edge, IEnumerable<DockItem> items,
+        RectD? homeZone = null, int page = 0)
+    {
+        var w = screen.WorkArea.Inset(Math.Min(8, Math.Min(screen.WorkArea.Width, screen.WorkArea.Height) / 4));
+        bool top = edge == DockEdge.Top;
+        double start = top ? w.X : w.Y, end = top ? w.Right : w.Bottom;
+        double cross = top ? Math.Min(screen.WorkArea.Height < 700 ? 200 : 260, w.Height) : Math.Min(288, w.Width);
+        if (homeZone is { } zone)
+        {
+            var strip = top ? new RectD(w.X, w.Y, w.Width, cross) : new RectD(edge == DockEdge.Left ? w.X : w.Right - cross, w.Y, cross, w.Height);
+            if (strip.Intersects(zone))
+            {
+                double before = Math.Clamp((top ? zone.X : zone.Y) - DockSpacing, start, end);
+                double after = Math.Clamp((top ? zone.Right : zone.Bottom) + DockSpacing, start, end);
+                if (before - start >= end - after) end = before; else start = after;
+            }
+        }
+        var ordered = items.OrderBy(i => i.Order).ToArray();
+        double Length(DockItem i) => top ? Math.Min(220, w.Width) : Math.Min(Math.Clamp(i.Height, MinimumNoteLength, 600), w.Height);
+        // If the reservation consumes the entire strip, keep notes reachable on the strip.
+        if (end <= start)
+        {
+            start = top ? w.X : w.Y;
+            end = top ? w.Right : w.Bottom;
+        }
+        double available = end - start;
+        List<List<DockItem>> Pack(double space)
+        {
+            var packed = new List<List<DockItem>> { new() };
+            double used = 0;
+            foreach (var item in ordered)
+            {
+                double length = Math.Min(Length(item), space);
+                if (packed[^1].Count > 0 && used + length > space)
+                {
+                    packed.Add(new());
+                    used = 0;
+                }
+                packed[^1].Add(item);
+                used += length + DockSpacing;
+            }
+            return packed;
+        }
+        var groups = Pack(available);
+        bool overflow = groups.Count > 1;
+        // Overlay when reserving a full overflow entry would shrink the note below its minimum.
+        bool overlay = available - MinimumNoteLength < OverflowLength;
+        double overflowLength = overlay ? Math.Min(OverflowLength, available / 2) : OverflowLength;
+        RectD? overflowBounds = overflow
+            ? top ? new(end - overflowLength, w.Y, overflowLength, cross)
+                : new(edge == DockEdge.Left ? w.X : w.Right - cross, end - overflowLength, cross, overflowLength)
+            : null;
+        if (overflow && !overlay)
+        {
+            available = Math.Max(0, available - overflowLength);
+            groups = Pack(available);
+        }
+        page = Math.Clamp(page, 0, groups.Count - 1);
+        var visible = new List<DockedNote>();
+        double cursor = start;
+        foreach (var item in groups[page])
+        {
+            double length = Math.Min(Length(item), available);
+            visible.Add(new(item.Id, top ? new(cursor, w.Y, length, cross) : new(edge == DockEdge.Left ? w.X : w.Right - cross, cursor, cross, length)));
+            cursor += length + DockSpacing;
+        }
+        var ids = visible.Select(v => v.Id).ToHashSet();
+        return new(visible.AsReadOnly(), Array.AsReadOnly(ordered.Where(i => !ids.Contains(i.Id)).Select(i => i.Id).ToArray()), page, groups.Count, overflowBounds)
+        {
+            Pages = groups.SelectMany((group, index) => group.Select(item => (item.Id, Page: index)))
+                .ToDictionary(item => item.Id, item => item.Page)
+        };
+    }
+    public static int? PageForNote(DockResult layout, NoteId id) =>
+        layout.Pages.TryGetValue(id, out int page) ? page : null;
+
+    public static bool ShouldDetach(DockEdge edge, RectD workArea, PointD pointer) => edge switch
+    {
+        DockEdge.Left => pointer.X > workArea.X + 288 + 48,
+        DockEdge.Right => pointer.X < workArea.Right - 288 - 48,
+        _ => pointer.Y > workArea.Y + (workArea.Height < 700 ? 200 : 260) + 48
+    };
+}
+public static class CollapseGeometry
+{
+    public static string? Badge(int count) => count <= 0 ? null : count > 99 ? "99+" : count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    public static RectD Target(RectD toolbar, RectD workArea, int index)
+    {
+        // 24×32 DIP miniature sheets, offset by 3 DIP for at most three visible layers.
+        int layer = Math.Clamp(index, 0, 2);
+        bool left = toolbar.Right + 8 + 2 * 3 + 24 > workArea.Right;
+        double x = left ? toolbar.X - 8 - 24 - layer * 3 : toolbar.Right + 8 + layer * 3;
+        return new RectD(x, toolbar.Center.Y - 16 + layer * 3, 24, 32).Fit(workArea);
+    }
+}

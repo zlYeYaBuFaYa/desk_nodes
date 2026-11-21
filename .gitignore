@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+.idea/
+publish/
+TestResults/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+src/DeskNodes.App/Resources/Fonts/

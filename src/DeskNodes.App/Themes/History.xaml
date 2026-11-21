@@ -1,0 +1,391 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:DeskNodes.App.Views"
+    xmlns:core="clr-namespace:DeskNodes.Core.Presentation;assembly=DeskNodes.Core"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+    <Style TargetType="Ellipse" x:Key="HistoryTodayDot">
+        <Setter Property="Width" Value="4"/>
+        <Setter Property="Height" Value="4"/>
+        <Setter Property="VerticalAlignment" Value="Bottom"/>
+        <Setter Property="Margin" Value="0,0,0,4"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDayNumber">
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Foreground" Value="{DynamicResource HistoryForeground}"/>
+    </Style>
+    <Style TargetType="Border" x:Key="HistoryDaySelection">
+        <Setter Property="CornerRadius" Value="9"/>
+        <Setter Property="Background" Value="{DynamicResource HistorySelected}"/>
+    </Style>
+    <Style TargetType="Border" x:Key="HistoryDayShade">
+        <Setter Property="CornerRadius" Value="9"/>
+    </Style>
+    <Style TargetType="Border" x:Key="HistoryNoteTitleBar">
+        <Setter Property="MinHeight" Value="28"/>
+        <Setter Property="CornerRadius" Value="7"/>
+        <Setter Property="Padding" Value="10,0"/>
+    </Style>
+    <Style TargetType="StackPanel" x:Key="HistoryNoteSpacing">
+        <Setter Property="Margin" Value="0,0,0,24"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryCarryText">
+        <Setter Property="Foreground" Value="{DynamicResource HistoryCarryForeground}"/>
+    </Style>
+    <Style TargetType="StackPanel" x:Key="HistoryItemSpacing">
+        <Setter Property="Margin" Value="10,10,0,0"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDeletedExplanation">
+        <Setter Property="Foreground" Value="{DynamicResource HistorySecondary}"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDeletedTime">
+        <Setter Property="Foreground" Value="{DynamicResource HistorySecondary}"/>
+        <Setter Property="Margin" Value="0,6"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDeletedTitle">
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style TargetType="Border" x:Key="HistoryDeletedCard">
+        <Setter Property="CornerRadius" Value="9"/>
+        <Setter Property="Padding" Value="16"/>
+        <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+    <Style TargetType="ContentPresenter" x:Key="HistoryButtonContent">
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style TargetType="Border" x:Key="HistoryButtonBorder">
+        <Setter Property="CornerRadius" Value="7"/>
+    </Style>
+    <Style TargetType="StackPanel" x:Key="HistoryFailureContent">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style TargetType="Border" x:Key="HistoryFailureBackground">
+        <Setter Property="Background" Value="{DynamicResource HistoryBackground}"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDeletedEmpty">
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,32"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDeletedItemsHeading">
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,16"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDeletedNotesHeading">
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,0,0,16"/>
+    </Style>
+    <Style TargetType="StackPanel" x:Key="HistoryDeletedPadding">
+        <Setter Property="Margin" Value="32,24"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistorySecondaryText">
+        <Setter Property="Foreground" Value="{DynamicResource HistorySecondary}"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryEmptyTitle">
+        <Setter Property="FontSize" Value="{DynamicResource TextSize18}"/>
+        <Setter Property="Margin" Value="0,16,0,8"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryEmptyIcon">
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize32}"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style TargetType="StackPanel" x:Key="HistoryEmptyState">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDayHeading">
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,0,0,24"/>
+    </Style>
+    <Style TargetType="Grid" x:Key="HistoryDetails">
+        <Setter Property="Margin" Value="32,24"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryWeekday">
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style TargetType="UniformGrid" x:Key="HistoryWeekdays">
+        <Setter Property="Margin" Value="0,0,0,8"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryMonthRate">
+        <Setter Property="FontSize" Value="{DynamicResource TextSize24}"/>
+    </Style>
+    <Style TargetType="DockPanel" x:Key="HistoryMonthSummary">
+        <Setter Property="Margin" Value="0,20,0,16"/>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryHeading">
+        <Setter Property="FontSize" Value="{DynamicResource TextSize20}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style TargetType="StackPanel" x:Key="HistoryCalendarPadding">
+        <Setter Property="Margin" Value="28,24"/>
+    </Style>
+    <Style TargetType="RadioButton" x:Key="HistoryCalendarSegment">
+        <Setter Property="Margin" Value="0,0,24,0"/>
+    </Style>
+    <Style TargetType="Border" x:Key="HistorySegments">
+        <Setter Property="Padding" Value="28,16"/>
+    </Style>
+    <Style TargetType="DockPanel" x:Key="HistoryContent">
+        <Setter Property="MinWidth" Value="900"/>
+        <Setter Property="MinHeight" Value="656"/>
+    </Style>
+    <Style TargetType="TextBox" x:Key="HistoryTextBox">
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Background" Value="{DynamicResource HistoryTransparent}"/>
+        <Setter Property="Foreground" Value="{DynamicResource HistoryForeground}"/>
+        <Setter Property="Padding" Value="0"/>
+    </Style>
+    <sys:String x:Key="HistoryPreviousGlyph"></sys:String>
+    <sys:String x:Key="HistoryNextGlyph"></sys:String>
+    <sys:String x:Key="HistoryCalendarGlyph"></sys:String>
+    <sys:String x:Key="HistoryPendingGlyph"></sys:String>
+    <sys:String x:Key="HistoryCompletedGlyph"></sys:String>
+    <sys:String x:Key="HistoryStruckGlyph"></sys:String>
+    <sys:String x:Key="HistoryDeletedGlyph"></sys:String>
+    <Style TargetType="Border" x:Key="HistoryCarryVisibility">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Carry}" Value="{x:Null}">
+                <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryDeletedLabel">
+        <Setter Property="Visibility" Value="Collapsed"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Deleted}" Value="True">
+                <Setter Property="Visibility" Value="Visible"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <ItemsPanelTemplate x:Key="HistoryWeekPanel">
+        <UniformGrid Columns="7"/>
+    </ItemsPanelTemplate>
+    <GridLength x:Key="HistoryCalendarWidth">400</GridLength>
+    <Style
+        TargetType="TextBox"
+        x:Key="HistoryNoteTitle"
+        BasedOn="{StaticResource HistoryTextBox}">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style
+        TargetType="Border"
+        x:Key="HistoryCarryBadge"
+        BasedOn="{StaticResource HistoryCarryVisibility}">
+        <Setter Property="Background" Value="{DynamicResource HistoryCarryBackground}"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+    </Style>
+    <Style TargetType="Button" x:Key="HistoryButton">
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="MinHeight" Value="28"/>
+        <Setter Property="Background" Value="{DynamicResource HistoryWeak}"/>
+        <Setter Property="Foreground" Value="{DynamicResource HistoryForeground}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border
+                        Background="{TemplateBinding Background}"
+                        Padding="{TemplateBinding Padding}"
+                        Style="{StaticResource HistoryButtonBorder}">
+                        <ContentPresenter Style="{StaticResource HistoryButtonContent}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Opacity" Value="0.75"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style
+        TargetType="TextBox"
+        BasedOn="{StaticResource HistoryTextBox}"
+        x:Key="HistoryItemText">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Struck}" Value="True">
+                <Setter Property="TextBlock.TextDecorations" Value="Strikethrough"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style TargetType="TextBlock" x:Key="HistoryItemState">
+        <Setter Property="Text" Value="{StaticResource HistoryPendingGlyph}"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding State}" Value="{x:Static core:HistoryItemState.Pending}">
+                <Setter Property="Text" Value="{StaticResource HistoryPendingGlyph}"/>
+                <Setter Property="AutomationProperties.Name" Value="未完成"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding State}" Value="{x:Static core:HistoryItemState.Completed}">
+                <Setter Property="Text" Value="{StaticResource HistoryCompletedGlyph}"/>
+                <Setter Property="AutomationProperties.Name" Value="已完成"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding State}" Value="{x:Static core:HistoryItemState.Struck}">
+                <Setter Property="Text" Value="{StaticResource HistoryStruckGlyph}"/>
+                <Setter Property="AutomationProperties.Name" Value="已划掉"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding State}" Value="{x:Static core:HistoryItemState.Deleted}">
+                <Setter Property="Text" Value="{StaticResource HistoryDeletedGlyph}"/>
+                <Setter Property="AutomationProperties.Name" Value="已删除"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <ControlTemplate TargetType="RadioButton" x:Key="HistoryDayControlTemplate">
+        <Grid>
+            <Border
+                local:HistoryResources.BackgroundKey="{Binding ShadeKey}"
+                Opacity="{Binding Opacity}"
+                Style="{StaticResource HistoryDayShade}"/>
+            <Border
+                x:Name="Selection"
+                Visibility="Collapsed"
+                Style="{StaticResource HistoryDaySelection}"/>
+            <TextBlock
+                x:Name="Number"
+                Text="{Binding Label}"
+                Style="{StaticResource HistoryDayNumber}"/>
+            <Ellipse
+                x:Name="Dot"
+                Fill="{DynamicResource HistoryForeground}"
+                Visibility="Collapsed"
+                Style="{StaticResource HistoryTodayDot}"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <DataTrigger Binding="{Binding InMonth}" Value="False">
+                <Setter
+                    TargetName="Number"
+                    Property="Opacity"
+                    Value="0.4"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Selected}" Value="True">
+                <Setter
+                    TargetName="Selection"
+                    Property="Visibility"
+                    Value="Visible"/>
+                <Setter
+                    TargetName="Number"
+                    Property="Foreground"
+                    Value="{DynamicResource HistoryOnSelected}"/>
+                <Setter
+                    TargetName="Dot"
+                    Property="Fill"
+                    Value="{DynamicResource HistoryOnSelected}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Today}" Value="True">
+                <Setter
+                    TargetName="Number"
+                    Property="FontWeight"
+                    Value="Bold"/>
+                <Setter
+                    TargetName="Dot"
+                    Property="Visibility"
+                    Value="Visible"/>
+            </DataTrigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+    <Style
+        TargetType="RadioButton"
+        x:Key="HistoryDayButton">
+        <Setter Property="MinHeight" Value="46"/>
+        <Setter Property="FontSize" Value="{DynamicResource TextSize12}"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Margin" Value="1"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Background" Value="{DynamicResource HistoryTransparent}"/>
+    </Style>
+    <Style
+        TargetType="TextBlock"
+        x:Key="HistoryItemMarker"
+        BasedOn="{StaticResource HistoryItemState}">
+        <Setter Property="Margin" Value="0,0,10,0"/>
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+    </Style>
+    <Style
+        TargetType="Button"
+        x:Key="HistoryRetryButton"
+        BasedOn="{StaticResource HistoryButton}">
+        <Setter Property="Margin" Value="0,16,0,0"/>
+    </Style>
+    <Style
+        TargetType="Button"
+        x:Key="HistoryNextButton"
+        BasedOn="{StaticResource HistoryButton}">
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+    </Style>
+    <Style
+        TargetType="Button"
+        x:Key="HistoryPreviousButton"
+        BasedOn="{StaticResource HistoryButton}">
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+    </Style>
+    <DataTemplate x:Key="DeletedEntry">
+        <Border local:HistoryResources.BackgroundKey="{Binding ColorKey}" Style="{StaticResource HistoryDeletedCard}">
+            <StackPanel>
+                <DockPanel>
+                    <Button
+                        Content="恢复"
+                        AutomationProperties.Name="{Binding Entry.Title, StringFormat=恢复 {0}}"
+                        DockPanel.Dock="Right"
+                        IsEnabled="{Binding CanRestore}"
+                        Command="{x:Static local:HistoryCommands.Restore}"
+                        CommandParameter="{Binding}"
+                        Style="{StaticResource HistoryButton}"/>
+                    <TextBlock Text="{Binding Entry.Title}" Style="{StaticResource HistoryDeletedTitle}"/>
+                </DockPanel>
+                <TextBlock Text="{Binding Time}" Style="{StaticResource HistoryDeletedTime}"/>
+                <TextBox Text="{Binding Preview}" Style="{StaticResource HistoryTextBox}"/>
+                <TextBlock Text="{Binding Explanation}" Style="{StaticResource HistoryDeletedExplanation}"/>
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+    <DataTemplate x:Key="HistoryItemTemplate">
+        <StackPanel Style="{StaticResource HistoryItemSpacing}">
+            <DockPanel>
+                <TextBlock Style="{StaticResource HistoryItemMarker}"/>
+                <TextBox Text="{Binding Text}" Style="{StaticResource HistoryItemText}"/>
+            </DockPanel>
+            <Border Style="{StaticResource HistoryCarryBadge}">
+                <TextBlock Text="{Binding Carry}" Style="{StaticResource HistoryCarryText}"/>
+            </Border>
+        </StackPanel>
+    </DataTemplate>
+    <DataTemplate x:Key="HistoryDayTemplate">
+        <RadioButton
+            GroupName="HistoryDays"
+            IsChecked="{Binding Selected, Mode=OneWay}"
+            AutomationProperties.Name="{Binding AccessibleName}"
+            AutomationProperties.HelpText="{Binding Status}"
+            Template="{StaticResource HistoryDayControlTemplate}"
+            Style="{StaticResource HistoryDayButton}"/>
+    </DataTemplate>
+    <DataTemplate x:Key="HistoryNoteTemplate">
+        <StackPanel Style="{StaticResource HistoryNoteSpacing}">
+            <Border local:HistoryResources.BackgroundKey="{Binding ColorKey}" Style="{StaticResource HistoryNoteTitleBar}">
+                <DockPanel>
+                    <TextBlock
+                        Text="已删除"
+                        DockPanel.Dock="Right"
+                        Style="{StaticResource HistoryDeletedLabel}"/>
+                    <TextBox Text="{Binding Title}" Style="{StaticResource HistoryNoteTitle}"/>
+                </DockPanel>
+            </Border>
+            <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource HistoryItemTemplate}"/>
+        </StackPanel>
+    </DataTemplate>
+    <sys:Double x:Key="HistoryContentWidth">1040</sys:Double>
+    <sys:Double x:Key="HistoryContentHeight">656</sys:Double>
+    <sys:Double x:Key="HistoryMinimumWidth">900</sys:Double>
+</ResourceDictionary>

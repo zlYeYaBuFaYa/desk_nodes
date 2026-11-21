@@ -1,0 +1,84 @@
+<UserControl
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="DeskNodes.App.Views.ItemRowView"
+    x:ClassModifier="internal"
+    Focusable="False">
+    <Grid x:Name="Root" MinHeight="{Binding RowHeight}" AllowDrop="True">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition/>
+            <ColumnDefinition Width="64"/>
+        </Grid.ColumnDefinitions>
+        <CheckBox
+            x:Name="Check"
+            Style="{StaticResource CompletionCircle}"
+            IsChecked="{Binding Completed, Mode=OneWay}"
+            Width="{Binding CircleSize}"
+            Height="{Binding CircleSize}"
+            Margin="{Binding CircleMargin}"
+            VerticalAlignment="Top"
+            AutomationProperties.Name="{Binding CompletionName}"/>
+        <TextBox
+            x:Name="Editor"
+            Grid.Column="1"
+            TextWrapping="Wrap"
+            AcceptsReturn="False"
+            VerticalContentAlignment="Top"
+            FontFamily="{Binding Font}"
+            FontSize="{Binding BodySize}"
+            TextBlock.LineHeight="{Binding LineHeight}"
+            Padding="{Binding EditorPadding}"
+            AutomationProperties.Name="事项正文"
+            AutomationProperties.ItemStatus="{Binding ItemStatus}">
+            <TextBox.Style>
+                <Style TargetType="TextBox" BasedOn="{StaticResource NoteEditor}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Completed}" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Completed}"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Struck}" Value="True">
+                            <Setter Property="TextDecorations" Value="Strikethrough"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBox.Style>
+        </TextBox>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,5,0,0">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Opacity" Value="0"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsMouseOver, ElementName=Root}" Value="True">
+                            <Setter Property="Opacity" Value="1"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=Root}" Value="True">
+                            <Setter Property="Opacity" Value="1"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <ToggleButton
+                x:Name="Strike"
+                Style="{StaticResource IconToggleButton}"
+                IsChecked="{Binding Struck, Mode=OneWay}"
+                Content="&#xEDE0;"
+                ToolTip="{Binding StrikeName}"
+                AutomationProperties.Name="{Binding StrikeName}"/>
+            <Button
+                x:Name="Delete"
+                Style="{StaticResource IconButton}"
+                Content="&#xE74D;"
+                ToolTip="删除事项"
+                AutomationProperties.Name="删除事项"/>
+            <Button
+                x:Name="Sort"
+                Style="{StaticResource IconButton}"
+                Width="14"
+                Margin="0"
+                Content="&#xE8CB;"
+                ToolTip="排序事项"
+                AutomationProperties.Name="排序事项"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

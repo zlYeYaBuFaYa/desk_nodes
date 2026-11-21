@@ -1,0 +1,63 @@
+<Window
+    x:Class="DeskNodes.App.Views.DockOverflowWindow"
+    x:ClassModifier="internal"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    WindowStyle="None"
+    ResizeMode="NoResize"
+    ShowInTaskbar="False"
+    ShowActivated="False"
+    SizeToContent="Manual"
+    FontSize="{DynamicResource TextSize12}"
+    Background="{DynamicResource Paper}"
+    Foreground="{DynamicResource Body}"
+    AutomationProperties.Name="停靠溢出便签与分页">
+    <Window.Resources>
+        <Style x:Key="PaperAction" TargetType="Button" BasedOn="{StaticResource PresentationAction}">
+            <Setter Property="Foreground" Value="{DynamicResource Body}"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource Secondary}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Border Padding="4" BorderThickness="1" BorderBrush="{DynamicResource ToolbarBorder}" CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <DockPanel>
+                <Button
+                    Style="{StaticResource PaperAction}"
+                    Content="‹"
+                    Click="Previous"
+                    AutomationProperties.Name="上一停靠页"/>
+                <Button
+                    Style="{StaticResource PaperAction}"
+                    Content="›"
+                    DockPanel.Dock="Right"
+                    Click="Next"
+                    AutomationProperties.Name="下一停靠页"/>
+                <TextBlock Text="{Binding PageText}" VerticalAlignment="Center" TextAlignment="Center"/>
+            </DockPanel>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Entries}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button
+                                Style="{StaticResource PaperAction}"
+                                Content="{Binding Title}"
+                                Tag="{Binding Id}"
+                                Click="Reveal"
+                                Margin="0,2"
+                                Padding="3"
+                                AutomationProperties.Name="{Binding Title}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</Window>
