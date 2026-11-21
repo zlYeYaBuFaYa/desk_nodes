@@ -248,7 +248,11 @@
 
 月标题在 `Total == 0` 时是「—」。[`HistoryViewModel`](../src/DeskNodes.App/Views/HistoryViewModel.cs) 把 `Rate ?? 0` 写进日格的 `HelpText`。自动化名称只有日期。`HelpText` 不是 UIA 名称。Narrator 是否读出说明，见末节。
 
-**L6 框选的起拖阈值是 5 个物理像素。** [`MoveBox`](../src/DeskNodes.App/PresentationCoordinator.cs) 用 `GetCursorPos` 的曼哈顿距离。缩放到 200% 以上时，一次很小的点击会变成拖动。
+**L6 框选的起拖阈值是 5 个物理像素。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`MoveBox`](../src/DeskNodes.App/PresentationCoordinator.cs) 用 `GetCursorPos` 的曼哈顿距离。缩放到 200% 以上时，一次很小的点击会变成拖动。
 
 **L7 几处自动化名称丢掉了状态。** 最近删除的按钮内容只有「恢复」，多张卡片无法区分。字体卡片的 `AutomationProperties.Name` 只有字体名，可见的「未安装」不在名称里。设置里的热键按钮名称是「全局新建」和「全局浮起」，当前组合不在名称里。
 

@@ -47,6 +47,8 @@ public static class PresentationRules
     public static bool DockReservationChanged(ScreenSet screens, LocalPreferences previous, LocalPreferences current) =>
         previous.Home != current.Home ||
         ToolbarGeometry.AnchorScreen(screens, previous).Id != ToolbarGeometry.AnchorScreen(screens, current).Id;
+    public static bool BoxExceeded(double dx, double dy, double dpi) =>
+        (Math.Abs(dx) + Math.Abs(dy)) / (dpi > 0 ? dpi : 1) >= 5;
     public static bool ShouldShowOnRefresh(DeskTransition transition, bool isVisible) =>
         transition != DeskTransition.Expanding || isVisible;
     public static NoteId? SelectionFocus(IEnumerable<NoteId> visible, IReadOnlySet<NoteId> picked)

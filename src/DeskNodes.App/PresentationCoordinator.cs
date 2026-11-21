@@ -302,7 +302,8 @@ internal sealed class PresentationCoordinator : IDisposable
     {
         if (boxStart is not { } start || e.LeftButton != MouseButtonState.Pressed) return;
         var p = Pointer();
-        if (Math.Abs(p.X - start.X) + Math.Abs(p.Y - start.Y) < 5) return;
+        var screen = app.Screens.GetScreens().At(p);
+        if (!PresentationRules.BoxExceeded(p.X - start.X, p.Y - start.Y, screen?.DpiScale ?? 1)) return;
         dragged = true;
         var box = new RectD(Math.Min(start.X, p.X), Math.Min(start.Y, p.Y), Math.Abs(start.X - p.X), Math.Abs(start.Y - p.Y));
         foreach (var overlay in overlays) overlay.Draw(box);

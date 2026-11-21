@@ -91,6 +91,14 @@ public sealed class PresentationRulesTests
         Assert.True(state.Complete(latest));
         Assert.Equal(DeskTransition.Expanded, state.Transition);
     }
+    [Theory]
+    [InlineData(4, 0, 1, false)]
+    [InlineData(5, 0, 1, true)]
+    [InlineData(10, 0, 2, true)]
+    [InlineData(9, 0, 2, false)]
+    public void BoxThresholdUsesDips(double dx, double dy, double dpi, bool expected) =>
+        Assert.Equal(expected, PresentationRules.BoxExceeded(dx, dy, dpi));
+
     [Fact]
     public void SelectionFocusPrefersThePickedNoteThenTheFirstVisible()
     {
