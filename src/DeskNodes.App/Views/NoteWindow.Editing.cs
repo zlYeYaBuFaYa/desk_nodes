@@ -187,7 +187,17 @@ internal sealed partial class NoteWindow
                 app.ChangeSize(0, true);
                 break;
             case Key.Z:
-                if (app.Undo.DecideUndo(app.Clock.UtcNow, app.NewInputSinceDeletion) != UndoDecision.StructuralUndo) return;
+                var modifiers = Keyboard.Modifiers;
+                bool structural = EditorRules.UsesStructuralUndo(app.Editors.HasComposition,
+                    app.Undo.DecideUndo(app.Clock.UtcNow, app.NewInputSinceDeletion));
+                if (!EditorRules.IsCtrlZ(
+                        (modifiers & ModifierKeys.Control) != 0,
+                        (modifiers & ModifierKeys.Shift) != 0,
+                        (modifiers & ModifierKeys.Alt) != 0,
+                        (modifiers & ModifierKeys.Windows) != 0)
+                    || !structural
+                    || app.Editors.TryCommitPending() != CommitResult.Committed)
+                    return;
                 app.Run(() =>
                 {
                     app.Undo.Undo(app.Clock.UtcNow);

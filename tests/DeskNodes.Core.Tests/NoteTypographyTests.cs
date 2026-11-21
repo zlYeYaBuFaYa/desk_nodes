@@ -78,4 +78,16 @@ public sealed class NoteTypographyTests
     [InlineData(false, UndoDecision.TextUndo, false)]
     public void EditorUndoMatchesCtrlZUnlessComposing(bool composing, UndoDecision decision, bool expected)
         => Assert.Equal(expected, EditorRules.UsesStructuralUndo(composing, decision));
+    [Theory]
+    [InlineData(true, false, false, false, false, UndoDecision.StructuralUndo, CommitResult.Committed, true)]
+    [InlineData(true, true, false, false, false, UndoDecision.StructuralUndo, CommitResult.Committed, false)]
+    [InlineData(true, false, true, false, false, UndoDecision.StructuralUndo, CommitResult.Committed, false)]
+    [InlineData(true, false, false, true, false, UndoDecision.StructuralUndo, CommitResult.Committed, false)]
+    [InlineData(true, false, false, false, false, UndoDecision.TextUndo, CommitResult.Committed, false)]
+    [InlineData(true, false, false, false, true, UndoDecision.StructuralUndo, CommitResult.Committed, false)]
+    [InlineData(true, false, false, false, false, UndoDecision.StructuralUndo, CommitResult.Failed, false)]
+    [InlineData(true, false, false, false, false, UndoDecision.StructuralUndo, CommitResult.Composing, false)]
+    public void CtrlZIsConsumedOnlyForACommittedStructuralUndo(
+        bool control, bool shift, bool alt, bool windows, bool composing, UndoDecision decision, CommitResult commit, bool expected)
+        => Assert.Equal(expected, EditorRules.ConsumeCtrlZ(control, shift, alt, windows, composing, decision, commit));
 }

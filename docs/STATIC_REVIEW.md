@@ -60,7 +60,11 @@
 
 [`CreateEditorMenu`](../src/DeskNodes.App/Views/NoteWindow.Menus.cs) 原来把「撤销」绑到文本框的 `ApplicationCommands.Undo`。刚删除过、文本撤销栈为空时，菜单项禁用，快捷键提示仍是 `Ctrl+Z`。窗口按键仍会按 [FR-04](REQUIREMENTS.md) 恢复删除。[D7](DECISIONS.md) 要保留的是文字撤销入口；删除优先结束后，菜单仍走文字撤销。
 
-**M3 `Ctrl+Shift+Z` 会走结构撤销，提交失败时两种撤销都没有。** [`WindowKeys`](../src/DeskNodes.App/Views/NoteWindow.Editing.cs) 用「修饰键里有 Control」判断，因此 `Ctrl+Shift+Z`、`Ctrl+Alt+Z` 都进入 `Key.Z`。判定为结构撤销后，`Run` 即使因未提交而立刻返回，按键仍被标成已处理。非结构撤销会在设置 `Handled` 之前返回，那条是对的。
+**M3 `Ctrl+Shift+Z` 会走结构撤销，提交失败时两种撤销都没有。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`WindowKeys`](../src/DeskNodes.App/Views/NoteWindow.Editing.cs) 原来用「修饰键里有 Control」判断，因此 `Ctrl+Shift+Z`、`Ctrl+Alt+Z` 都进入 `Key.Z`。判定为结构撤销后，`Run` 即使因未提交而立刻返回，按键仍被标成已处理。非结构撤销会在设置 `Handled` 之前返回。
 
 ### 历史
 
