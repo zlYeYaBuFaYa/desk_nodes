@@ -204,7 +204,11 @@
 
 [`EnterSelection`](../src/DeskNodes.App/PresentationCoordinator.cs) 显示覆盖层和操作条，不把焦点给任何便签。[`PresentationBar`](../src/DeskNodes.App/Views/PresentationBar.xaml.cs) 设置 `WS_EX_NOACTIVATE`，自己不处理按键。`Esc`、`Ctrl+A`、`Delete` 只从便签的 `PreviewKeyDown` 进入 [`Keys`](../src/DeskNodes.App/PresentationCoordinator.cs)。[FR-15](REQUIREMENTS.md) 要求这些键在模式内可用。条上的按钮仍可用指针操作。空白点击清选择且不退出，这一条是对的。
 
-**M25 快捷键保存被拒绝后，按钮仍显示被拒绝的组合。** [`SaveHotkey`](../src/DeskNodes.App/Views/SettingsViewModel.SystemServices.cs) 在 `catch` 里设置 `HotkeyError`，不调用 `CancelRecording`。录制标志还在时，`NewHotkey` 和 `FloatHotkey` 返回刚录下的字符串。错误文案写的是原快捷键已保留。其他设置在保存被拒绝后会再通知一次，把界面绑回已保存的值。
+**M25 快捷键保存被拒绝后，按钮仍显示被拒绝的组合。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`SaveHotkey`](../src/DeskNodes.App/Views/SettingsViewModel.SystemServices.cs) 在 `catch` 里设置 `HotkeyError`，不调用 `CancelRecording`。录制标志还在时，`NewHotkey` 和 `FloatHotkey` 返回刚录下的字符串。错误文案写的是原快捷键已保留。其他设置在保存被拒绝后会再通知一次，把界面绑回已保存的值。
 
 **M26 高对比下，日格档位只靠透明度区分。** [`HighContrast.xaml`](../src/DeskNodes.App/Themes/HighContrast.xaml) 里 `HistoryWeak` 和 `HistoryBackground` 都是系统 Window 色。日格的低、中、满三档共用 `HistoryProgress`（Highlight），不透明度来自 [`ShadeOpacity`](../src/DeskNodes.Core/Services/HistoryQueries.cs) 的 0.18、0.38、0.62。[UI 规格](UI_SPEC.md#selection) 写明高对比不能把低透明度当作唯一反馈。历史按钮禁用时只有 0.45 的透明度。多选遮罩是 Window 色加 0.5 透明度；已选便签仍有 Highlight 描边。七色便签在高对比下收成 Window，选中收成 Highlight，这与「用语义色替换装饰色」一致，不单列。
 

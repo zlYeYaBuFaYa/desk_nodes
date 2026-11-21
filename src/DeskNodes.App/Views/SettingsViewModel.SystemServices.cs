@@ -135,6 +135,7 @@ internal sealed partial class SettingsViewModel
         catch (Exception exception)
         {
             app.Log.Error("更改快捷键失败。", exception);
+            CancelRecording();
             HotkeyError = exception is FormatException ? "快捷键格式无效，请重新录制。" :
                 "快捷键被占用或与另一快捷键相同，原快捷键已保留。请换一个组合。";
         }
