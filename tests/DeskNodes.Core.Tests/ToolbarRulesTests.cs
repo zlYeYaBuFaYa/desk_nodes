@@ -121,6 +121,14 @@ public sealed class ToolbarRulesTests
     public void FadedToolbarPartDoesNotReceivePointer(double opacity, bool expected) =>
         Assert.Equal(expected, ToolbarRules.PartReceivesPointer(opacity));
 
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, false, true, true)]
+    public void StackHintKeepsThePointerInside(bool toolbar, bool entrance, bool stackHint, bool expected) =>
+        Assert.Equal(expected, ToolbarRules.PointerInside(toolbar, entrance, stackHint));
+
     [Fact]
     public void SpringSettlesWithinHalfSecondAndHasSmallOvershoot()
     {

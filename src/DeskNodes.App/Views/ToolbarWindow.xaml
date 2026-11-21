@@ -183,7 +183,7 @@
                     Drop="EntranceDragEnd"/>
             </Popup>
             <Popup x:Name="stackHint" AllowsTransparency="True" StaysOpen="True" Focusable="False" Placement="Relative">
-                <views:StackHintView x:Name="StackHint" MouseLeftButtonUp="StackHintClick"/>
+                <views:StackHintView x:Name="StackHint" MouseLeftButtonUp="StackHintClick" MouseEnter="EntranceEnter" MouseLeave="EntranceEnter"/>
             </Popup>
         </Grid>
     </Border>

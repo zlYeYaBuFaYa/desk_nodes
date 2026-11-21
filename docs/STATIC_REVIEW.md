@@ -148,7 +148,11 @@
 
 [`PlacePopupBehindActiveApplications`](../src/DeskNodes.App/Views/ToolbarWindow.xaml.cs) 使用 `HWND_NOTOPMOST`（-2）。这会取消置顶，并把窗口插到普通 Z 序的顶部，仍在其他应用之上。入口填充是 `#01000000`，别的应用盖住这条边时它仍能收到点击。[FR-08](REQUIREMENTS.md) 要求边缘唤起只在入口真正露出来时生效。入口和数量提示打开时都会走这里。
 
-**M16 停在数量叠放提示上会开始闲置计时。** 指针是否在内部只看工具条和入口命中层。叠放提示是另一个弹出层，不调用 `Tick`。鼠标放在提示上时闲置计时继续，下一次收缩会关掉提示。
+**M16 停在数量叠放提示上会开始闲置计时。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+指针是否在内部只看工具条和入口命中层。叠放提示是另一个弹出层，不调用 `Tick`。鼠标放在提示上时闲置计时继续，下一次收缩会关掉提示。
 
 **M17 减少动画时，过渡结束会跑两次。** 减少动画的 `Transition` 直接调用 `finished()`，不停止帧计时。下一帧把已经减少动画的经过时间当成时长，再调用一次 `finished`。`SavePreferences` 和 `AnimationCompleted` 会各跑两次。
 

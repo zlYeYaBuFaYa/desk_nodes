@@ -22,7 +22,7 @@ internal partial class ToolbarWindow
         wake.Stop();
         var home = ToolbarGeometry.Home(app.Screens.GetScreens(), screen, app.Preferences.Home);
         var entrance = round ? Bounds : ToolbarRules.HandleRound(Bounds, app.Preferences.Orientation, HandleEdge);
-        var output = idle.Update(Now, new(IsMouseOver || entranceHit.IsMouseOver, dragging || externalDrag, pressed, animating, app.SettingsVisible, menuOpen || app.TrayMenuOpen,
+        var output = idle.Update(Now, new(ToolbarRules.PointerInside(IsMouseOver, entranceHit.IsMouseOver, stackHint.IsMouseOver), dragging || externalDrag, pressed, animating, app.SettingsVisible, menuOpen || app.TrayMenuOpen,
             app.Preferences.KeepToolbarExpanded || NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETSCREENREADER, 0, out int reader, 0) && reader != 0, app.Preferences.AutoShrink, operated, clicked, completed,
             Math.Abs(entrance.Center.X - home.Entrance.Center.X) < 1 && Math.Abs(entrance.Center.Y - home.Entrance.Center.Y) < 1, completedGeneration));
         if (output.Action != ToolbarIdleAction.None) Transition(output.Action, output.Generation);
