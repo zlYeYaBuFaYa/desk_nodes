@@ -116,7 +116,11 @@ public sealed class HistoryActionsTests
         navigator.MoveDay(1); Assert.True(navigator.IsTodayDisabled);
         navigator.MoveWeek(1); Assert.True(navigator.IsTodayDisabled);
         navigator.MoveMonth(1); Assert.Equal(Day("2026-12-01"), navigator.SelectedDay);
-        navigator.MoveDay(-1); Assert.Equal(Day("2026-11-15"), navigator.SelectedDay);
+        navigator.MoveDay(1); Assert.Equal(Day("2026-12-01"), navigator.SelectedDay);
+        navigator.MoveDay(-1); Assert.Equal(Day("2026-11-30"), navigator.SelectedDay);
+        navigator.MoveWeek(-1); Assert.Equal(Day("2026-11-23"), navigator.SelectedDay);
+        navigator.Select(Day("2026-11-10"));
+        navigator.MoveWeek(1); Assert.Equal(Day("2026-11-15"), navigator.SelectedDay);
         navigator.Select(Day("2026-11-30")); Assert.False(navigator.IsTodayDisabled);
         navigator.ReloadToday(Day("2026-12-01")); navigator.Today(); Assert.True(navigator.IsTodayDisabled);
         navigator.Select(Day("2021-02-01")); Assert.Equal(28, navigator.MonthGrid(false).Count);

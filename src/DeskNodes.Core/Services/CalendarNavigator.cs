@@ -15,7 +15,12 @@ public sealed class CalendarNavigator(HistoryDay selectedDay, HistoryDay current
     private void Move(int direction, int days)
     {
         ValidateDirection(direction);
-        int number = Math.Clamp(SelectedDay.Value.DayNumber + direction * days, DateOnly.MinValue.DayNumber, CurrentBusinessDay.Value.DayNumber);
+        int current = CurrentBusinessDay.Value.DayNumber;
+        int selected = SelectedDay.Value.DayNumber;
+        if (direction > 0 && selected > current) return;
+        int candidate = selected + direction * days;
+        if (direction > 0 && candidate > current) candidate = current;
+        int number = Math.Clamp(candidate, DateOnly.MinValue.DayNumber, DateOnly.MaxValue.DayNumber);
         SelectedDay = new(DateOnly.FromDayNumber(number));
     }
     public void MoveMonth(int direction)

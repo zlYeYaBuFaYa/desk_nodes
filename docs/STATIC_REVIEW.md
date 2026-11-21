@@ -68,7 +68,11 @@
 
 ### 历史
 
-**M4 从未来日期按方向键会跳到今天。** [`CalendarNavigator`](../src/DeskNodes.Core/Presentation/CalendarNavigator.cs) 把 `SelectedDay + direction * days` 钳到 `CurrentBusinessDay`。从未来格按左，不是后退一天，而是直接落到今天。[FR-11](REQUIREMENTS.md) 要求逐日或逐周移动，并且不能越过今天；月导航和点格可以进入未来。`HistoryActionsTests` 把「2026-12-01 向左落到 2026-11-15」锁成了期望。
+**M4 从未来日期按方向键会跳到今天。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+[`CalendarNavigator`](../src/DeskNodes.Core/Services/CalendarNavigator.cs) 原来把 `SelectedDay + direction * days` 钳到 `CurrentBusinessDay`。从未来格按左，会直接落到今天。[FR-11](REQUIREMENTS.md) 要求逐日或逐周移动，并且不能越过今天；月导航和点格可以进入未来。`HistoryActionsTests` 原来把「2026-12-01 向左落到 2026-11-15」锁成了期望。
 
 **M5 历史窗口里任意焦点控件都会吃掉普通方向键。** [`HistoryRules.HandlesNavigation`](../src/DeskNodes.Core/Presentation/HistoryRules.cs) 在「有控件焦点且没有修饰键」时返回 false。[`HistoryWindow.Navigate`](../src/DeskNodes.App/Views/HistoryWindow.xaml.cs) 把「焦点元素是窗口以外的 Control」始终传进去。[FR-11](REQUIREMENTS.md) 和[快捷键表](INTERACTION.md#keys) 写的是：详情文字始终让出方向键；只有启用完整键盘导航时，普通方向键才留给焦点控件。日格 `Focusable` 为 false，点日格后焦点回到窗口。「今天」和翻月按钮可以获得焦点，之后普通方向键不再移动日期。`Ctrl+左`、`Ctrl+右`、`Ctrl+T` 仍然有效。`HistoryRulesTests` 锁的是现在的调用方式。
 
@@ -148,7 +152,7 @@
 
 - 粘贴测试没有 `3.14` 或 `10.5`。
 - 编辑会话测试只通过 `SetComposition(false)` 结束组词，没有 Esc 取消。
-- `HistoryActionsTests` 期望从 2026-12-01 向左落到 2026-11-15。
+- `HistoryActionsTests` 原来期望从 2026-12-01 向左落到 2026-11-15。M4 已改成逐日退回。
 - 仓库恢复测试只恢复一张仍处于删除状态的便签。
 - 停靠分页测试只在数量大于 1 时要求溢出标签。
 - 手柄与入口重合只在文字缩放 1 时断言。
