@@ -107,7 +107,9 @@ internal partial class HistoryWindow : Window
             return;
         bool control = Keyboard.Modifiers == ModifierKeys.Control;
         var focus = Keyboard.FocusedElement;
-        if (!HistoryRules.HandlesNavigation(!IsDeleted, focus is TextBoxBase, focus is Control && focus != this, control))
+        bool controlOwnsArrows = HistoryRules.ControlOwnsPlainArrows(
+            SystemParameters.KeyboardPreference, focus is Control && focus != this);
+        if (!HistoryRules.HandlesNavigation(!IsDeleted, focus is TextBoxBase, controlOwnsArrows, control))
             return;
         if (Keyboard.Modifiers != ModifierKeys.None && !control)
             return;

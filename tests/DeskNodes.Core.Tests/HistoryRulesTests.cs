@@ -17,6 +17,14 @@ public sealed class HistoryRulesTests
         Assert.Equal(expected, HistoryRules.HandlesNavigation(calendar, text, control, modified));
 
     [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, false, false)]
+    public void PlainArrowsStayWithAControlOnlyDuringFullKeyboardNavigation(bool fullKeyboard, bool controlFocused, bool expected)
+        => Assert.Equal(expected, HistoryRules.ControlOwnsPlainArrows(fullKeyboard, controlFocused));
+
+    [Theory]
     [InlineData(0, "刚刚移出列表")]
     [InlineData(60, "1 分钟前移出列表")]
     [InlineData(3600, "1 小时前移出列表")]

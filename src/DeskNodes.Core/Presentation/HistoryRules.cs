@@ -27,6 +27,9 @@ public static class HistoryRules
         new(deleted ? HistoryItemState.Deleted : struck ? HistoryItemState.Struck : completed ? HistoryItemState.Completed : HistoryItemState.Pending,
             carriedTo is { } day ? "顺延至 " + day.Value.ToString("M月d日", CultureInfo.InvariantCulture) : null);
 
+    public static bool ControlOwnsPlainArrows(bool fullKeyboardNavigation, bool controlFocused)
+        => fullKeyboardNavigation && controlFocused;
+
     public static bool HandlesNavigation(bool calendar, bool textFocus, bool controlFocus, bool modified) =>
         calendar && !textFocus && (modified || !controlFocus);
 
