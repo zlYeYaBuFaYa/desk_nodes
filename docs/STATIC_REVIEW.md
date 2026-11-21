@@ -154,7 +154,11 @@
 
 指针是否在内部只看工具条和入口命中层。叠放提示是另一个弹出层，不调用 `Tick`。鼠标放在提示上时闲置计时继续，下一次收缩会关掉提示。
 
-**M17 减少动画时，过渡结束会跑两次。** 减少动画的 `Transition` 直接调用 `finished()`，不停止帧计时。下一帧把已经减少动画的经过时间当成时长，再调用一次 `finished`。`SavePreferences` 和 `AnimationCompleted` 会各跑两次。
+**M17 减少动画时，过渡结束会跑两次。**
+
+**复核：成立，已修复。** 进度见 [任务清单](STATIC_REVIEW_TASKS.md)。
+
+减少动画的 `Transition` 直接调用 `finished()`，不停止帧计时。下一帧把已经减少动画的经过时间当成时长，再调用一次 `finished`。`SavePreferences` 和 `AnimationCompleted` 会各跑两次。
 
 **M18 文字缩放 1.5 时，手柄和圆形入口不重合。** [`ToolbarGeometry.FullSize`](../src/DeskNodes.Core/Presentation/ToolbarGeometry.cs) 的短边是 `64 * max(1, textScale)`。展开的横轴中心用固定的 32 DIP 和沿边 ±28。圆形入口在文字缩放 1 时是 56 DIP，放在工作区角上。缩放 1.5 时，顶边或底边上的垂直工具条、左边或右边上的水平工具条，手柄会偏离圆形入口 16 DIP。贴住屏幕边的那一轴仍由 `Fit` 对齐。测试 `ExpandedHomePreservesTheHandleEntrance` 只用缩放 1。[FR-08](REQUIREMENTS.md) 要求手柄端留在圆形入口上。小于 1 的文字缩放不会缩小命中目标（`Math.Max(1, Scale)`），字号仍会变小。
 

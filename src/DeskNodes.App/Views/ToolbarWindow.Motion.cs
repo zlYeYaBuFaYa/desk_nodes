@@ -96,9 +96,11 @@ internal partial class ToolbarWindow
                 child.RenderTransform = new TranslateTransform(0, expand ? offsetFrom[i] * (1 - progress) : 0);
             }
         };
+        bool settled = false;
         finished = () =>
         {
-            if (generation != current) return;
+            if (settled || generation != current) return;
+            settled = true;
             animating = false;
             Place(end);
             if (expand) ShowExpandedParts();
@@ -119,6 +121,7 @@ internal partial class ToolbarWindow
             Rebuild();
             Tick(completed: true, completedGeneration: idleGeneration);
         };
+        frames.Stop();
         if (reduce) finished();
         else frames.Start();
     }
